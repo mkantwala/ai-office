@@ -1,0 +1,230 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index ae82a38..52990aa 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -5311,6 +5311,18 @@ dependencies = [
+  "wordcraft-metafile",
+ ]
+ 
++[[package]]
++name = "wordcraft-preview"
++version = "0.6.1"
++dependencies = [
++ "serde_json",
++ "wasm-bindgen",
++ "wordcraft-doc",
++ "wordcraft-engine",
++ "wordcraft-layout",
++ "wordcraft-render",
++]
++
+ [[package]]
+ name = "wordcraft-proof"
+ version = "0.6.1"
+diff --git a/Cargo.toml b/Cargo.toml
+index 4e4f699..b853495 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -95,3 +95,8 @@ opt-level = 3
+ lto = "thin"
+ codegen-units = 16
+ debug = 0
++
++[profile.low-disk]
++inherits = "dev"
++debug = "line-tables-only"
++incremental = false
+diff --git a/apps/ai-office-preview/Cargo.toml b/apps/ai-office-preview/Cargo.toml
+new file mode 100644
+index 0000000..8f0a4fe
+--- /dev/null
++++ b/apps/ai-office-preview/Cargo.toml
+@@ -0,0 +1,20 @@
++[package]
++name = "wordcraft-preview"
++version.workspace = true
++edition.workspace = true
++license.workspace = true
++publish = false
++
++[lib]
++crate-type = ["cdylib"]
++
++[lints]
++workspace = true
++
++[dependencies]
++wordcraft-doc = { workspace = true }
++wordcraft-engine = { workspace = true }
++wordcraft-layout = { workspace = true }
++wordcraft-render = { workspace = true }
++serde_json = { workspace = true }
++wasm-bindgen = "0.2"
+diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
+new file mode 100644
+index 0000000..2c86000
+--- /dev/null
++++ b/apps/ai-office-preview/src/lib.rs
+@@ -0,0 +1,150 @@
++//! Content-only Word pagination and rendering for AI Office.
++#![cfg(target_arch = "wasm32")]
++#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
++
++use serde_json::{Value, json};
++use std::sync::Arc;
++use wasm_bindgen::prelude::*;
++use wordcraft_engine::Session;
++use wordcraft_layout::DocLayout;
++
++#[wasm_bindgen]
++pub struct OfficeDocument {
++    session: Session,
++    layout: Arc<DocLayout>,
++    width: u32,
++    height: u32,
++    password: Option<String>,
++}
++
++#[wasm_bindgen]
++impl OfficeDocument {
++    #[wasm_bindgen(constructor)]
++    pub fn new(name: &str, bytes: &[u8], password: Option<String>) -> Result<OfficeDocument, JsValue> {
++        if bytes.len() > 128 * 1024 * 1024 {
++            return Err(JsValue::from_str("Document exceeds the 128 MB limit"));
++        }
++        let (doc, _) = wordcraft_engine::io::open_bytes_with(name, bytes, password.as_deref()).map_err(|e| JsValue::from_str(&e))?;
++        let mut session = Session::new(doc);
++        let layout = session.layout();
++        if layout.pages.len() > 10000 || layout.pages.iter().any(|p| [p.w, p.h].iter().any(|v| !v.is_finite() || *v <= 0.0 || *v > 14400.0)) {
++            return Err(JsValue::from_str("Document exceeds the page count or page size limit"));
++        }
++        Ok(Self { session, layout, width: 0, height: 0, password })
++    }
++
++    pub fn pages(&self) -> Result<String, JsValue> {
++        let sizes: Vec<_> = self.layout.pages.iter().map(|page| [page.w, page.h]).collect();
++        serde_json::to_string(&sizes).map_err(|e| JsValue::from_str(&e.to_string()))
++    }
++
++    /// The same command ids and parameters used by wordcraft-cli and MCP.
++    pub fn execute(&mut self, command: &str, params: &str) -> Result<String, JsValue> {
++        if params.len() > 24 * 1024 * 1024 {
++            return Err(JsValue::from_str("Command is too large"));
++        }
++        if !allowed(command) {
++            return Err(JsValue::from_str("Command is not enabled in AI Office"));
++        }
++        let args: Value = serde_json::from_str(params).map_err(|e| JsValue::from_str(&e.to_string()))?;
++        self.session.close_typing();
++        self.session.run(command, &args).map_err(|e| JsValue::from_str(&e.to_string()))?;
++        self.layout = self.session.layout();
++        self.state()
++    }
++
++    pub fn commands(&self) -> Result<String, JsValue> {
++        let list: Vec<_> =
++            self.session.registry.all().iter().filter(|c| allowed(c.id)).map(|c| json!({"id": c.id, "label": c.label, "params": c.params})).collect();
++        serde_json::to_string(&list).map_err(|e| JsValue::from_str(&e.to_string()))
++    }
++
++    pub fn state(&self) -> Result<String, JsValue> {
++        let sel = &self.session.sel;
++        let caret = self.layout.caret_on(&sel.focus, self.session.page_hint).map(|c| json!({"page":c.page,"x":c.x,"y":c.top,"height":c.height}));
++        let rects: Vec<_> = self
++            .layout
++            .selection_rects(&self.session.doc, &sel.anchor, &sel.focus, self.session.page_hint)
++            .iter()
++            .map(|(page, r)| json!({"page":page,"x":r.x,"y":r.y,"width":r.w,"height":r.h}))
++            .collect();
++        let comments: Vec<_> = self
++            .session
++            .doc
++            .comments
++            .values()
++            .map(|c| json!({"author":c.author,"text":self.session.doc.plain_text(wordcraft_doc::StoryRef::Part(c.part))}))
++            .collect();
++        serde_json::to_string(&json!({"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
++    }
++
++    pub fn export(&self) -> Result<Vec<u8>, JsValue> {
++        wordcraft_engine::io::save_bytes_with("document.docx", &self.session.doc, self.password.as_deref(), &Default::default())
++            .map_err(|e| JsValue::from_str(&e))
++    }
++
++    pub fn render(&mut self, index: usize, scale: f32) -> Result<Vec<u8>, JsValue> {
++        let page = self.layout.pages.get(index).ok_or_else(|| JsValue::from_str("Page does not exist"))?;
++        if !scale.is_finite() || scale <= 0.0 {
++            return Err(JsValue::from_str("Invalid page scale"));
++        }
++        let scale = scale.min(4096.0 / page.w).min(4096.0 / page.h).min((8_000_000.0 / (page.w * page.h)).sqrt());
++        let result = wordcraft_render::render_page(&self.session.doc, page, scale, &Default::default());
++        self.width = result.width;
++        self.height = result.height;
++        Ok(result.to_straight())
++    }
++
++    #[wasm_bindgen(getter)]
++    pub fn width(&self) -> u32 {
++        self.width
++    }
++    #[wasm_bindgen(getter)]
++    pub fn height(&self) -> u32 {
++        self.height
++    }
++}
++
++fn allowed(command: &str) -> bool {
++    matches!(
++        command,
++        "text.insert"
++            | "text.newParagraph"
++            | "text.lineBreak"
++            | "text.tab"
++            | "text.backTab"
++            | "text.backspace"
++            | "text.delete"
++            | "caret.set"
++            | "caret.left"
++            | "caret.right"
++            | "caret.up"
++            | "caret.down"
++            | "caret.home"
++            | "caret.end"
++            | "caret.docStart"
++            | "caret.docEnd"
++            | "select.all"
++            | "select.range"
++            | "select.word"
++            | "select.text"
++            | "select.collapse"
++            | "format.bold"
++            | "format.italic"
++            | "format.underline"
++            | "format.font"
++            | "format.size"
++            | "para.align"
++            | "para.style"
++            | "para.bullets"
++            | "para.numbering"
++            | "para.lineSpacing"
++            | "insert.table"
++            | "insert.picture"
++            | "insert.link"
++            | "review.newComment"
++            | "review.comments"
++            | "edit.undo"
++            | "edit.redo"
++    )
++}
+diff --git a/docs/roadmap.md b/docs/roadmap.md
+index eb3810e..524a836 100644
+--- a/docs/roadmap.md
++++ b/docs/roadmap.md
+@@ -88,3 +88,7 @@ languages, screen-reader access, ecosystem decisions (VBA, add-ins, cloud), an i
+ | 2026-10-10 | major | Created: milestones moved from ROADMAP.md with remaining hours; Current focus from gaps.md; M15–M16 added |
+ | 2026-10-10 | trivial | M11: ink pens and eraser landed (#307) |
+ | 2026-10-11 | trivial | M11: lasso, Add Pen, Ink to Shape and Ink Replay landed (#395) |
++
++## Local AI Office preview integration (2026-10-14)
++
++`apps/ai-office-preview` exposes DOCX layout, page rasterization, caret/selection state, an allowlisted command registry and save bytes through WebAssembly. The sibling VS Code fork supplies a compact toolbar and caret input, and its CLI uses the same bridge for editing. Formatting, tables, images, links, comments and undo/redo are covered by synthetic export/reopen tests in `../vscode/extensions/ai-office-common`. Upstream editing parity estimates are unchanged.

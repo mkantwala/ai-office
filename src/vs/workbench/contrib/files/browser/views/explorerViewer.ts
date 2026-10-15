@@ -28,6 +28,7 @@ import { IKeyboardEvent } from '../../../../../base/browser/keyboardEvent.js';
 import { equals, deepClone } from '../../../../../base/common/objects.js';
 import * as path from '../../../../../base/common/path.js';
 import { ExplorerItem, NewExplorerItem } from '../../common/explorerModel.js';
+import { isOfficeDocument } from '../../common/officeDocuments.js';
 import { compareFileExtensionsDefault, compareFileNamesDefault, compareFileNamesUpper, compareFileExtensionsUpper, compareFileNamesLower, compareFileExtensionsLower, compareFileNamesUnicode, compareFileExtensionsUnicode } from '../../../../../base/common/comparers.js';
 import { CodeDataTransfers, containsDragType } from '../../../../../platform/dnd/browser/dnd.js';
 import { fillEditorsDragData } from '../../../../browser/dnd.js';
@@ -1222,8 +1223,8 @@ interface CachedParsedExpression {
 }
 
 /**
- * Respects files.exclude setting in filtering out content from the explorer.
- * Makes sure that visible editors are always shown in the explorer even if they are filtered out by settings.
+ * Shows office documents and folders, respecting files.exclude and .gitignore.
+ * Open office documents can override exclusions; other file types stay hidden.
  */
 export class FilesFilter implements ITreeFilter<ExplorerItem, FuzzyScore> {
 	private hiddenExpressionPerRoot = new Map<string, CachedParsedExpression>();
@@ -1387,7 +1388,6 @@ export class FilesFilter implements ITreeFilter<ExplorerItem, FuzzyScore> {
 		// Add newly visited .gitignore files to the ignore tree
 		if (stat.name === '.gitignore' && this.ignoreTreesPerRoot.has(stat.root.resource.toString())) {
 			this.processIgnoreFile(stat.root.resource.toString(), stat.resource, false);
-			return true;
 		}
 
 		return this.isVisible(stat, parentVisibility);
@@ -1402,12 +1402,20 @@ export class FilesFilter implements ITreeFilter<ExplorerItem, FuzzyScore> {
 		if (this.explorerService.getEditableData(stat)) {
 			return true; // always visible
 		}
+		if (stat.isRoot && stat.error) {
+			return true; // keep the workspace error and retry action visible
+		}
+		if (!stat.isDirectory && !isOfficeDocument(stat.name)) {
+			return false;
+		}
 
 		// Hide those that match Hidden Patterns
 		const cached = this.hiddenExpressionPerRoot.get(stat.root.resource.toString());
 		const globMatch = cached?.parsed(path.relative(stat.root.resource.path, stat.resource.path), stat.name, name => !!(stat.parent?.getChild(name)));
 		// Small optimization to only run isHiddenResource (traverse gitIgnore) if the globMatch from fileExclude returned nothing
-		const isHiddenResource = globMatch ? true : this.isIgnored(stat.resource, stat.root.resource, stat.isDirectory);
+		// Office documents are the Explorer's primary content. Keep them visible even when a
+		// repository .gitignore lists document files; explicit files.exclude rules still apply.
+		const isHiddenResource = globMatch ? true : (stat.isDirectory ? this.isIgnored(stat.resource, stat.root.resource, true) : false);
 		if (isHiddenResource || stat.parent?.isExcluded) {
 			stat.isExcluded = true;
 			const editors = this.editorService.visibleEditors;
@@ -1424,6 +1432,10 @@ export class FilesFilter implements ITreeFilter<ExplorerItem, FuzzyScore> {
 	}
 
 	isIgnored(resource: URI, rootResource: URI, isDirectory: boolean): boolean {
+		// Explorer Find uses this path too, including files in folders not loaded yet.
+		if (!isDirectory && !isOfficeDocument(path.basename(resource.path))) {
+			return true;
+		}
 		const ignoreFile = this.ignoreTreesPerRoot.get(rootResource.toString())?.findSubstr(resource);
 		const isIncludedInTraversal = ignoreFile?.isPathIncludedInTraversal(resource.path, isDirectory);
 

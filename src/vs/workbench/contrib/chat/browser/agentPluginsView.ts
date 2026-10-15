@@ -689,6 +689,9 @@ export class AgentPluginsViewsContribution extends Disposable implements IWorkbe
 
 	constructor() {
 		super();
+		if (!VIEW_CONTAINER) {
+			return;
+		}
 
 		registerAction2(AgentPluginsBrowseCommand);
 		registerAction2(RefreshPluginMarketplacesCommand);

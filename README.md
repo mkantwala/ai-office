@@ -1,4 +1,10 @@
-# Visual Studio Code - Open Source ("Code - OSS")
+# AI Office
+
+An AI-native office editor built on Code - OSS, with Word, PDF, PowerPoint and Markdown support. See [AI Office setup, architecture and usage](AI_OFFICE.md) and [agent CLI commands](extensions/ai-office-common/README.md).
+
+The upstream Code - OSS project information follows.
+
+## Visual Studio Code - Open Source ("Code - OSS")
 [![Feature Requests](https://img.shields.io/github/issues/microsoft/vscode/feature-request.svg)](https://github.com/microsoft/vscode/issues?q=is%3Aopen+is%3Aissue+label%3Afeature-request+sort%3Areactions-%2B1-desc)
 [![Bugs](https://img.shields.io/github/issues/microsoft/vscode/bug.svg)](https://github.com/microsoft/vscode/issues?utf8=✓&q=is%3Aissue+is%3Aopen+label%3Abug)
 

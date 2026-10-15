@@ -26,7 +26,7 @@ export class ExtensionGalleryManifestService extends Disposable implements IExte
 	readonly onDidChangeExtensionGalleryManifestStatus = Event.None;
 
 	get extensionGalleryManifestStatus(): ExtensionGalleryManifestStatus {
-		return !!this.productService.extensionsGallery?.serviceUrl ? ExtensionGalleryManifestStatus.Available : ExtensionGalleryManifestStatus.Unavailable;
+		return this.productService.extensionsMarketplaceEnabled !== false && !!this.productService.extensionsGallery?.serviceUrl ? ExtensionGalleryManifestStatus.Available : ExtensionGalleryManifestStatus.Unavailable;
 	}
 
 	constructor(
@@ -37,7 +37,7 @@ export class ExtensionGalleryManifestService extends Disposable implements IExte
 
 	async getExtensionGalleryManifest(): Promise<IExtensionGalleryManifest | null> {
 		const extensionsGallery = this.productService.extensionsGallery as ExtensionGalleryConfig | undefined;
-		if (!extensionsGallery?.serviceUrl) {
+		if (this.productService.extensionsMarketplaceEnabled === false || !extensionsGallery?.serviceUrl) {
 			return null;
 		}
 

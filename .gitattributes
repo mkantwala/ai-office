@@ -9,3 +9,6 @@ ThirdPartyNotices.txt eol=crlf
 *.sh eol=lf
 *.rtf -text
 **/*.json linguist-language=jsonc
+
+# Preserve patch checksums and the whitespace of unified-diff context lines.
+engines/*.patch -text -whitespace

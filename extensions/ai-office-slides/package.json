@@ -1,0 +1,14 @@
+{
+	"name": "ai-office-slides",
+	"displayName": "AI Office Slides",
+	"description": "View and edit PowerPoint slides in AI Office.",
+	"version": "0.1.0",
+	"publisher": "vscode",
+	"license": "MIT",
+	"engines": { "vscode": "^1.95.0" },
+	"main": "./out/extension.js",
+	"activationEvents": ["onCustomEditor:aiOffice.slides"],
+	"capabilities": { "untrustedWorkspaces": { "supported": true }, "virtualWorkspaces": true },
+	"contributes": { "customEditors": [{ "viewType": "aiOffice.slides", "displayName": "AI Office Slides", "selector": [{ "filenamePattern": "*.pptx" }], "priority": "default" }] },
+	"dependencies": { "@office-kit/pptx": "0.24.1", "@office-kit/pptx-preview": "0.15.0", "dompurify": "3.4.1" }
+}

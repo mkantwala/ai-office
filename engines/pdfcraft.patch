@@ -1,0 +1,260 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 05c2f73..d881a07 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3869,6 +3869,17 @@ dependencies = [
+  "pdfcraft-model",
+ ]
+ 
++[[package]]
++name = "pdfcraft-preview"
++version = "0.7.1"
++dependencies = [
++ "pdfcraft-automation",
++ "pdfcraft-engine",
++ "pdfcraft-render",
++ "serde_json",
++ "wasm-bindgen",
++]
++
+ [[package]]
+ name = "pdfcraft-print"
+ version = "0.7.1"
+diff --git a/ROADMAP.md b/ROADMAP.md
+index 44a2660..08c8d3f 100644
+--- a/ROADMAP.md
++++ b/ROADMAP.md
+@@ -419,3 +419,8 @@ Newest first: the date, what moved, and the new overall estimate.
+ | 2026-10-05 | major | Honest assessment and "Where we're lacking" added |
+ 
+ - **2026-10-12 (M8):** Redaction cleans indirect and form structure references, preserving surviving form tags.
++
++
++## Local AI Office preview integration (2026-10-14)
++
++`apps/ai-office-preview` exposes rendering, paragraph state, save bytes and selected existing automation commands through WebAssembly. The sibling VS Code fork supplies a compact editing toolbar and a CLI using the same bridge, with synthetic edit/export/reopen coverage. Upstream parity estimates are unchanged.
+diff --git a/apps/ai-office-preview/Cargo.toml b/apps/ai-office-preview/Cargo.toml
+new file mode 100644
+index 0000000..48ed9dd
+--- /dev/null
++++ b/apps/ai-office-preview/Cargo.toml
+@@ -0,0 +1,19 @@
++[package]
++name = "pdfcraft-preview"
++version.workspace = true
++edition.workspace = true
++license.workspace = true
++publish = false
++
++[lib]
++crate-type = ["cdylib"]
++
++[lints]
++workspace = true
++
++[dependencies]
++pdfcraft-render = { workspace = true }
++pdfcraft-engine = { workspace = true }
++pdfcraft-automation = { workspace = true, default-features = false }
++serde_json = { workspace = true }
++wasm-bindgen = "0.2"
+diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
+new file mode 100644
+index 0000000..922d4fe
+--- /dev/null
++++ b/apps/ai-office-preview/src/lib.rs
+@@ -0,0 +1,158 @@
++//! PDF editing and rendering for AI Office, using the CLI's automation commands.
++#![cfg(target_arch = "wasm32")]
++#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
++
++use pdfcraft_automation::{Automation, Content};
++use pdfcraft_render::{PageRenderer, RenderConfig, RenderRequest, RequestKind};
++use serde_json::{Value, json};
++use std::sync::Arc;
++use wasm_bindgen::prelude::*;
++
++#[wasm_bindgen]
++pub struct OfficeDocument {
++    renderer: PageRenderer,
++    sizes: Vec<[f32; 2]>,
++    width: u32,
++    height: u32,
++    automation: Automation,
++    id: pdfcraft_engine::DocId,
++    password: Option<String>,
++    page: usize,
++}
++
++#[wasm_bindgen]
++impl OfficeDocument {
++    #[wasm_bindgen(constructor)]
++    pub fn new(name: &str, bytes: &[u8], password: Option<String>) -> Result<OfficeDocument, JsValue> {
++        if bytes.len() > 128 * 1024 * 1024 {
++            return Err(JsValue::from_str("PDF exceeds the 128 MB limit"));
++        }
++        let bytes = Arc::new(bytes.to_vec());
++        let info = pdfcraft_render::inspect(bytes.clone(), password.as_deref()).map_err(|e| JsValue::from_str(&e.to_string()))?;
++        if info.pages.len() > 10000 {
++            return Err(JsValue::from_str("PDF exceeds the 10,000-page limit"));
++        }
++        let sizes: Vec<_> = info.pages.iter().map(|p| [p.width, p.height]).collect();
++        if sizes.iter().flatten().any(|v| !v.is_finite() || *v <= 0.0 || *v > 14400.0) {
++            return Err(JsValue::from_str("PDF has an unsupported page size"));
++        }
++        let mut automation = Automation::new();
++        let id = automation.open_bytes(name, bytes.as_ref().clone(), password.as_deref()).map_err(js_error)?;
++        let renderer =
++            PageRenderer::new(bytes, RenderConfig { password: password.clone().map(Arc::from), reject_oversize: true, ..Default::default() });
++        Ok(Self { renderer, sizes, width: 0, height: 0, automation, id, password, page: 0 })
++    }
++
++    pub fn execute(&mut self, command: &str, params: &str) -> Result<String, JsValue> {
++        if params.len() > 2 * 1024 * 1024 {
++            return Err(JsValue::from_str("Command is too large"));
++        }
++        let mut args: Value = serde_json::from_str(params).map_err(js_error)?;
++        if !args.is_object() {
++            return Err(JsValue::from_str("Expected command arguments"));
++        }
++        if let Some(page) = args.get("page").and_then(Value::as_u64) {
++            let page = usize::try_from(page).map_err(js_error)?.checked_sub(1).ok_or_else(|| JsValue::from_str("Pages are 1-based"))?;
++            if page >= self.sizes.len() {
++                return Err(JsValue::from_str("Page does not exist"));
++            }
++            self.page = page;
++        }
++        if command != "select.page" {
++            if !allowed(command) {
++                return Err(JsValue::from_str("Command is not enabled in AI Office"));
++            }
++            args["doc"] = json!(self.id.0);
++            self.automation.call(command, &args).map_err(js_error)?;
++            self.refresh()?;
++        }
++        self.state()
++    }
++
++    pub fn image(&mut self, page: usize, name: &str, bytes: &[u8]) -> Result<String, JsValue> {
++        self.automation.image_bytes(self.id, page, name, bytes.to_vec()).map_err(js_error)?;
++        self.refresh()?;
++        self.state()
++    }
++
++    pub fn commands(&self) -> Result<String, JsValue> {
++        let commands: Vec<_> = pdfcraft_automation::tools()
++            .into_iter()
++            .filter(|t| allowed(t.name))
++            .map(|t| json!({"id":t.name,"label":t.title,"params":t.input_schema}))
++            .collect();
++        serde_json::to_string(&commands).map_err(js_error)
++    }
++
++    pub fn state(&mut self) -> Result<String, JsValue> {
++        let content = self.automation.call("text_paragraphs", &json!({"doc":self.id.0,"page":self.page + 1})).map_err(js_error)?;
++        let paragraphs =
++            content.into_iter().find_map(|c| if let Content::Json(v) = c { v.get("paragraphs").cloned() } else { None }).unwrap_or(json!([]));
++        let doc = self.automation.session().get(self.id).ok_or_else(|| JsValue::from_str("Document closed"))?;
++        let comments: Vec<_> = doc
++            .info
++            .annotations
++            .iter()
++            .filter(|a| a.page == self.page && a.contents.is_some())
++            .map(|a| json!({"author":a.author,"text":a.contents}))
++            .collect();
++        serde_json::to_string(&json!({"page":self.page,"blocks":paragraphs,"comments":comments,"revision":doc.edit_generation(),"undo":doc.can_undo().is_some(),"redo":doc.can_redo().is_some()})).map_err(js_error)
++    }
++
++    pub fn export(&self) -> Result<Vec<u8>, JsValue> {
++        self.automation.session().save_bytes(self.id).map(|b| b.as_ref().clone()).map_err(js_error)
++    }
++
++    fn refresh(&mut self) -> Result<(), JsValue> {
++        let doc = self.automation.session().get(self.id).ok_or_else(|| JsValue::from_str("Document closed"))?;
++        self.renderer = PageRenderer::new(
++            doc.bytes.clone(),
++            RenderConfig { password: self.password.clone().map(Arc::from), reject_oversize: true, ..Default::default() },
++        );
++        Ok(())
++    }
++
++    pub fn pages(&self) -> Result<String, JsValue> {
++        serde_json::to_string(&self.sizes).map_err(|e| JsValue::from_str(&e.to_string()))
++    }
++
++    pub fn render(&mut self, index: usize, scale: f32) -> Result<Vec<u8>, JsValue> {
++        let [w, h] = *self.sizes.get(index).ok_or_else(|| JsValue::from_str("Page does not exist"))?;
++        if !scale.is_finite() || scale <= 0.0 {
++            return Err(JsValue::from_str("Invalid page scale"));
++        }
++        let scale = scale.min(4096.0 / w).min(4096.0 / h).min((8_000_000.0 / (w * h)).sqrt());
++        let result = self.renderer.render(RenderRequest { page: index, kind: RequestKind::Pixels, tile: None, scale, tag: 0, preview: false });
++        if let Some(error) = result.error {
++            return Err(JsValue::from_str(&error));
++        }
++        self.width = result.width;
++        self.height = result.height;
++        let mut bytes = result.rgba.to_vec();
++        for pixel in bytes.as_chunks_mut::<4>().0 {
++            let alpha = pixel[3] as u32;
++            if alpha > 0 && alpha < 255 {
++                for channel in pixel.iter_mut().take(3) {
++                    *channel = ((*channel as u32 * 255 + alpha / 2) / alpha).min(255) as u8;
++                }
++            }
++        }
++        Ok(bytes)
++    }
++
++    #[wasm_bindgen(getter)]
++    pub fn width(&self) -> u32 {
++        self.width
++    }
++    #[wasm_bindgen(getter)]
++    pub fn height(&self) -> u32 {
++        self.height
++    }
++}
++
++fn js_error(error: impl std::fmt::Display) -> JsValue {
++    JsValue::from_str(&error.to_string())
++}
++fn allowed(command: &str) -> bool {
++    matches!(command, "text_edit" | "page_add_text" | "content_update" | "comment_add" | "link_add" | "edit_undo" | "edit_redo")
++}
+diff --git a/crates/automation/src/lib.rs b/crates/automation/src/lib.rs
+index eb681a9..3b77a49 100644
+--- a/crates/automation/src/lib.rs
++++ b/crates/automation/src/lib.rs
+@@ -139,6 +139,18 @@ impl Automation {
+         &self.session
+     }
+ 
++    /// Open caller-provided bytes without filesystem access (desktop hosts and WebAssembly).
++    pub fn open_bytes(&mut self, name: &str, bytes: Vec<u8>, password: Option<&str>) -> Result<DocId> {
++        if bytes.len() > 128 * 1024 * 1024 { return Err(failed("Document exceeds the 128 MB limit")); }
++        self.session.open(name, None, Arc::new(bytes), password).map_err(failed)
++    }
++
++    /// Insert caller-provided image bytes using the same engine edit as page_add_image.
++    pub fn image_bytes(&mut self, id: DocId, page: usize, name: &str, bytes: Vec<u8>) -> Result<()> {
++        if bytes.len() > 16 * 1024 * 1024 { return Err(failed("Image exceeds the 16 MB limit")); }
++        self.session.apply(id, Edit::AddImage { page, rect: None, name: name.into(), bytes: Arc::new(bytes) }).map_err(failed)
++    }
++
+     /// Save `bytes` that a caller writes on the session's behalf, such as `pdfcraft-cli run`
+     /// saving a rendered page. With a root, it is confined like a tool's own output (a relative
+     /// path resolves inside it) and written atomically. Without one, the path is written as
+diff --git a/docs/roadmap.md b/docs/roadmap.md
+index 9c6d39c..969d052 100644
+--- a/docs/roadmap.md
++++ b/docs/roadmap.md
+@@ -173,3 +173,8 @@ M2 (renderer), M7 (content editing), M10 (OCR and Office), M11 (Preflight and st
+ | 2026-10-10 | minor | Re-judged convert and share with the cross-app gate rule (only a workflow that can't be completed at all blocks): partial, not blocking → stage alpha |
+ | 2026-10-10 | minor | Added the alpha gate (six core workflows; convert and share fails → pre-alpha, 40–70 h to alpha) and rank 0 in the upcoming milestones |
+ | 2026-10-10 | major | Created from ROADMAP.md §Milestones, §Critical path, §Risks and §Where we're lacking. Merged the duplicated M1, M2, M3 and M14 rows, re-measured Done and Remaining, added Current focus and the ranked upcoming milestones |
++
++
++## Local AI Office preview integration (2026-10-14)
++
++`apps/ai-office-preview` exposes page sizes, rasterization, paragraph state, save bytes and an allowlist of existing automation commands through WebAssembly. `Automation::open_bytes` and `image_bytes` support hosts without filesystem access. The sibling VS Code fork supplies paragraph editing, a compact toolbar and a CLI using the same bridge. Text/formatting, images, links, comments and undo/redo are covered by synthetic export/reopen tests in `../vscode/extensions/ai-office-common`. Upstream parity estimates are unchanged.

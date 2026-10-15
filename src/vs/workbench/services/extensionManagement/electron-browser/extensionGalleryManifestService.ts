@@ -95,7 +95,7 @@ export class WorkbenchExtensionGalleryManifestService extends ExtensionGalleryMa
 
 	private async doGetExtensionGalleryManifest(): Promise<void> {
 		const defaultServiceUrl = this.productService.extensionsGallery?.serviceUrl;
-		if (!defaultServiceUrl) {
+		if (this.productService.extensionsMarketplaceEnabled === false || !defaultServiceUrl) {
 			return;
 		}
 

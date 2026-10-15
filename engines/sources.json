@@ -1,0 +1,14 @@
+{
+  "wordcraft": {
+    "repository": "https://github.com/storytold/wordcraft.git",
+    "revision": "159b84f54c74e9e82fb3109b758ae7dd6f4e3ab0",
+    "patch": "wordcraft.patch",
+    "sha256": "a9ec82fd328511715ffdf36a5979d54c41a3a65671459c71bac04d4b57d6ae16"
+  },
+  "pdfcraft": {
+    "repository": "https://github.com/storytold/pdfcraft.git",
+    "revision": "0a0986483378b57d62103a36490bd66166d32c8f",
+    "patch": "pdfcraft.patch",
+    "sha256": "0a1c9f11442210c8c87ea7bffb9667e12e315042d88c0eb55434431f4c350041"
+  }
+}

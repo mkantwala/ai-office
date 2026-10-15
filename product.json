@@ -1,5 +1,6 @@
 {
 	"nameShort": "Code - OSS",
+	"extensionsMarketplaceEnabled": false,
 	"nameLong": "Code - OSS",
 	"applicationName": "code-oss",
 	"dataFolderName": ".vscode-oss",

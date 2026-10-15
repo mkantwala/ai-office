@@ -1,0 +1,7 @@
+# AI Office PowerPoint
+
+PPTX files open as slides with the shared compact document toolbar. Click a text box or table cell to edit; click outside or press Ctrl+Enter to finish, then Ctrl+S to save. Font, size, bold, italic, underline, alignment, lists, spacing, table/image/text insertion, links, comments and undo/redo use the same engine as the [shared CLI](../ai-office-common/README.md). Font formatting applies to selected text, or the whole box/cell when the text selection is collapsed. Comments are shown above the slides. Links apply to the shape.
+
+PowerPoint uses the MIT-licensed office-kit PPTX parser and SVG renderer; neither sibling Rust repository supplies a PowerPoint engine. Fonts and advanced effects can differ from PowerPoint. This initial editor does not implement animations, video, dragging/resizing shapes, slide creation or heading styles. SVG output is sanitized before display. Input is capped at 64 MB with declared ZIP expansion limits. Existing package contents are saved by the PPTX library; use copies for documents containing advanced Office features until their round-trip fidelity is tested.
+
+Run `npm install --ignore-scripts` in this extension, then `node extensions/ai-office-slides/build.mts` from the VS Code repository. Generated output includes dependency license notices. The `aiOffice.slides.execute` VS Code command takes `(uriString, commandId, params)` for an open document and participates in its undo/save flow.

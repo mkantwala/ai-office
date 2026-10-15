@@ -94,12 +94,14 @@ registerSingleton(IExtensionRecommendationNotificationService, ExtensionRecommen
 registerSingleton(IExtensionRecommendationsService, ExtensionRecommendationsService, InstantiationType.Eager /* Prompts recommendations in the background */);
 
 // Quick Access
-Registry.as<IQuickAccessRegistry>(Extensions.Quickaccess).registerQuickAccessProvider({
-	ctor: ManageExtensionsQuickAccessProvider,
-	prefix: ManageExtensionsQuickAccessProvider.PREFIX,
-	placeholder: localize('manageExtensionsQuickAccessPlaceholder', "Press Enter to manage extensions."),
-	helpEntries: [{ description: localize('manageExtensionsHelp', "Manage Extensions") }]
-});
+if (product.extensionsMarketplaceEnabled !== false) {
+	Registry.as<IQuickAccessRegistry>(Extensions.Quickaccess).registerQuickAccessProvider({
+		ctor: ManageExtensionsQuickAccessProvider,
+		prefix: ManageExtensionsQuickAccessProvider.PREFIX,
+		placeholder: localize('manageExtensionsQuickAccessPlaceholder', "Press Enter to manage extensions."),
+		helpEntries: [{ description: localize('manageExtensionsHelp', "Manage Extensions") }]
+	});
+}
 
 // Editor
 Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
@@ -112,7 +114,7 @@ Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane
 		new SyncDescriptor(ExtensionsInput)
 	]);
 
-export const VIEW_CONTAINER = Registry.as<IViewContainersRegistry>(ViewContainerExtensions.ViewContainersRegistry).registerViewContainer(
+export const VIEW_CONTAINER = product.extensionsMarketplaceEnabled === false ? undefined : Registry.as<IViewContainersRegistry>(ViewContainerExtensions.ViewContainersRegistry).registerViewContainer(
 	{
 		id: VIEWLET_ID,
 		title: localize2('extensions', "Extensions"),
@@ -664,9 +666,11 @@ class ExtensionsContributions extends Disposable implements IWorkbenchContributi
 				this.updateGalleryCapabilitiesContexts(extensionGalleryManifest);
 				this._register(extensionGalleryManifestService.onDidChangeExtensionGalleryManifest(extensionGalleryManifest => this.updateGalleryCapabilitiesContexts(extensionGalleryManifest)));
 			});
-		this.registerGlobalActions();
-		this.registerContextMenuActions();
-		this.registerQuickAccessProvider();
+		if (this.productService.extensionsMarketplaceEnabled !== false) {
+			this.registerGlobalActions();
+			this.registerContextMenuActions();
+			this.registerQuickAccessProvider();
+		}
 	}
 
 	private async updateExtensionGalleryStatusContexts(): Promise<void> {
@@ -2126,10 +2130,14 @@ class ExtensionToolsContribution extends Disposable implements IWorkbenchContrib
 
 const workbenchRegistry = Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench);
 workbenchRegistry.registerWorkbenchContribution(ExtensionsContributions, LifecyclePhase.Restored);
-workbenchRegistry.registerWorkbenchContribution(StatusUpdater, LifecyclePhase.Eventually);
+if (product.extensionsMarketplaceEnabled !== false) {
+	workbenchRegistry.registerWorkbenchContribution(StatusUpdater, LifecyclePhase.Eventually);
+	workbenchRegistry.registerWorkbenchContribution(KeymapExtensions, LifecyclePhase.Restored);
+	workbenchRegistry.registerWorkbenchContribution(ExtensionsViewletViewsContribution, LifecyclePhase.Restored);
+	workbenchRegistry.registerWorkbenchContribution(ExtensionMarketplaceStatusUpdater, LifecyclePhase.Eventually);
+	registerWorkbenchContribution2(ExtensionToolsContribution.ID, ExtensionToolsContribution, WorkbenchPhase.AfterRestored);
+}
 workbenchRegistry.registerWorkbenchContribution(MaliciousExtensionChecker, LifecyclePhase.Eventually);
-workbenchRegistry.registerWorkbenchContribution(KeymapExtensions, LifecyclePhase.Restored);
-workbenchRegistry.registerWorkbenchContribution(ExtensionsViewletViewsContribution, LifecyclePhase.Restored);
 workbenchRegistry.registerWorkbenchContribution(ExtensionActivationProgress, LifecyclePhase.Eventually);
 workbenchRegistry.registerWorkbenchContribution(ExtensionDependencyChecker, LifecyclePhase.Eventually);
 workbenchRegistry.registerWorkbenchContribution(ExtensionEnablementWorkspaceTrustTransitionParticipant, LifecyclePhase.Restored);
@@ -2137,12 +2145,9 @@ workbenchRegistry.registerWorkbenchContribution(ExtensionsCompletionItemsProvide
 workbenchRegistry.registerWorkbenchContribution(ExtensionEnablementContextKeysContribution, LifecyclePhase.Restored);
 workbenchRegistry.registerWorkbenchContribution(UnsupportedExtensionsMigrationContrib, LifecyclePhase.Eventually);
 workbenchRegistry.registerWorkbenchContribution(TrustedPublishersInitializer, LifecyclePhase.Eventually);
-workbenchRegistry.registerWorkbenchContribution(ExtensionMarketplaceStatusUpdater, LifecyclePhase.Eventually);
 if (isWeb) {
 	workbenchRegistry.registerWorkbenchContribution(ExtensionStorageCleaner, LifecyclePhase.Eventually);
 }
-
-registerWorkbenchContribution2(ExtensionToolsContribution.ID, ExtensionToolsContribution, WorkbenchPhase.AfterRestored);
 
 registerAction2(class ExtensionsGallerySignInAction extends Action2 {
 	constructor() {

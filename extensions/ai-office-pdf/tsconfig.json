@@ -1,0 +1,4 @@
+{
+	"extends": "../ai-office-common/tsconfig.json",
+	"include": ["extension.ts", "../ai-office-common/*.ts", "../../src/vscode-dts/vscode.d.ts"]
+}

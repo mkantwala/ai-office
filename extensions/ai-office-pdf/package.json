@@ -1,0 +1,18 @@
+{
+	"name": "ai-office-pdf",
+	"displayName": "AI Office Documents",
+	"description": "Open PDF and Word documents with Rust engines.",
+	"version": "0.1.0",
+	"publisher": "vscode",
+	"license": "MIT",
+	"engines": { "vscode": "^1.95.0" },
+	"main": "./out/extension.js",
+	"activationEvents": ["onCustomEditor:aiOffice.pdf", "onCustomEditor:aiOffice.word"],
+	"capabilities": { "untrustedWorkspaces": { "supported": true }, "virtualWorkspaces": true },
+	"contributes": {
+		"customEditors": [
+			{ "viewType": "aiOffice.pdf", "displayName": "AI Office PDF", "selector": [{ "filenamePattern": "*.pdf" }], "priority": "default" },
+			{ "viewType": "aiOffice.word", "displayName": "AI Office Word", "selector": [{ "filenamePattern": "*.docx" }], "priority": "default" }
+		]
+	}
+}

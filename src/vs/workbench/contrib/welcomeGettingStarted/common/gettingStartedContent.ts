@@ -321,7 +321,7 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 					id: 'extensionsWebWeb',
 					title: localize('gettingStarted.extensions.title', "Code with extensions"),
 					description: localize('gettingStarted.extensionsWeb.description.interpolated', "Extensions are VS Code's power-ups. A growing number are becoming available in the web.\n{0}", Button(localize('browsePopularWeb', "Browse Popular Web Extensions"), 'command:workbench.extensions.action.showPopularExtensions')),
-					when: 'workspacePlatform == \'webworker\'',
+					when: 'hasGallery && workspacePlatform == \'webworker\'',
 					media: {
 						type: 'svg', altText: 'VS Code extension marketplace with featured language extensions', path: 'extensions-web.svg'
 					},
@@ -330,7 +330,7 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 					id: 'findLanguageExtensionsWeb',
 					title: localize('gettingStarted.findLanguageExts.title', "Rich support for all your languages"),
 					description: localize('gettingStarted.findLanguageExts.description.interpolated', "Code smarter with syntax highlighting, inline suggestions, linting and debugging. While many languages are built-in, many more can be added as extensions.\n{0}", Button(localize('browseLangExts', "Browse Language Extensions"), 'command:workbench.extensions.action.showLanguageExtensions')),
-					when: 'workspacePlatform != \'webworker\'',
+					when: 'hasGallery && workspacePlatform != \'webworker\'',
 					media: {
 						type: 'svg', altText: 'Language extensions', path: 'languages.svg'
 					},
@@ -502,7 +502,7 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 					id: 'extensions',
 					title: localize('gettingStarted.extensions.title', "Code with extensions"),
 					description: localize('gettingStarted.extensions.description.interpolated', "Extensions are VS Code's power-ups. They range from handy productivity hacks, expanding out-of-the-box features, to adding completely new capabilities.\n{0}", Button(localize('browsePopular', "Browse Popular Extensions"), 'command:workbench.extensions.action.showPopularExtensions')),
-					when: 'workspacePlatform != \'webworker\'',
+					when: 'hasGallery && workspacePlatform != \'webworker\'',
 					media: {
 						type: 'svg', altText: 'VS Code extension marketplace with featured language extensions', path: 'extensions.svg'
 					},

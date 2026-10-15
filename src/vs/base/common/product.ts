@@ -144,6 +144,8 @@ export interface IProductConfiguration {
 		assignmentContextTelemetryPropertyName: string;
 	};
 
+	/** Whether the product exposes the extension Marketplace and its discovery UI. */
+	readonly extensionsMarketplaceEnabled?: boolean;
 	readonly extensionsGallery?: {
 		readonly serviceUrl: string;
 		readonly controlUrl: string;

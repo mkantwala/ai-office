@@ -76,6 +76,11 @@
     ],
     "iconThemes": [
       {
+        "id": "ai-office",
+        "label": "%officeIconThemeLabel%",
+        "path": "./fileicons/ai-office-icon-theme.json"
+      },
+      {
         "id": "vs-minimal",
         "label": "%minimalIconThemeLabel%",
         "path": "./fileicons/vs_minimal-icon-theme.json"

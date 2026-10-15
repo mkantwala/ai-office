@@ -51,7 +51,7 @@ import { toAction } from '../../../../base/common/actions.js';
 
 const defaultThemeExtensionId = 'vscode-theme-defaults';
 
-const DEFAULT_FILE_ICON_THEME_ID = 'vscode.vscode-theme-seti-vs-seti';
+const DEFAULT_FILE_ICON_THEME_ID = 'vscode.theme-defaults-ai-office';
 const fileIconsEnabledClass = 'file-icons-enabled';
 
 const colorThemeRulesClassName = 'contributedColorTheme';

@@ -1,0 +1,71 @@
+{
+	"iconDefinitions": {
+		"file": {
+			"iconPath": "./images/document-dark.svg"
+		},
+		"file-light": {
+			"iconPath": "./images/document-light.svg"
+		},
+		"word-dark": {
+			"iconPath": "./images/office-word-dark.svg"
+		},
+		"word-light": {
+			"iconPath": "./images/office-word-light.svg"
+		},
+		"sheet-dark": {
+			"iconPath": "./images/office-sheet-dark.svg"
+		},
+		"sheet-light": {
+			"iconPath": "./images/office-sheet-light.svg"
+		},
+		"pdf-dark": {
+			"iconPath": "./images/office-pdf-dark.svg"
+		},
+		"slides-dark": { "iconPath": "./images/office-slides-dark.svg" },
+		"slides-light": { "iconPath": "./images/office-slides-light.svg" },
+		"pdf-light": {
+			"iconPath": "./images/office-pdf-light.svg"
+		},
+		"markdown-dark": {
+			"iconPath": "./images/office-markdown-dark.svg"
+		},
+		"markdown-light": {
+			"iconPath": "./images/office-markdown-light.svg"
+		},
+		"file-contrast": {
+			"iconPath": "./images/office-document-contrast.svg"
+		}
+	},
+	"showLanguageModeIcons": false,
+	"file": "file",
+	"fileExtensions": {
+		"docx": "word-dark",
+		"xlsx": "sheet-dark",
+		"pptx": "slides-dark",
+		"pdf": "pdf-dark",
+		"md": "markdown-dark",
+		"markdown": "markdown-dark"
+	},
+	"light": {
+		"file": "file-light",
+		"fileExtensions": {
+			"docx": "word-light",
+			"xlsx": "sheet-light",
+			"pptx": "slides-light",
+			"pdf": "pdf-light",
+			"md": "markdown-light",
+			"markdown": "markdown-light"
+		}
+	},
+	"highContrast": {
+		"file": "file-contrast",
+		"fileExtensions": {
+			"docx": "file-contrast",
+			"xlsx": "file-contrast",
+			"pptx": "file-contrast",
+			"pdf": "file-contrast",
+			"md": "file-contrast",
+			"markdown": "file-contrast"
+		}
+	}
+}
