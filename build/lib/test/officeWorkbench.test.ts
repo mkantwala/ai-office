@@ -57,10 +57,22 @@ suite('AI Office workbench dependencies', () => {
 					'chat/browser/chat.shared.contribution.ts',
 					'mcp/browser/mcp.contribution.ts',
 					'multiDiffEditor/browser/multiDiffEditor.contribution.ts',
+					'comments/browser/comments.contribution.ts',
+					'timeline/browser/timeline.service.contribution.ts',
+					'localHistory/browser/localHistory.contribution.ts',
+					'scm/browser/scm.service.contribution.ts',
 					'notebook/browser/notebook.service.contribution.ts',
 					'remote/common/remote.service.contribution.ts',
 					'tasks/common/tasks.office.contribution.ts',
 				].map(file => `src/vs/workbench/contrib/${file}`);
+				if (application === 'workbench') {
+					required.push(...[
+						'timeline/browser/timeline.contribution.ts',
+						'markers/browser/markers.contribution.ts',
+						'scm/browser/scm.contribution.ts',
+					].map(file => `src/vs/workbench/contrib/${file}`));
+				}
+				required.push('src/vs/platform/markers/common/markerService.ts');
 				assert.deepStrictEqual(required.filter(file => !inputs.has(file)), []);
 			});
 		}

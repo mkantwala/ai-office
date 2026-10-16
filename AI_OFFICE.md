@@ -6,6 +6,8 @@ Word and PDF use Rust engines compiled to WebAssembly. PowerPoint uses `@office-
 
 Developer feature entry points and their associated built-ins are excluded from the office workbench. See the [removal map](AI_OFFICE_REMOVAL_MAP.md) for the removed UI, retained API dependencies and validation commands.
 
+Timeline/local history, markers, SCM/Git, multi-diff and comments are retained for document workflows. The [reuse map](AI_OFFICE_REPURPOSE_MAP.md) records their current capabilities, the missing Word adapters and the implementation order.
+
 ## Source and build
 
 All AI Office application changes are in this repository. Pinned Wordcraft/Pdfcraft revisions and patches are stored under [engines](engines/README.md), so a fresh checkout does not depend on unpublished sibling-repository changes.

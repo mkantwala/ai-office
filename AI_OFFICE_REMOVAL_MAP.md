@@ -2,6 +2,8 @@
 
 The editor and Agents windows no longer import the developer feature entry points listed below, in either desktop or browser builds. Word's custom editor, webviews, chat, MCP, comments, terminal and multi-file diff review remain available.
 
+Timeline/local history, markers, SCM/Git, multi-diff and comments belong to the retained set. See the [reuse map](AI_OFFICE_REPURPOSE_MAP.md) for the intended document workflows, current implementation gaps and the distinction between document-workbench views and services retained in the Agents window.
+
 | Feature | Removed from the application | Retained dependency |
 |---|---|---|
 | Notebooks | Notebook editor/diff UI, toolbar, settings and notebook contribution entry point; built-in IPYNB serializer and output renderers | Notebook API services used by the extension host, bulk edits and chat; registrations are separated into `notebook.service.contribution.ts` |
