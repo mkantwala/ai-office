@@ -4,6 +4,8 @@ AI Office is a VS Code fork with an office document explorer, direct Word/PDF/Po
 
 Word and PDF use Rust engines compiled to WebAssembly. PowerPoint uses `@office-kit/pptx` and `@office-kit/pptx-preview`. The engines' native application interfaces are not embedded in the editor.
 
+Developer feature entry points and their associated built-ins are excluded from the office workbench. See the [removal map](AI_OFFICE_REMOVAL_MAP.md) for the removed UI, retained API dependencies and validation commands.
+
 ## Source and build
 
 All AI Office application changes are in this repository. Pinned Wordcraft/Pdfcraft revisions and patches are stored under [engines](engines/README.md), so a fresh checkout does not depend on unpublished sibling-repository changes.

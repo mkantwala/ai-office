@@ -218,7 +218,7 @@ import '../workbench/contrib/preferences/browser/preferencesSearch.js';
 import '../workbench/contrib/performance/browser/performance.contribution.js';
 
 // Notebook
-import '../workbench/contrib/notebook/browser/notebook.contribution.js';
+import '../workbench/contrib/notebook/browser/notebook.service.contribution.js';
 
 // Speech
 import '../workbench/contrib/speech/browser/speech.contribution.js';
@@ -236,10 +236,7 @@ import '../workbench/contrib/agentsVoice/browser/agentsVoice.contribution.js';
 import './contrib/chat/browser/voiceBridge.contribution.js';
 
 // Interactive
-import '../workbench/contrib/interactive/browser/interactive.contribution.js';
-
-// repl
-import '../workbench/contrib/replNotebook/browser/repl.contribution.js';
+import '../workbench/contrib/interactive/browser/interactive.service.contribution.js';
 
 // Testing (service)
 import { NullTestProfileService, NullTestResultService, NullTestService } from '../workbench/contrib/testing/common/nullTestingService.js';
@@ -296,9 +293,6 @@ registerSingleton(IDebugVisualizerService, NullDebugVisualizerService, Instantia
 // Process Explorer
 import '../workbench/contrib/processExplorer/browser/processExplorer.contribution.js';
 
-// Merge Editor
-import '../workbench/contrib/mergeEditor/browser/mergeEditor.contribution.js';
-
 // Multi Diff Editor
 import '../workbench/contrib/multiDiffEditor/browser/multiDiffEditor.contribution.js';
 
@@ -341,12 +335,8 @@ import '../workbench/contrib/externalTerminal/browser/externalTerminal.contribut
 // Relauncher
 import '../workbench/contrib/relauncher/browser/relauncher.contribution.js';
 
-// Tasks
-import '../workbench/contrib/tasks/browser/task.contribution.js';
-
-// Remote
-import '../workbench/contrib/remote/common/remote.contribution.js';
-import '../workbench/contrib/remote/browser/remote.contribution.js';
+// Remote filesystem and extension-host IPC (remote UI excluded from AI Office)
+import '../workbench/contrib/remote/common/remote.service.contribution.js';
 
 // Emmet
 import '../workbench/contrib/emmet/browser/emmet.contribution.js';
@@ -361,7 +351,7 @@ import '../workbench/contrib/markdown/browser/markdown.contribution.js';
 import '../workbench/contrib/keybindings/browser/keybindings.contribution.js';
 
 // Snippets
-import '../workbench/contrib/snippets/browser/snippets.service.contribution.js';
+import '../workbench/contrib/snippets/browser/snippets.office.contribution.js';
 
 // Formatter Help
 import '../workbench/contrib/format/browser/format.contribution.js';

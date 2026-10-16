@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import './notebook.service.contribution.js';
 import { Schemas } from '../../../../base/common/network.js';
 import { IDisposable, Disposable, DisposableStore, dispose } from '../../../../base/common/lifecycle.js';
 import { parse } from '../../../../base/common/marshalling.js';
@@ -17,7 +18,6 @@ import { ITextModelContentProvider, ITextModelService } from '../../../../editor
 import * as nls from '../../../../nls.js';
 import { Extensions, IConfigurationPropertySchema, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
-import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { LifecyclePhase } from '../../../services/lifecycle/common/lifecycle.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
@@ -28,26 +28,16 @@ import { EditorInput } from '../../../common/editor/editorInput.js';
 import { NotebookEditor } from './notebookEditor.js';
 import { NotebookEditorInput, NotebookEditorInputOptions } from '../common/notebookEditorInput.js';
 import { INotebookService } from '../common/notebookService.js';
-import { NotebookService } from './services/notebookServiceImpl.js';
 import { CellKind, CellUri, IResolvedNotebookEditorModel, NotebookWorkingCopyTypeIdentifier, NotebookSetting, ICellOutput, ICell, NotebookCellsChangeType, NotebookMetadataUri } from '../common/notebookCommon.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { IUndoRedoService } from '../../../../platform/undoRedo/common/undoRedo.js';
 import { INotebookEditorModelResolverService } from '../common/notebookEditorModelResolverService.js';
 import { NotebookDiffEditorInput } from '../common/notebookDiffEditorInput.js';
 import { NotebookTextDiffEditor } from './diff/notebookDiffEditor.js';
-import { INotebookEditorWorkerService } from '../common/services/notebookWorkerService.js';
-import { NotebookEditorWorkerServiceImpl } from './services/notebookWorkerServiceImpl.js';
-import { INotebookCellStatusBarService } from '../common/notebookCellStatusBarService.js';
-import { NotebookCellStatusBarService } from './services/notebookCellStatusBarServiceImpl.js';
-import { INotebookEditorService } from './services/notebookEditorService.js';
-import { NotebookEditorWidgetService } from './services/notebookEditorServiceImpl.js';
 import { IJSONContributionRegistry, Extensions as JSONExtensions } from '../../../../platform/jsonschemas/common/jsonContributionRegistry.js';
 import { IJSONSchema, IJSONSchemaMap } from '../../../../base/common/jsonSchema.js';
 import { Event } from '../../../../base/common/event.js';
 import { getFormattedOutputJSON, getStreamOutputData } from './diff/diffElementViewModel.js';
-import { NotebookModelResolverServiceImpl } from '../common/notebookEditorModelResolverServiceImpl.js';
-import { INotebookKernelHistoryService, INotebookKernelService } from '../common/notebookKernelService.js';
-import { NotebookKernelService } from './services/notebookKernelServiceImpl.js';
 import { IWorkingCopyIdentifier } from '../../../services/workingCopy/common/workingCopy.js';
 import { IResourceEditorInput } from '../../../../platform/editor/common/editor.js';
 import { IExtensionService } from '../../../services/extensions/common/extensions.js';
@@ -55,9 +45,6 @@ import { IWorkingCopyEditorHandler, IWorkingCopyEditorService } from '../../../s
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { ILabelService } from '../../../../platform/label/common/label.js';
 import { IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
-import { NotebookRendererMessagingService } from './services/notebookRendererMessagingServiceImpl.js';
-import { INotebookRendererMessagingService } from '../common/notebookRendererMessagingService.js';
-import { INotebookCellOutlineDataSourceFactory, NotebookCellOutlineDataSourceFactory } from './viewModel/notebookOutlineDataSourceFactory.js';
 
 // Editor Controller
 import './controller/coreActions.js';
@@ -107,20 +94,11 @@ import './diff/notebookDiffActions.js';
 
 // Services
 import { editorOptionsRegistry } from '../../../../editor/common/config/editorOptions.js';
-import { NotebookExecutionStateService } from './services/notebookExecutionStateServiceImpl.js';
-import { NotebookExecutionService } from './services/notebookExecutionServiceImpl.js';
-import { INotebookExecutionService } from '../common/notebookExecutionService.js';
-import { INotebookKeymapService } from '../common/notebookKeymapService.js';
-import { NotebookKeymapService } from './services/notebookKeymapServiceImpl.js';
 import { PLAINTEXT_LANGUAGE_ID } from '../../../../editor/common/languages/modesRegistry.js';
-import { INotebookExecutionStateService } from '../common/notebookExecutionStateService.js';
 import { ILanguageFeaturesService } from '../../../../editor/common/services/languageFeatures.js';
 import { NotebookInfo } from '../../../../editor/common/languageFeatureRegistry.js';
 import { COMMENTEDITOR_DECORATION_KEY } from '../../comments/browser/commentReply.js';
 import { ICodeEditorService } from '../../../../editor/browser/services/codeEditorService.js';
-import { NotebookKernelHistoryService } from './services/notebookKernelHistoryServiceImpl.js';
-import { INotebookLoggingService } from '../common/notebookLoggingService.js';
-import { NotebookLoggingService } from './services/notebookLoggingServiceImpl.js';
 import product from '../../../../platform/product/common/product.js';
 import { NotebookVariables } from './contrib/notebookVariables/notebookVariables.js';
 import { AccessibleViewRegistry } from '../../../../platform/accessibility/browser/accessibleViewRegistry.js';
@@ -130,7 +108,6 @@ import { DefaultFormatter } from '../../format/browser/formatActionsMultiple.js'
 import { NotebookMultiTextDiffEditor } from './diff/notebookMultiDiffEditor.js';
 import { NotebookMultiDiffEditorInput } from './diff/notebookMultiDiffEditorInput.js';
 import { getFormattedMetadataJSON } from '../common/model/notebookCellTextModel.js';
-import { INotebookOutlineEntryFactory, NotebookOutlineEntryFactory } from './viewModel/notebookOutlineEntryFactory.js';
 import { getFormattedNotebookMetadataJSON } from '../common/model/notebookMetadataTextModel.js';
 import { NotebookOutputEditor } from './outputEditor/notebookOutputEditor.js';
 import { NotebookOutputEditorInput } from './outputEditor/notebookOutputEditorInput.js';
@@ -904,21 +881,6 @@ workbenchContributionsRegistry.registerWorkbenchContribution(NotebookVariables, 
 
 AccessibleViewRegistry.register(new NotebookAccessibleView());
 AccessibleViewRegistry.register(new NotebookAccessibilityHelp());
-
-registerSingleton(INotebookService, NotebookService, InstantiationType.Delayed);
-registerSingleton(INotebookEditorWorkerService, NotebookEditorWorkerServiceImpl, InstantiationType.Delayed);
-registerSingleton(INotebookEditorModelResolverService, NotebookModelResolverServiceImpl, InstantiationType.Delayed);
-registerSingleton(INotebookCellStatusBarService, NotebookCellStatusBarService, InstantiationType.Delayed);
-registerSingleton(INotebookEditorService, NotebookEditorWidgetService, InstantiationType.Delayed);
-registerSingleton(INotebookKernelService, NotebookKernelService, InstantiationType.Delayed);
-registerSingleton(INotebookKernelHistoryService, NotebookKernelHistoryService, InstantiationType.Delayed);
-registerSingleton(INotebookExecutionService, NotebookExecutionService, InstantiationType.Delayed);
-registerSingleton(INotebookExecutionStateService, NotebookExecutionStateService, InstantiationType.Delayed);
-registerSingleton(INotebookRendererMessagingService, NotebookRendererMessagingService, InstantiationType.Delayed);
-registerSingleton(INotebookKeymapService, NotebookKeymapService, InstantiationType.Delayed);
-registerSingleton(INotebookLoggingService, NotebookLoggingService, InstantiationType.Delayed);
-registerSingleton(INotebookCellOutlineDataSourceFactory, NotebookCellOutlineDataSourceFactory, InstantiationType.Delayed);
-registerSingleton(INotebookOutlineEntryFactory, NotebookOutlineEntryFactory, InstantiationType.Delayed);
 
 const schemas: IJSONSchemaMap = {};
 function isConfigurationPropertySchema(x: IConfigurationPropertySchema | { [path: string]: IConfigurationPropertySchema }): x is IConfigurationPropertySchema {

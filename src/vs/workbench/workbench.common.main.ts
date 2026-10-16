@@ -216,8 +216,8 @@ import './contrib/preferences/browser/preferencesSearch.js';
 // Performance
 import './contrib/performance/browser/performance.contribution.js';
 
-// Notebook
-import './contrib/notebook/browser/notebook.contribution.js';
+// Notebook API services (feature UI excluded from AI Office)
+import './contrib/notebook/browser/notebook.service.contribution.js';
 
 // Speech
 import './contrib/speech/browser/speech.contribution.js';
@@ -238,14 +238,17 @@ import './contrib/chat/browser/chatSessions/chatSessions.contribution.js';
 import './contrib/chat/browser/contextContrib/chatContext.contribution.js';
 import './contrib/imageCarousel/browser/imageCarousel.contribution.js';
 
-// Interactive
-import './contrib/interactive/browser/interactive.contribution.js';
+// Interactive API services (feature UI excluded from AI Office)
+import './contrib/interactive/browser/interactive.service.contribution.js';
 
-// repl
-import './contrib/replNotebook/browser/repl.contribution.js';
-
-// Testing
-import './contrib/testing/browser/testing.contribution.js';
+// Testing API services (feature UI excluded from AI Office)
+import { NullTestProfileService, NullTestResultService, NullTestService } from './contrib/testing/common/nullTestingService.js';
+import { ITestProfileService } from './contrib/testing/common/testProfileService.js';
+import { ITestResultService } from './contrib/testing/common/testResultService.js';
+import { ITestService } from './contrib/testing/common/testService.js';
+registerSingleton(ITestService, NullTestService, InstantiationType.Delayed);
+registerSingleton(ITestProfileService, NullTestProfileService, InstantiationType.Delayed);
+registerSingleton(ITestResultService, NullTestResultService, InstantiationType.Delayed);
 
 // Logs
 import './contrib/logs/common/logs.contribution.js';
@@ -284,22 +287,18 @@ import './contrib/scm/browser/scm.contribution.js';
 import './contrib/scm/browser/quickDiff.contribution.js';
 import './contrib/scm/browser/scm.service.contribution.js';
 
-// Debug
-import './contrib/debug/browser/debug.contribution.js';
-import './contrib/debug/browser/debugEditorContribution.js';
-import './contrib/debug/browser/breakpointEditorContribution.js';
-import './contrib/debug/browser/callStackEditorContribution.js';
-import './contrib/debug/browser/repl.js';
-import './contrib/debug/browser/debugViewlet.js';
+// Debug API services (feature UI excluded from AI Office)
+import { NullDebugService, NullDebugVisualizerService } from './contrib/debug/common/nullDebugService.js';
+import { IDebugService } from './contrib/debug/common/debug.js';
+import { IDebugVisualizerService } from './contrib/debug/common/debugVisualizers.js';
+registerSingleton(IDebugService, NullDebugService, InstantiationType.Delayed);
+registerSingleton(IDebugVisualizerService, NullDebugVisualizerService, InstantiationType.Delayed);
 
 // Markers
 import './contrib/markers/browser/markers.contribution.js';
 
 // Process Explorer
 import './contrib/processExplorer/browser/processExplorer.contribution.js';
-
-// Merge Editor
-import './contrib/mergeEditor/browser/mergeEditor.contribution.js';
 
 // Multi Diff Editor
 import './contrib/multiDiffEditor/browser/multiDiffEditor.contribution.js';
@@ -342,12 +341,8 @@ import './contrib/relauncher/browser/relauncher.contribution.js';
 // Modern UI (experimental)
 import './contrib/modernUI/browser/modernUI.contribution.js';
 
-// Tasks
-import './contrib/tasks/browser/task.contribution.js';
-
-// Remote
-import './contrib/remote/common/remote.contribution.js';
-import './contrib/remote/browser/remote.contribution.js';
+// Remote filesystem and extension-host IPC (remote UI excluded from AI Office)
+import './contrib/remote/common/remote.service.contribution.js';
 
 // Emmet
 import './contrib/emmet/browser/emmet.contribution.js';
@@ -361,8 +356,8 @@ import './contrib/markdown/browser/markdown.contribution.js';
 // Keybindings Contributions
 import './contrib/keybindings/browser/keybindings.contribution.js';
 
-// Snippets
-import './contrib/snippets/browser/snippets.contribution.js';
+// Snippets API services (feature UI excluded from AI Office)
+import './contrib/snippets/browser/snippets.office.contribution.js';
 
 // Formatter Help
 import './contrib/format/browser/format.contribution.js';

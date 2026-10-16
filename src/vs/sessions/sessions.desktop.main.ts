@@ -160,16 +160,13 @@ import '../workbench/contrib/extensions/electron-browser/extensions.contribution
 
 
 // Issues
-import '../workbench/contrib/issue/electron-browser/issue.contribution.js';
+import '../workbench/contrib/issue/common/issue.service.contribution.js';
 
 // Surveys
 import '../workbench/contrib/surveys/browser/survey.contribution.js';
 
 // Process Explorer
 import '../workbench/contrib/processExplorer/electron-browser/processExplorer.contribution.js';
-
-// Remote
-import '../workbench/contrib/remote/electron-browser/remote.contribution.js';
 
 // Terminal
 import '../workbench/contrib/terminal/electron-browser/terminal.contribution.js';
@@ -188,7 +185,7 @@ import '../workbench/contrib/tags/electron-browser/tags.contribution.js';
 import '../workbench/contrib/performance/electron-browser/performance.contribution.js';
 
 // Tasks
-import '../workbench/contrib/tasks/electron-browser/taskService.js';
+import '../workbench/contrib/tasks/common/tasks.office.contribution.js';
 
 // External terminal
 import '../workbench/contrib/externalTerminal/electron-browser/externalTerminal.contribution.js';
@@ -208,14 +205,8 @@ import '../workbench/contrib/localHistory/electron-browser/localHistory.contribu
 // Onboarding
 import '../workbench/contrib/onboarding/electron-browser/onboardingTryout.contribution.js';
 
-// Merge Editor
-import '../workbench/contrib/mergeEditor/electron-browser/mergeEditor.contribution.js';
-
 // Multi Diff Editor
 import '../workbench/contrib/multiDiffEditor/browser/multiDiffEditor.contribution.js';
-
-// Remote Tunnel
-import '../workbench/contrib/remoteTunnel/electron-browser/remoteTunnel.contribution.js';
 
 // Encryption
 import '../workbench/contrib/encryption/electron-browser/encryption.contribution.js';
@@ -273,9 +264,6 @@ import './contrib/providers/agentHost/browser/agentMergeActions.js';
 import './contrib/providers/agentHost/browser/agentHostSkillButtons.js';
 import './contrib/providers/agentHost/browser/openSubagentChat.js';
 import './contrib/providers/agentHost/electron-browser/agentHost.contribution.js';
-
-// Tunnel Host (allow remote connections to local agent host)
-import './contrib/tunnelHost/electron-browser/tunnelHost.contribution.js';
 
 // Sessions (desktop only)
 import './contrib/sessions/electron-browser/sessions.contribution.js';
