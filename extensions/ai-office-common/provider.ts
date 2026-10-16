@@ -33,14 +33,14 @@ class Document implements vscode.CustomDocument {
 	}
 	dispose() { this.onDispose(); this.client.dispose(); }
 }
-const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
-async function read(uri: vscode.Uri) {
+export const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+export async function read(uri: vscode.Uri) {
 	if ((await vscode.workspace.fs.stat(uri)).size > 128 * 1024 * 1024) { throw new Error('Document exceeds the 128 MB limit.'); }
 	const bytes = await vscode.workspace.fs.readFile(uri);
 	if (bytes.length > 128 * 1024 * 1024) { throw new Error('Document exceeds the 128 MB limit.'); }
 	return bytes;
 }
-async function writeAtomic(uri: vscode.Uri, bytes: Uint8Array) {
+export async function writeAtomic(uri: vscode.Uri, bytes: Uint8Array) {
 	// workspace.fs.rename(overwrite) emits a DELETE operation for the destination,
 	// which disposes VS Code's open custom-document model and its undo history.
 	if (uri.scheme !== 'file') { await vscode.workspace.fs.writeFile(uri, bytes); return; }

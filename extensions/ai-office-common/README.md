@@ -2,6 +2,8 @@
 
 The toolbar, extension-host workers and CLI share these engine adapters. No network server is started. Word calls Wordcraft's command registry; PDF calls Pdfcraft's automation table; PowerPoint calls office-kit through the shared adapter. File/image pickers collect parameters for headless document commands.
 
+Word's full interface dispatches the same native engine registry. The headless Word adapter exposes over 600 commands, excluding host-owned open/save/export/close operations; use CLI output flags to save. Query command results appear in the final state's `result`. For open documents, `aiOffice.word.execute(uriString, commandId, params)` returns the native result. `aiOffice.word.control(uriString, method, params)` exposes Wordcraft's structured control protocol, including `engine.commands`, `engine.execute`, `document.inspect` and `ui.inspect`, returning its `{ok,result}` envelope. Native ribbon and UI commands require an open editor. File requests open host dialogs and must not be used for unattended CLI execution.
+
 From the VS Code repository:
 
 ```powershell

@@ -12,19 +12,22 @@ import { existsSync } from 'node:fs';
 
 const extension = dirname(fileURLToPath(import.meta.url));
 const root = resolve(extension, '../..');
-const word = process.argv.includes('--word');
+const fullWord = process.argv.includes('--word-full');
+const word = fullWord || process.argv.includes('--word');
 const project = word ? 'wordcraft' : 'pdfcraft';
 const prepared = resolve(root, '.build/engines', project);
 const source = (word ? process.env.WORDCRAFT_SOURCE : process.env.PDFCRAFT_SOURCE) || (existsSync(prepared) ? prepared : resolve(root, `../${project}`));
 const target = process.env.CARGO_TARGET_DIR || (existsSync(prepared) ? resolve(root, '.build/office-rust-target') : resolve(root, '../pdfcraft/target'));
-const output = join(extension, word ? 'media/word-engine' : 'media/engine');
+const output = join(extension, fullWord ? 'media/word-app' : word ? 'media/word-engine' : 'media/engine');
 await Promise.all([
 	build({ entryPoints: [join(extension, '../ai-office-common/engineWorker.ts')], bundle: true, platform: 'node', format: 'cjs', outfile: join(extension, 'out/engineWorker.cjs') }),
 	build({ entryPoints: [join(extension, '../ai-office-common/cli.ts')], bundle: true, platform: 'node', format: 'cjs', outfile: join(extension, 'out/cli.cjs') }),
 	build({ entryPoints: [join(extension, 'extension.ts')], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], outfile: join(extension, 'out/extension.js'), sourcemap: true }),
-	build({ entryPoints: [join(extension, '../ai-office-common/editor.ts')], bundle: true, platform: 'browser', outfile: join(extension, 'out/editor.js'), sourcemap: true })
+	build({ entryPoints: [join(extension, '../ai-office-common/editor.ts')], bundle: true, platform: 'browser', outfile: join(extension, 'out/editor.js'), sourcemap: true }),
+	build({ entryPoints: [join(extension, '../ai-office-common/wordFull.ts')], bundle: true, platform: 'browser', format: 'esm', outfile: join(extension, 'out/wordFull.js'), sourcemap: true })
 ]);
 await copyFile(join(extension, '../ai-office-common/editor.css'), join(extension, 'out/editor.css'));
+await copyFile(join(extension, '../ai-office-common/wordFull.css'), join(extension, 'out/wordFull.css'));
 await mkdir(join(extension, 'out/licenses'), { recursive: true });
 for (const [name, file] of [['pptx', '@office-kit/pptx/LICENSE'], ['pptx-preview', '@office-kit/pptx-preview/LICENSE'], ['dompurify', 'dompurify/LICENSE'], ['fflate', 'fflate/LICENSE']]) {
 	await copyFile(join(extension, '../ai-office-slides/node_modules', file), join(extension, `out/licenses/${name}.txt`));
@@ -35,12 +38,12 @@ function run(command: string, args: string[], cwd = source) {
 	if (result.error || result.status !== 0) { throw result.error || new Error(`${command} exited with ${result.status}`); }
 }
 if (!process.argv.includes('--package-only')) {
-	run('cargo', ['build', '-p', `${project}-preview`, '--locked', '--target-dir', target, '--target', 'wasm32-unknown-unknown', '--profile', 'low-disk', '-j', '2']);
+	run('cargo', ['build', '-p', fullWord ? 'wordcraft-web' : `${project}-preview`, ...(fullWord ? ['--features', 'ai-office'] : []), '--locked', '--target-dir', target, '--target', 'wasm32-unknown-unknown', '--profile', 'low-disk', '-j', '2']);
 }
 await mkdir(output, { recursive: true });
 await writeFile(join(output, 'package.json'), '{"type":"module"}\n');
 const bindgen = process.env.WASM_BINDGEN || join(root, '.build/pdf-tools/bin', process.platform === 'win32' ? 'wasm-bindgen.exe' : 'wasm-bindgen');
-run(bindgen, ['--target', 'web', '--out-dir', output, '--out-name', project, join(target, `wasm32-unknown-unknown/low-disk/${project}_preview.wasm`)]);
+run(bindgen, ['--target', 'web', '--out-dir', output, '--out-name', project, join(target, `wasm32-unknown-unknown/low-disk/${fullWord ? 'wordcraft-web' : project + '_preview'}.wasm`)]);
 for (const name of ['LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'ATTRIBUTION.md', ...(word ? [] : ['ATTRIBUTION.toml'])]) {
 	await copyFile(join(source, name), join(output, name));
 }
@@ -81,5 +84,5 @@ for (const [crate, folder] of [['epaint_default_fonts', 'fonts'], ['hayro-cmap',
 	if (!copied) { throw new Error(`Missing bundled asset licences for ${crate}-${version} in the Cargo registry.`); }
 }
 const revision = spawnSync('git', ['-c', `safe.directory=${source.replaceAll('\\', '/')}`, 'rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' });
-await writeFile(join(output, 'BUILD.txt'), `${project} ${revision.stdout.trim()} with local content-only preview crate.\nRust wasm32-unknown-unknown; profile low-disk; content-only preview renderer.\n`);
+await writeFile(join(output, 'BUILD.txt'), `${project} ${revision.stdout.trim()} with AI Office integration.\nRust wasm32-unknown-unknown; profile low-disk; ${fullWord ? 'full Wordcraft web interface' : 'headless document engine'}.\n`);
 console.log(`${project} engine installed in ${output}`);

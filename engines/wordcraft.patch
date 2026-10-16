@@ -62,10 +62,10 @@ index 0000000..8f0a4fe
 +wasm-bindgen = "0.2"
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..2c86000
+index 0000000..76bde06
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,121 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -82,7 +82,7 @@ index 0000000..2c86000
 +    layout: Arc<DocLayout>,
 +    width: u32,
 +    height: u32,
-+    password: Option<String>,
++    result: Value,
 +}
 +
 +#[wasm_bindgen]
@@ -94,11 +94,12 @@ index 0000000..2c86000
 +        }
 +        let (doc, _) = wordcraft_engine::io::open_bytes_with(name, bytes, password.as_deref()).map_err(|e| JsValue::from_str(&e))?;
 +        let mut session = Session::new(doc);
++        session.password = password.as_deref().map(wordcraft_engine::Password::new);
 +        let layout = session.layout();
 +        if layout.pages.len() > 10000 || layout.pages.iter().any(|p| [p.w, p.h].iter().any(|v| !v.is_finite() || *v <= 0.0 || *v > 14400.0)) {
 +            return Err(JsValue::from_str("Document exceeds the page count or page size limit"));
 +        }
-+        Ok(Self { session, layout, width: 0, height: 0, password })
++        Ok(Self { session, layout, width: 0, height: 0, result: Value::Null })
 +    }
 +
 +    pub fn pages(&self) -> Result<String, JsValue> {
@@ -116,14 +117,14 @@ index 0000000..2c86000
 +        }
 +        let args: Value = serde_json::from_str(params).map_err(|e| JsValue::from_str(&e.to_string()))?;
 +        self.session.close_typing();
-+        self.session.run(command, &args).map_err(|e| JsValue::from_str(&e.to_string()))?;
++        self.result = self.session.run(command, &args).map_err(|e| JsValue::from_str(&e.to_string()))?;
 +        self.layout = self.session.layout();
 +        self.state()
 +    }
 +
 +    pub fn commands(&self) -> Result<String, JsValue> {
 +        let list: Vec<_> =
-+            self.session.registry.all().iter().filter(|c| allowed(c.id)).map(|c| json!({"id": c.id, "label": c.label, "params": c.params})).collect();
++            self.session.registry.all().iter().filter(|c| allowed(c.id)).map(|c| json!({"id": c.id, "label": c.label, "params": c.params,"location":c.location,"shortcut":c.shortcut,"mutates":c.mutates,"enabled":(c.enabled)(&self.session).is_none()})).collect();
 +        serde_json::to_string(&list).map_err(|e| JsValue::from_str(&e.to_string()))
 +    }
 +
@@ -143,12 +144,17 @@ index 0000000..2c86000
 +            .values()
 +            .map(|c| json!({"author":c.author,"text":self.session.doc.plain_text(wordcraft_doc::StoryRef::Part(c.part))}))
 +            .collect();
-+        serde_json::to_string(&json!({"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
++        serde_json::to_string(&json!({"selection":sel,"caret":caret,"rects":rects,"comments":comments,"format":wordcraft_engine::cmd::format::state(&self.session),"result":self.result,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
 +    }
 +
 +    pub fn export(&self) -> Result<Vec<u8>, JsValue> {
-+        wordcraft_engine::io::save_bytes_with("document.docx", &self.session.doc, self.password.as_deref(), &Default::default())
-+            .map_err(|e| JsValue::from_str(&e))
++        wordcraft_engine::io::save_bytes_with(
++            "document.docx",
++            &self.session.doc,
++            self.session.password.as_ref().map(wordcraft_engine::Password::as_str),
++            &Default::default(),
++        )
++        .map_err(|e| JsValue::from_str(&e))
 +    }
 +
 +    pub fn render(&mut self, index: usize, scale: f32) -> Result<Vec<u8>, JsValue> {
@@ -173,51 +179,433 @@ index 0000000..2c86000
 +    }
 +}
 +
++// These lifecycle commands belong to the host or the CLI output flags. The rest
++// of Wordcraft's document command registry is available headlessly.
 +fn allowed(command: &str) -> bool {
-+    matches!(
++    !matches!(
 +        command,
-+        "text.insert"
-+            | "text.newParagraph"
-+            | "text.lineBreak"
-+            | "text.tab"
-+            | "text.backTab"
-+            | "text.backspace"
-+            | "text.delete"
-+            | "caret.set"
-+            | "caret.left"
-+            | "caret.right"
-+            | "caret.up"
-+            | "caret.down"
-+            | "caret.home"
-+            | "caret.end"
-+            | "caret.docStart"
-+            | "caret.docEnd"
-+            | "select.all"
-+            | "select.range"
-+            | "select.word"
-+            | "select.text"
-+            | "select.collapse"
-+            | "format.bold"
-+            | "format.italic"
-+            | "format.underline"
-+            | "format.font"
-+            | "format.size"
-+            | "para.align"
-+            | "para.style"
-+            | "para.bullets"
-+            | "para.numbering"
-+            | "para.lineSpacing"
-+            | "insert.table"
-+            | "insert.picture"
-+            | "insert.link"
-+            | "review.newComment"
-+            | "review.comments"
-+            | "edit.undo"
-+            | "edit.redo"
++        "file.open" | "file.save" | "file.saveAs" | "file.exportPdf" | "file.exportPng" | "file.printPdf" | "file.print" | "file.close"
 +    )
 +}
+diff --git a/apps/wordcraft-web/Cargo.toml b/apps/wordcraft-web/Cargo.toml
+index d9b44aa..095e5d7 100644
+--- a/apps/wordcraft-web/Cargo.toml
++++ b/apps/wordcraft-web/Cargo.toml
+@@ -9,6 +9,9 @@ publish = false
+ [lints]
+ workspace = true
+ 
++[features]
++ai-office = []
++
+ [[bin]]
+ name = "wordcraft-web"
+ path = "src/main.rs"
+diff --git a/apps/wordcraft-web/src/main.rs b/apps/wordcraft-web/src/main.rs
+index 2f4283d..b44a1ce 100644
+--- a/apps/wordcraft-web/src/main.rs
++++ b/apps/wordcraft-web/src/main.rs
+@@ -12,6 +12,9 @@
+ #[cfg(target_arch = "wasm32")]
+ mod web;
+ 
++#[cfg(all(target_arch = "wasm32", feature = "ai-office"))]
++mod office;
++
+ #[cfg(target_arch = "wasm32")]
+ fn main() {
+     web::start();
+diff --git a/apps/wordcraft-web/src/office.rs b/apps/wordcraft-web/src/office.rs
+new file mode 100644
+index 0000000..b057fa7
+--- /dev/null
++++ b/apps/wordcraft-web/src/office.rs
+@@ -0,0 +1,241 @@
++//! The full WordCraft web interface hosted in an AI Office document tab.
++use serde_json::{Value, json};
++use std::cell::RefCell;
++use std::collections::VecDeque;
++use wasm_bindgen::prelude::*;
++use wordcraft_ui_egui::{Services, WordApp};
++
++struct Request {
++    id: u32,
++    method: String,
++    args: Value,
++    bytes: Vec<u8>,
++}
++thread_local! {
++    static QUEUE: RefCell<VecDeque<Request>> = const { RefCell::new(VecDeque::new()) };
++    static CONTEXT: RefCell<Option<egui::Context>> = const { RefCell::new(None) };
++}
++
++#[wasm_bindgen]
++extern "C" {
++    #[wasm_bindgen(catch, js_namespace = globalThis, js_name = aiOfficeWordEvent)]
++    fn host_event(kind: &str, id: u32, json: &str, bytes: &[u8]) -> Result<(), JsValue>;
++}
++
++fn emit(kind: &str, id: u32, data: Value, bytes: &[u8]) {
++    if let Err(error) = host_event(kind, id, &data.to_string(), bytes) {
++        log::error!("AI Office bridge: {error:?}");
++    }
++}
++
++#[wasm_bindgen]
++pub fn office_request(id: u32, method: &str, params: &str, bytes: &[u8]) -> Result<(), JsValue> {
++    if params.len() > 4 * 1024 * 1024 || bytes.len() > 128 * 1024 * 1024 {
++        return Err(JsValue::from_str("Request exceeds the size limit"));
++    }
++    if !matches!(method, "open" | "inbox" | "export" | "saved" | "control") {
++        return Err(JsValue::from_str("Unknown host request"));
++    }
++    let args = serde_json::from_str(params).map_err(|e| JsValue::from_str(&e.to_string()))?;
++    QUEUE.with(|queue| {
++        let mut queue = queue.try_borrow_mut().map_err(|_| JsValue::from_str("Bridge is busy"))?;
++        if queue.len() >= 64 {
++            return Err(JsValue::from_str("Too many pending requests"));
++        }
++        queue.push_back(Request { id, method: method.into(), args, bytes: bytes.to_vec() });
++        Ok(())
++    })?;
++    CONTEXT.with(|context| {
++        if let Ok(context) = context.try_borrow()
++            && let Some(ctx) = context.as_ref()
++        {
++            ctx.request_repaint();
++        }
++    });
++    Ok(())
++}
++
++pub fn ready(ctx: egui::Context) {
++    CONTEXT.with(|context| {
++        if let Ok(mut context) = context.try_borrow_mut() {
++            *context = Some(ctx);
++        }
++    });
++    emit("ready", 0, json!({}), &[]);
++}
++
++pub fn failed(error: &str) {
++    emit("fatal", 0, json!({"error":error}), &[]);
++}
++
++pub fn services(mut services: Services) -> Services {
++    services.open_async = Some(Box::new(|purpose| emit("pick", 0, json!({"purpose":purpose}), &[])));
++    services.host_command = Some(Box::new(|command, params| {
++        if matches!(command, "edit.paste" | "edit.pasteText" | "edit.pasteMerge") && params.as_object().is_none_or(|p| p.is_empty()) {
++            emit("paste", 0, json!({"command":command}), &[]);
++            return Some(Ok(json!({"pending":"host"})));
++        }
++        if matches!(
++            command,
++            "file.new" | "file.open" | "file.close" | "file.save" | "file.saveAs" | "file.exportPdf" | "file.exportPng" | "file.printPdf"
++        ) {
++            if command == "file.new" {
++                let mut session = wordcraft_engine::Session::new(wordcraft_doc::Document::from_text(""));
++                let result = session
++                    .run("file.new", params)
++                    .map_err(|e| e.to_string())
++                    .and_then(|_| wordcraft_engine::io::save_bytes_with("Untitled.docx", &session.doc, None, &Default::default()));
++                return Some(result.map(|bytes| {
++                    emit("new", 0, json!({}), &bytes);
++                    json!({"pending":"host"})
++                }));
++            }
++            emit("action", 0, json!({"command":command,"params":params}), &[]);
++            return Some(Ok(json!({"pending":"host"})));
++        }
++        None
++    }));
++    services
++}
++
++#[derive(Default)]
++pub struct Bridge {
++    loaded: bool,
++    revision: Option<u64>,
++    holding: bool,
++}
++impl Bridge {
++    pub fn holding(&self) -> bool {
++        self.holding
++    }
++    pub fn tick(&mut self, app: &mut WordApp, ctx: &egui::Context) {
++        let requests = QUEUE.with(|queue| queue.try_borrow_mut().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default());
++        for request in requests {
++            let mut bytes = Vec::new();
++            let result = self.handle(app, ctx, &request, &mut bytes);
++            match result {
++                Ok(result) => emit(
++                    "response",
++                    request.id,
++                    json!({"ok":true,"result":result,"revision":app.session.rev(),"documentId":app.session.document_id()}),
++                    &bytes,
++                ),
++                Err(error) => emit("response", request.id, json!({"ok":false,"error":error}), &[]),
++            }
++        }
++    }
++
++    fn handle(&mut self, app: &mut WordApp, ctx: &egui::Context, request: &Request, bytes: &mut Vec<u8>) -> Result<Value, String> {
++        let args = &request.args;
++        if self.holding && request.method != "saved" {
++            return Err("A save is in progress; retry the command after it finishes".into());
++        }
++        match request.method.as_str() {
++            "open" => {
++                let name = args.get("name").and_then(Value::as_str).ok_or("Missing file name")?;
++                let password = args.get("password").and_then(Value::as_str);
++                let (doc, _) = wordcraft_engine::io::open_bytes_with(name, &request.bytes, password)?;
++                app.session.set_document(doc);
++                app.session.path = Some(std::path::PathBuf::from(name));
++                app.session.password = password.map(wordcraft_engine::Password::new);
++                app.ui.backstage = false;
++                app.dialog = None;
++                app.autosave = false;
++                app.session.dirty = args.get("dirty").and_then(Value::as_bool).unwrap_or(false);
++                app.canvas = Default::default();
++                self.loaded = true;
++                self.revision = Some(app.session.rev());
++                ctx.request_repaint();
++                Ok(json!({"opened":true}))
++            }
++            "inbox" => {
++                let name = args.get("name").and_then(Value::as_str).ok_or("Missing file name")?;
++                let inbox = app.services.inbox.as_ref().ok_or("File inbox is unavailable")?;
++                inbox.lock().map_err(|_| "File inbox is busy")?.push((name.into(), request.bytes.clone()));
++                ctx.request_repaint();
++                Ok(json!({"queued":true}))
++            }
++            "export" => {
++                if !self.loaded {
++                    return Err("Document is not loaded".into());
++                }
++                let name = args.get("name").and_then(Value::as_str).unwrap_or("document.docx");
++                if args.get("stamp").and_then(Value::as_bool) == Some(true) {
++                    app.session.stamp_save();
++                }
++                let password = if wordcraft_engine::io::can_encrypt(name) {
++                    app.session.password.as_ref().map(wordcraft_engine::Password::as_str)
++                } else {
++                    None
++                };
++                if name.to_ascii_lowercase().ends_with(".png") {
++                    let page = args.get("page").and_then(Value::as_u64).unwrap_or(1).max(1).saturating_sub(1);
++                    let scale = args.get("scale").and_then(Value::as_f64).unwrap_or(2.0).clamp(0.1, 8.0) as f32;
++                    let layout = app.session.export_layout_with(Default::default());
++                    let page = usize::try_from(page).ok().and_then(|page| layout.pages.get(page)).ok_or("Page is outside the document")?;
++                    let width = page.w * scale;
++                    let height = page.h * scale;
++                    let pixels = (width.ceil() as u64).saturating_mul(height.ceil() as u64);
++                    if !width.is_finite() || !height.is_finite() || pixels > 32_000_000 {
++                        return Err("Image exceeds 32 million pixels; lower the export scale".into());
++                    }
++                    *bytes = wordcraft_engine::render::render_page(&app.session.doc, page, scale, &Default::default()).to_png();
++                } else {
++                    *bytes = wordcraft_engine::io::save_bytes_with(name, &app.session.doc, password, &Default::default())?;
++                }
++                self.holding = args.get("stamp").and_then(Value::as_bool) == Some(true);
++                Ok(json!({"bytes":bytes.len()}))
++            }
++            "saved" => {
++                self.holding = false;
++                if args.get("success").and_then(Value::as_bool) == Some(true)
++                    && args.get("revision").and_then(Value::as_u64) == Some(app.session.rev())
++                {
++                    app.session.dirty = false;
++                    if matches!(app.dialog, Some(wordcraft_ui_egui::dialogs::Dialog::SaveChanges { .. })) {
++                        app.run("ui.saveChanges", json!({"answer":"dontSave"}))?;
++                    }
++                }
++                ctx.request_repaint();
++                Ok(json!({"dirty":app.session.dirty}))
++            }
++            "control" => {
++                let method = args.get("method").and_then(Value::as_str).ok_or("Missing control method")?;
++                let params = args.get("params").cloned().unwrap_or(json!({}));
++                let (req, _) = wordcraft_ui_egui::control::ControlRequest::new(method, params);
++                let result = match wordcraft_ui_egui::control::handle(app, ctx, &req) {
++                    wordcraft_ui_egui::control::Outcome::Done(value) => value,
++                    wordcraft_ui_egui::control::Outcome::Screenshot { .. } => {
++                        return Err("Capture the AI Office window using the host screenshot tools".into());
++                    }
++                };
++                ctx.request_repaint();
++                Ok(result)
++            }
++            _ => Err("Unknown host request".into()),
++        }
++    }
++
++    pub fn snapshot(&mut self, app: &WordApp) {
++        if !self.loaded || self.revision == Some(app.session.rev()) {
++            return;
++        }
++        match wordcraft_engine::io::save_bytes_with(
++            "document.docx",
++            &app.session.doc,
++            app.session.password.as_ref().map(wordcraft_engine::Password::as_str),
++            &Default::default(),
++        ) {
++            Ok(bytes) => {
++                self.revision = Some(app.session.rev());
++                emit(
++                    "edit",
++                    0,
++                    json!({"revision":app.session.rev(),"documentId":app.session.document_id(),"dirty":app.session.dirty,"undo":app.session.can_undo(),"redo":app.session.can_redo()}),
++                    &bytes,
++                );
++            }
++            Err(error) => emit("error", 0, json!({"error":error}), &[]),
++        }
++    }
++}
+diff --git a/apps/wordcraft-web/src/web.rs b/apps/wordcraft-web/src/web.rs
+index f6ccc77..2551a00 100644
+--- a/apps/wordcraft-web/src/web.rs
++++ b/apps/wordcraft-web/src/web.rs
+@@ -28,11 +28,13 @@ pub fn start() {
+         };
+         let dirty = Rc::new(Cell::new(false));
+         let saves = Rc::new(PickerSaves::default());
+-        if let Err(e) = guard_unload(dirty.clone(), saves.clone()) {
++        if !cfg!(feature = "ai-office")
++            && let Err(e) = guard_unload(dirty.clone(), saves.clone())
++        {
+             log::error!("no unsaved-changes guard: {e}");
+         }
+         let mut options = eframe::WebOptions::default();
+-        if query().contains("webgl")
++        if (query().contains("webgl") || cfg!(feature = "ai-office"))
+             && let eframe::egui_wgpu::WgpuSetup::CreateNew(create) = &mut options.wgpu_options.wgpu_setup
+         {
+             create.instance_descriptor.backends = eframe::wgpu::Backends::GL;
+@@ -61,13 +63,25 @@ pub fn start() {
+                     let mut app = WordApp::new(session, services(inbox.clone(), cc.egui_ctx.clone(), dirty, saves.clone()));
+                     app.autosave = false;
+                     // No document to show: start on File › Home, as the desktop app does (#766).
+-                    if !sample {
++                    if !sample && !cfg!(feature = "ai-office") {
+                         app.start_screen();
+                     }
+-                    Ok(Box::new(WebShell { app, inbox, saves }))
++                    #[cfg(feature = "ai-office")]
++                    crate::office::ready(cc.egui_ctx.clone());
++                    Ok(Box::new(WebShell {
++                        app,
++                        inbox,
++                        saves,
++                        #[cfg(feature = "ai-office")]
++                        office: crate::office::Bridge::default(),
++                    }))
+                 }),
+             )
+             .await;
++        #[cfg(feature = "ai-office")]
++        if let Err(error) = &result {
++            crate::office::failed(&format!("Wordcraft failed to start: {error:?}"));
++        }
+         if let Some(el) = document.get_element_by_id(LOADING_ID) {
+             match result {
+                 Ok(()) => el.remove(),
+@@ -87,6 +101,8 @@ struct WebShell {
+     app: WordApp,
+     inbox: Inbox,
+     saves: Rc<PickerSaves>,
++    #[cfg(feature = "ai-office")]
++    office: crate::office::Bridge,
+ }
+ 
+ /// Saves the browser's save picker finishes after `download` has returned (#728). The app marks
+@@ -122,6 +138,13 @@ impl WebShell {
+ 
+ impl eframe::App for WebShell {
+     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
++        #[cfg(feature = "ai-office")]
++        self.office.tick(&mut self.app, ctx);
++        #[cfg(feature = "ai-office")]
++        if self.office.holding() {
++            ctx.input_mut(|input| input.events.clear());
++            return;
++        }
+         let dropped = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
+         for f in dropped {
+             let inbox = self.inbox.clone();
+@@ -146,7 +169,13 @@ impl eframe::App for WebShell {
+     }
+ 
+     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
++        #[cfg(feature = "ai-office")]
++        if self.office.holding() {
++            ui.disable();
++        }
+         self.app.ui(ui);
++        #[cfg(feature = "ai-office")]
++        self.office.snapshot(&self.app);
+     }
+ }
+ 
+@@ -200,7 +229,7 @@ fn listen_for_pasted_pictures(inbox: Inbox, ctx: egui::Context) -> Result<(), St
+ fn services(inbox: Inbox, ctx: egui::Context, dirty: Rc<Cell<bool>>, saves: Rc<PickerSaves>) -> Services {
+     let open_inbox = inbox.clone();
+     let save_ctx = ctx.clone();
+-    Services {
++    let services = Services {
+         open_async: Some(Box::new(move |purpose: &str| {
+             let inbox = open_inbox.clone();
+             let ctx = ctx.clone();
+@@ -232,6 +261,14 @@ fn services(inbox: Inbox, ctx: egui::Context, dirty: Rc<Cell<bool>>, saves: Rc<P
+         store_font: Some(Box::new(font_store::store)),
+         forget_font: Some(Box::new(font_store::forget)),
+         ..Default::default()
++    };
++    #[cfg(feature = "ai-office")]
++    {
++        crate::office::services(services)
++    }
++    #[cfg(not(feature = "ai-office"))]
++    {
++        services
+     }
+ }
+ 
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index a4afbd9..3c53517 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -88,6 +88,8 @@ pub use file_dialogs::{FileDialogAnswer, FileDialogRequest, open_filters};
+ /// Platform services injected by the host (file dialogs, file I/O).
+ #[derive(Default)]
+ pub struct Services {
++    /// Embedded hosts may handle document lifecycle commands in their own editor tabs.
++    pub host_command: Option<Box<dyn Fn(&str, &Value) -> Option<Result<Value, String>>>>,
+     /// Desktop: discover configured printers on a worker.
+     pub printers: Option<printing::Discover>,
+     /// Desktop: submit the PDF with the chosen settings on a worker.
+@@ -595,6 +597,9 @@ impl WordApp {
+     /// Close, Envelopes, Labels and Finish & Merge on a document with unsaved changes first ask
+     /// Save / Don't Save / Cancel, and the command runs once that is answered (`ui.saveChanges`).
+     pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
++        if let Some(result) = self.services.host_command.as_ref().and_then(|host| host(id, &params)) {
++            return result;
++        }
+         // A button whose command needs input the user hasn't given yet opens its dialog (#240).
+         if let Some(name) = input_dialog(id, &params)
+             && widgets::enabled(self, id)
+@@ -641,6 +646,9 @@ impl WordApp {
+     /// Run a command for a script or an agent (control channel, MCP bridge): never asks first.
+     /// UI-level commands (`ui.*`) are handled here, the rest by the engine.
+     pub fn execute(&mut self, id: &str, params: Value) -> Result<Value, String> {
++        if let Some(result) = self.services.host_command.as_ref().and_then(|host| host(id, &params)) {
++            return result;
++        }
+         // A pending Change Picture only survives until the next action (#147).
+         if !matches!(id, "ui.changePicture" | "picture.change" | "insert.picture") {
+             self.change_picture_target = None;
 diff --git a/docs/roadmap.md b/docs/roadmap.md
-index eb3810e..524a836 100644
+index eb3810e..1f7aa7f 100644
 --- a/docs/roadmap.md
 +++ b/docs/roadmap.md
 @@ -88,3 +88,7 @@ languages, screen-reader access, ecosystem decisions (VBA, add-ins, cloud), an i
@@ -225,6 +613,6 @@ index eb3810e..524a836 100644
  | 2026-10-10 | trivial | M11: ink pens and eraser landed (#307) |
  | 2026-10-11 | trivial | M11: lasso, Add Pen, Ink to Shape and Ink Replay landed (#395) |
 +
-+## Local AI Office preview integration (2026-10-14)
++## Local AI Office integration (2026-10-15)
 +
-+`apps/ai-office-preview` exposes DOCX layout, page rasterization, caret/selection state, an allowlisted command registry and save bytes through WebAssembly. The sibling VS Code fork supplies a compact toolbar and caret input, and its CLI uses the same bridge for editing. Formatting, tables, images, links, comments and undo/redo are covered by synthetic export/reopen tests in `../vscode/extensions/ai-office-common`. Upstream editing parity estimates are unchanged.
++`apps/ai-office-preview` exposes DOCX layout, rasterization, caret/selection state, the engine registry (excluding host-owned file operations) and save bytes through WebAssembly. The `ai-office` feature in `apps/wordcraft-web` embeds the full web ribbon, dialogs and canvas in the sibling VS Code fork, with a bounded request/event bridge for commands, file pickers, clipboard text, versioned saves and recovery snapshots. The host pauses edits while writing a save and acknowledges success or failure. Synthetic export/reopen tests cover document editing, while host tests cover save failure, recovery and external conflicts. The embedded UI also passed command/edit/undo/redo and repeated-save smoke checks. Desktop-only integrations and upstream editing parity estimates are unchanged.

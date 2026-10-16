@@ -5,4 +5,5 @@
 
 import * as vscode from 'vscode';
 import { registerEditors } from '../ai-office-common/provider.js';
-export function activate(context: vscode.ExtensionContext) { registerEditors(context, ['pdf', 'word']); }
+import { registerFullWord } from '../ai-office-common/wordProvider.js';
+export function activate(context: vscode.ExtensionContext) { registerEditors(context, ['pdf']); registerFullWord(context); }

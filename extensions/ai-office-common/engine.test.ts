@@ -46,6 +46,11 @@ test('Word: native editing, toolbar operations, undo, export and reopen', async 
 	await mkdir(demo, { recursive: true }); await writeFile(resolve(demo, 'Memo.docx'), docx);
 	const engine = await openEngine('word', 'Memo.docx', docx, root);
 	try {
+		assert.ok(engine.commands().length > 500);
+		assert.ok(engine.commands().some(command => command.id === 'layout.margins'));
+		await engine.execute('document.inspect', { text: true });
+		assert.ok(engine.state().result);
+		await engine.execute('layout.margins', { preset: 'narrow' });
 		await engine.execute('select.text', { text: 'AI Office' });
 		await engine.execute('text.insert', { text: 'Interactive office' });
 		await engine.execute('edit.undo', {}); await engine.execute('select.all', {});

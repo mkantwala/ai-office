@@ -10,6 +10,7 @@ export interface State {
 	caret?: { page: number; x: number; y: number; height: number };
 	rects?: { page: number; x: number; y: number; width: number; height: number }[];
 	selection?: unknown; selectedText?: string;
+	result?: unknown; format?: unknown;
 	comments?: { author?: string; text: string }[];
 }
 export interface Command { id: string; label: string; params?: unknown }
