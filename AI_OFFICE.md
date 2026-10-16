@@ -4,6 +4,8 @@ AI Office is a VS Code fork with an office document explorer, Word/PDF/PowerPoin
 
 Word and PDF use Rust engines compiled to WebAssembly. Wordcraft runs its egui ribbon, dialogs, rulers and editable document canvas inside a VS Code custom editor. The host handles file pickers, saves, conflicts and recovery. PowerPoint uses `@office-kit/pptx` and `@office-kit/pptx-preview`.
 
+Word opens with Page Width zoom so the document follows the available editor pane. Narrow panes group additional ribbon tabs under More and document actions under Actions; resizing the window or side panels does not enlarge the embedded page beyond its pane. Manual zoom remains available under View.
+
 ## Source and build
 
 All AI Office application changes are in this repository. Pinned Wordcraft/Pdfcraft revisions and patches are stored under [engines](engines/README.md), so a fresh checkout does not depend on unpublished sibling-repository changes.
