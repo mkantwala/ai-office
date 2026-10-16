@@ -2,6 +2,12 @@
 
 The toolbar, extension-host workers and CLI share these engine adapters. No network server is started. Word calls Wordcraft's command registry; PDF calls Pdfcraft's automation table; PowerPoint calls office-kit through the shared adapter. File/image pickers collect parameters for headless document commands.
 
+Word's compact toolbar groups history/save, paragraph style, font, emphasis, paragraph layout and insertion controls in a single row. More Formatting always contains table insertion and receives additional groups when the editor narrows. Controls keep their native keyboard behavior and document actions when moved. Escape closes the popover and returns focus to More Formatting. PDF and PowerPoint retain their existing toolbar layouts.
+
+The visual references are Google's [refreshed Docs interface](https://workspaceupdates.googleblog.com/2023/03/refreshed-ui-google-drive-docs-sheets-slides.html) and [formatting toolbar documentation](https://support.google.com/docs/answer/1663349). Icons are local, original line drawings and colors follow the workbench theme. Font/style selectors describe actions because the current engine bridge does not expose the selection's formatting; Word emphasis buttons ask the engine to toggle its actual selection state.
+
+Build the Word/PDF webview with `node extensions/ai-office-pdf/build.mts --ui-only`. Run the browser toolbar checks from the repository root with `node --test build/lib/test/officeToolbar.test.ts` after installing Playwright Chromium, or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to an installed Chromium executable. The checks cover narrow/wide layouts, overflow actions, keyboard dismissal and the existing PDF/PowerPoint toolbar controls.
+
 From the VS Code repository:
 
 ```powershell

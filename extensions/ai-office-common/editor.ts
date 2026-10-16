@@ -5,6 +5,7 @@
 
 import DOMPurify from '../ai-office-slides/node_modules/dompurify/dist/purify.es.mjs';
 import type { Kind, State, Block } from './types.js';
+import { arrangeWordToolbar } from './wordToolbar.js';
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const api = acquireVsCodeApi();
 const el = (id: string) => document.getElementById(id)!;
@@ -30,6 +31,8 @@ let drag = false;
 let pointerFrame = 0;
 let lastPointer: { page: number; x: number; y: number } | undefined;
 let initialized = false;
+let disposeToolbar: (() => void) | undefined;
+window.addEventListener('pagehide', () => disposeToolbar?.(), { once: true });
 function send(type: string, data: Record<string, unknown> = {}) { api.postMessage({ type, ...data }); }
 function execute(command: string, args: Record<string, unknown> = {}) { el('error').hidden = true; send('execute', { command, args }); }
 function message(error: unknown) { el('error').hidden = false; el('error').textContent = String(error); }
@@ -61,7 +64,7 @@ function menu(label: string, items: [string, string][], action: (value: string) 
 	const placeholder = document.createElement('option'); placeholder.textContent = label; placeholder.value = ''; select.append(placeholder);
 	for (const [value, text] of items) { const option = document.createElement('option'); option.value = value; option.textContent = text; select.append(option); }
 	select.addEventListener('change', () => { action(select.value); select.value = ''; if (kind === 'word') { keyboard.focus({ preventScroll: true }); } });
-	toolbar.append(select);
+	toolbar.append(select); return select;
 }
 function needsBox() { if (kind !== 'word' && !selected) { message('Click a text box or paragraph first.'); return true; } return false; }
 function format(property: string, value: unknown) {
@@ -70,27 +73,33 @@ function format(property: string, value: unknown) {
 	else { execute(kind === 'pdf' ? 'text_edit' : 'format.text', { ...selectionArgs(), [property]: value }); }
 }
 function buildToolbar() {
+	disposeToolbar?.();
 	toolbar.replaceChildren();
 	button('Text', 'Insert text', () => { if (kind === 'word') { keyboard.focus(); return; } void (async () => { const text = await ask('New text'); if (!text) { return; } execute(kind === 'pdf' ? 'page_add_text' : 'insert.text', { page: currentPage + 1, text, ...(kind === 'pdf' ? { at: [50, 50], width: 300 } : {}) }); })(); });
-	menu('Normal text', [['Normal', 'Normal text'], ['Heading1', 'Heading 1'], ['Heading2', 'Heading 2'], ['Heading3', 'Heading 3']], style => execute('para.style', { style }), kind !== 'word');
-	menu('Font', (kind === 'pdf' ? [['helvetica', 'Sans'], ['times', 'Serif'], ['courier', 'Mono']] : [['Arial', 'Arial'], ['Times New Roman', 'Times New Roman'], ['Courier New', 'Courier New']]) as [string, string][], font => format('font', font));
-	menu('Size', ['10', '11', '12', '14', '16', '18', '24', '32', '48'].map(x => [x, x]), size => format('size', Number(size)));
+	const style = menu('Normal text', [['Normal', 'Normal text'], ['Heading1', 'Heading 1'], ['Heading2', 'Heading 2'], ['Heading3', 'Heading 3']], style => execute('para.style', { style }), kind !== 'word');
+	const font = menu('Font', (kind === 'pdf' ? [['helvetica', 'Sans'], ['times', 'Serif'], ['courier', 'Mono']] : [['Arial', 'Arial'], ['Times New Roman', 'Times New Roman'], ['Courier New', 'Courier New']]) as [string, string][], font => format('font', font));
+	const size = menu('Size', ['10', '11', '12', '14', '16', '18', '24', '32', '48'].map(x => [x, x]), size => format('size', Number(size)));
+	const emphasis: HTMLButtonElement[] = [];
 	for (const [label, property] of [['B', 'bold'], ['I', 'italic'], ['U', 'underline']]) {
-		const b = button(label, property, () => { const value = b.getAttribute('aria-pressed') !== 'true'; format(property, value); b.setAttribute('aria-pressed', String(value)); });
+		const b = button(label, property, () => {
+			if (kind === 'word') { execute('format.' + property); keyboard.focus({ preventScroll: true }); return; }
+			const value = b.getAttribute('aria-pressed') !== 'true'; format(property, value); b.setAttribute('aria-pressed', String(value));
+		});
+		emphasis.push(b);
 		b.style.fontWeight = property === 'bold' ? '700' : ''; b.style.fontStyle = property === 'italic' ? 'italic' : ''; b.style.textDecoration = property === 'underline' ? 'underline' : '';
 	}
-	menu('Align', ['left', 'center', 'right', 'justify'].map(x => [x, x]), value => {
+	const align = menu('Align', ['left', 'center', 'right', 'justify'].map(x => [x, x]), value => {
 		if (needsBox()) { return; } flushText(); execute(kind === 'pdf' ? 'text_edit' : 'para.align', kind === 'word' ? { value } : { ...selectionArgs(), [kind === 'pdf' ? 'align' : 'value']: value });
 	});
-	menu('List', [['bullet', 'Bullets'], ['number', 'Numbered'], ['none', 'No list']], value => {
+	const list = menu('List', [['bullet', 'Bullets'], ['number', 'Numbered'], ['none', 'No list']], value => {
 		if (needsBox()) { return; } flushText();
 		execute(kind === 'word' ? (value === 'number' ? 'para.numbering' : 'para.bullets') : 'para.list', kind === 'word' ? { off: value === 'none' } : { ...selectionArgs(), value });
 	}, kind === 'pdf');
-	menu('Spacing', [['1', 'Single'], ['1.5', '1.5 lines'], ['2', 'Double']], value => {
+	const spacing = menu('Spacing', [['1', 'Single'], ['1.5', '1.5 lines'], ['2', 'Double']], value => {
 		if (needsBox()) { return; } flushText(); execute(kind === 'word' ? 'para.lineSpacing' : kind === 'pdf' ? 'text_edit' : 'para.spacing', kind === 'word' ? { value: Number(value) } : { ...selectionArgs(), [kind === 'pdf' ? 'line_spacing' : 'value']: Number(value) });
 	});
 	const divider = document.createElement('span'); divider.className = 'divider'; toolbar.append(divider);
-	button('Table', kind === 'pdf' ? 'PDF table insertion is not available' : 'Insert table', () => {
+	const table = button('Table', kind === 'pdf' ? 'PDF table insertion is not available' : 'Insert table', () => {
 		void (async () => {
 			const answer = await ask('Table size: rows x columns', '3 x 3'); if (!answer) { return; }
 			const match = /^(\d+)\s*[xX×]\s*(\d+)$/.exec(answer);
@@ -98,15 +107,15 @@ function buildToolbar() {
 			flushText(); execute('insert.table', { rows: Number(match[1]), cols: Number(match[2]), ...(kind === 'word' ? {} : { page: currentPage + 1 }) });
 		})();
 	}, kind === 'pdf');
-	button('Image', 'Insert image', () => { flushText(); send('image', { page: currentPage + 1 }); });
-	button('Link', 'Insert link', () => {
+	const image = button('Image', 'Insert image', () => { flushText(); send('image', { page: currentPage + 1 }); });
+	const link = button('Link', 'Insert link', () => {
 		void (async () => {
 			if (needsBox()) { return; } const url = await ask('Link address', 'https://'); if (!url) { return; }
 			try { if (!['https:', 'http:', 'mailto:'].includes(new URL(url).protocol)) { throw new Error(); } } catch { message('Enter an http, https or mailto address.'); return; }
 			flushText(); execute(kind === 'pdf' ? 'link_add' : 'insert.link', kind === 'word' ? { url } : { ...selectionArgs(), ...(kind === 'pdf' ? { paragraph: undefined, rect: selected?.rect } : {}), url });
 		})();
 	});
-	button('Comment', 'Add comment', () => {
+	const comment = button('Comment', 'Add comment', () => {
 		void (async () => {
 			const text = await ask('Comment'); if (!text?.trim()) { return; } flushText();
 			execute(kind === 'word' ? 'review.newComment' : kind === 'pdf' ? 'comment_add' : 'insert.comment',
@@ -114,9 +123,12 @@ function buildToolbar() {
 		})();
 	});
 	const spacer = document.createElement('span'); spacer.className = 'spacer'; toolbar.append(spacer);
-	button('Undo', 'Undo (Ctrl+Z)', () => { closeText(); send('undo'); }).id = 'undo';
-	button('Redo', 'Redo (Ctrl+Shift+Z)', () => { closeText(); send('redo'); }).id = 'redo';
-	button('Save', 'Save (Ctrl+S)', () => { flushText(); send('save'); });
+	const undo = button('Undo', 'Undo (Ctrl+Z)', () => { closeText(); send('undo'); }); undo.id = 'undo';
+	const redo = button('Redo', 'Redo (Ctrl+Shift+Z)', () => { closeText(); send('redo'); }); redo.id = 'redo';
+	const save = button('Save', 'Save (Ctrl+S)', () => { flushText(); send('save'); });
+	if (kind === 'word') {
+		disposeToolbar = arrangeWordToolbar(toolbar, { undo, redo, save, style, font, size, emphasis, align, list, spacing, table, image, link, comment });
+	}
 }
 function point(event: PointerEvent, page: HTMLElement) {
 	const bounds = page.getBoundingClientRect(); const index = Number(page.dataset.page);
