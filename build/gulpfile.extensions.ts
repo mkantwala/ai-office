@@ -15,6 +15,7 @@ import { gulp, filter, plumber, sourcemaps } from './lib/gulp/facade.ts';
 import * as path from 'path';
 import * as nodeUtil from 'util';
 import * as ext from './lib/extensions.ts';
+import { isBuiltinExtensionBuildEnabled } from './lib/builtinExtensionPolicy.ts';
 import { getVersion } from './lib/getVersion.ts';
 import { createReporter } from './lib/reporter.ts';
 import * as task from './lib/gulp/task.ts';
@@ -86,7 +87,7 @@ const compilations = [
 	'.vscode/extensions/vscode-selfhost-import-aid/tsconfig.json',
 	'.vscode/extensions/vscode-extras/tsconfig.json',
 	'.vscode/extensions/vscode-pr-pinger/tsconfig.json',
-];
+].filter(isBuiltinExtensionBuildEnabled);
 
 const getBaseUrl = (out: string) => `https://main.vscode-cdn.net/sourcemaps/${commit}/${out}`;
 
@@ -308,10 +309,10 @@ async function buildWebExtensions(isWatch: boolean): Promise<void> {
 	const extensionsPath = path.join(root, 'extensions');
 
 	// Find all esbuild.browser.mts files
-	const esbuildConfigLocations = await nodeUtil.promisify(glob)(
+	const esbuildConfigLocations = (await nodeUtil.promisify(glob)(
 		path.join(extensionsPath, '**', 'esbuild.browser.mts'),
 		{ ignore: ['**/node_modules'] }
-	);
+	)).filter(isBuiltinExtensionBuildEnabled);
 
 	const promises: Promise<unknown>[] = [];
 

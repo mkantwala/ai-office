@@ -18,6 +18,21 @@ The editor and Agents windows no longer import the developer feature entry point
 
 `product.json` lists excluded built-ins in `disabledBuiltinExtensions`. Desktop and browser scanners honor this list, including development checkouts. Local extension packaging also excludes these extensions; their compile/media entries and downloaded JavaScript debugger definitions have been removed.
 
+Of the 98 built-in manifests in this checkout, 64 are excluded and 34 retained. This includes 54 newly excluded extensions beyond the initial feature cleanup. The earlier estimate of 106 extensions was not the inventory of this branch.
+
+| Retained group | Extensions and purpose |
+|---|---|
+| Office documents | `ai-office-pdf` (Word and PDF), `ai-office-slides` |
+| Documents and previews | Markdown language/editor, math, Mermaid, media preview, simple browser |
+| Agent access | Copilot, prompt-file support, GitHub and Microsoft authentication |
+| History | Git, Git Base, GitHub integration, diff grammar |
+| Configuration and diagnostics | Configuration editing, JSON grammar/language service, YAML for agent frontmatter, logs and search results |
+| Appearance | Existing color and icon themes, including the AI Office icon theme |
+
+Excluded extensions include Python, Java, Rust, C/C++, C#, F#, JavaScript/TypeScript, Go, Ruby, PHP, Docker, shell and other programming grammars; CSS/HTML/PHP/TypeScript language services; Emmet, extension-authoring, references and terminal suggestions; development test extensions; and the notebook, debugging, task, merge-conflict and tunnel extensions excluded earlier. Configuration and document support stays available without programming-language intelligence.
+
+`build/lib/builtinExtensionPolicy.ts` applies the same product policy to packaging, TypeScript compilation, browser extension builds and media builds. Browser build discovery also filters excluded manifests, so stale generated extension output cannot reintroduce them into the browser's bundled extension list. Source directories and dependency lockfiles remain for upstream maintenance and repository development.
+
 The upstream source directories remain in the repository because shared code and extension-host API implementations still import them. Removing an entry point removes its feature registrations, not every transitive model/helper from the application. The earlier approximate line counts are not a measured bundle-size reduction. Further source deletion requires separating those shared APIs first.
 
 ## Validation
@@ -26,8 +41,11 @@ After installing root and build dependencies:
 
 ```sh
 node --test build/lib/test/officeWorkbench.test.ts
+node --test build/lib/test/builtinExtensionPolicy.test.ts
 ```
 
 This bundles the actual desktop/browser entry points for both windows in memory and checks that excluded feature entry points are absent while document and agent infrastructure remain reachable. It does not launch Electron or a browser.
 
 The extension-scanner suite includes a regression test that excludes a product-disabled built-in from fresh and cached scans while keeping the Word/PDF extension. Run it with the existing VS Code unit-test runner after compiling the client.
+
+The built-in policy tests verify the retained inventory, its declared extension dependencies, and policy selection for relative and absolute desktop/browser/media build inputs.
