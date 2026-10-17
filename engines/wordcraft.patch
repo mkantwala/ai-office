@@ -60,12 +60,378 @@ index 0000000..8f0a4fe
 +wordcraft-render = { workspace = true }
 +serde_json = { workspace = true }
 +wasm-bindgen = "0.2"
+diff --git a/apps/ai-office-preview/src/agent.rs b/apps/ai-office-preview/src/agent.rs
+new file mode 100644
+index 0000000..44d8891
+--- /dev/null
++++ b/apps/ai-office-preview/src/agent.rs
+@@ -0,0 +1,360 @@
++//! Internal, revision-checked block editing for the AI Office agent.
++use serde_json::{Value, json};
++use std::collections::HashSet;
++use std::sync::Arc;
++use wordcraft_doc::{Block, Blocks, Document, Paragraph, Path, Pos, StoryRef, Table};
++use wordcraft_engine::{Selection, Session};
++use wordcraft_layout::DocLayout;
++
++#[derive(Clone)]
++pub struct Node {
++    pub id: String,
++    pub kind: &'static str,
++    pub parent: String,
++    pub story: StoryRef,
++    pub path: Path,
++    pub text: String,
++    pub style: Option<String>,
++}
++
++pub fn normalize(doc: &mut Document, prefix: &str, counter: &mut u64) {
++    fn assign(id: &mut String, seen: &mut HashSet<String>, prefix: &str, counter: &mut u64) {
++        if id.is_empty() || !seen.insert(id.clone()) {
++            loop {
++                *counter += 1;
++                *id = format!("{prefix}-{:x}", *counter);
++                if seen.insert(id.clone()) {
++                    break;
++                }
++            }
++        }
++    }
++    fn walk(blocks: &mut Blocks, seen: &mut HashSet<String>, prefix: &str, counter: &mut u64) {
++        for block in blocks {
++            match Arc::make_mut(block) {
++                Block::Para(p) => assign(&mut p.props.office_id, seen, prefix, counter),
++                Block::Table(t) => {
++                    assign(&mut t.props.office_id, seen, prefix, counter);
++                    for row in &mut t.rows {
++                        assign(&mut row.props.office_id, seen, prefix, counter);
++                        for cell in &mut row.cells {
++                            assign(&mut cell.props.office_id, seen, prefix, counter);
++                            walk(&mut cell.blocks, seen, prefix, counter);
++                        }
++                    }
++                }
++            }
++        }
++    }
++    let mut seen = HashSet::new();
++    walk(&mut doc.body, &mut seen, prefix, counter);
++    for part in doc.parts.values_mut() {
++        walk(&mut part.blocks, &mut seen, prefix, counter);
++    }
++}
++
++pub fn nodes(doc: &Document) -> Vec<Node> {
++    fn walk(blocks: &Blocks, story: StoryRef, prefix: &[u32], parent: &str, out: &mut Vec<Node>) {
++        for (index, block) in blocks.iter().enumerate() {
++            let mut path = prefix.to_vec();
++            path.push(index as u32);
++            match &**block {
++                Block::Para(p) => {
++                    let kind = if p.props.style.as_deref().is_some_and(|s| s.starts_with("Heading")) {
++                        "heading"
++                    } else if p.props.numbering.is_some() {
++                        "listItem"
++                    } else {
++                        "paragraph"
++                    };
++                    out.push(Node {
++                        id: p.props.office_id.clone(),
++                        kind,
++                        parent: parent.into(),
++                        story,
++                        path: Path(path),
++                        text: p.text.clone(),
++                        style: p.props.style.clone(),
++                    });
++                }
++                Block::Table(t) => {
++                    out.push(Node {
++                        id: t.props.office_id.clone(),
++                        kind: "table",
++                        parent: parent.into(),
++                        story,
++                        path: Path(path.clone()),
++                        text: String::new(),
++                        style: t.props.style.clone(),
++                    });
++                    for (r, row) in t.rows.iter().enumerate() {
++                        let mut rp = path.clone();
++                        rp.push(r as u32);
++                        out.push(Node {
++                            id: row.props.office_id.clone(),
++                            kind: "row",
++                            parent: t.props.office_id.clone(),
++                            story,
++                            path: Path(rp.clone()),
++                            text: String::new(),
++                            style: None,
++                        });
++                        for (c, cell) in row.cells.iter().enumerate() {
++                            let mut cp = rp.clone();
++                            cp.push(c as u32);
++                            out.push(Node {
++                                id: cell.props.office_id.clone(),
++                                kind: "cell",
++                                parent: row.props.office_id.clone(),
++                                story,
++                                path: Path(cp.clone()),
++                                text: String::new(),
++                                style: None,
++                            });
++                            walk(&cell.blocks, story, &cp, &cell.props.office_id, out);
++                        }
++                    }
++                }
++            }
++        }
++    }
++    let mut out = Vec::new();
++    walk(&doc.body, StoryRef::Body, &[], "body", &mut out);
++    for (id, part) in &doc.parts {
++        walk(&part.blocks, StoryRef::Part(*id), &[], &format!("part-{id}"), &mut out);
++    }
++    out
++}
++
++pub fn metadata(doc: &Document) -> Value {
++    Value::Array(nodes(doc).iter().map(|n| json!({"id":n.id,"story":n.story,"path":n.path,"kind":n.kind})).collect())
++}
++
++pub fn restore_ids(doc: &mut Document, values: &Value) -> Result<(), String> {
++    let items = values.as_array().ok_or("Invalid identity metadata")?;
++    let current = nodes(doc);
++    if current.len() != items.len() {
++        return Err("Identity metadata no longer matches the document".into());
++    }
++    let mut seen = HashSet::new();
++    for (node, item) in current.iter().zip(items) {
++        let id = item["id"].as_str().ok_or("Missing identity")?;
++        if id.len() > 100
++            || id.is_empty()
++            || !seen.insert(id)
++            || item["story"] != json!(node.story)
++            || item["path"] != json!(node.path)
++            || item["kind"] != node.kind
++        {
++            return Err("Identity metadata no longer matches the document".into());
++        }
++    }
++    for (node, item) in current.iter().zip(items) {
++        let id = item["id"].as_str().unwrap_or_default().to_string();
++        match node.kind {
++            "table" => doc.table_mut(node.story, &node.path).map_err(|e| e.to_string())?.props.office_id = id,
++            "row" | "cell" => {
++                let p = &node.path.0;
++                let count = if node.kind == "row" { 1 } else { 2 };
++                let t = doc.table_mut(node.story, &Path(p[..p.len() - count].to_vec())).map_err(|e| e.to_string())?;
++                let row = &mut t.rows[p[p.len() - count] as usize];
++                if count == 1 {
++                    row.props.office_id = id;
++                } else {
++                    row.cells[p[p.len() - 1] as usize].props.office_id = id;
++                }
++            }
++            _ => doc.para_mut(node.story, &node.path).map_err(|e| e.to_string())?.props.office_id = id,
++        }
++    }
++    Ok(())
++}
++
++pub fn read(doc: &Document, args: &Value) -> Value {
++    let all = nodes(doc);
++    let id = args["id"].as_str();
++    let parent = args["parentId"].as_str();
++    let query = args["query"].as_str().unwrap_or("").to_lowercase();
++    let offset = usize::try_from(args["offset"].as_u64().unwrap_or(0)).unwrap_or(usize::MAX);
++    let limit = args["limit"].as_u64().unwrap_or(20).clamp(1, 20) as usize;
++    let text_offset = usize::try_from(args["textOffset"].as_u64().unwrap_or(0)).unwrap_or(usize::MAX);
++    let text_limit = args["textLimit"].as_u64().unwrap_or(if id.is_some() { 4000 } else { 160 }).clamp(1, 8000) as usize;
++    let text_limit = text_limit.min(8000 / if id.is_some() { 1 } else { limit });
++    let matches: Vec<_> = all
++        .iter()
++        .filter(|n| {
++            id.is_none_or(|id| n.id == id) && parent.is_none_or(|p| n.parent == p) && (query.is_empty() || n.text.to_lowercase().contains(&query))
++        })
++        .collect();
++    let results: Vec<_> = matches.iter().skip(offset).take(limit).map(|n| {
++        let length = n.text.chars().count();
++        let text: String = n.text.chars().skip(text_offset).take(text_limit).collect();
++        let end = text_offset + text.chars().count();
++        json!({"id":n.id,"kind":n.kind,"parentId":n.parent,"style":n.style,"text":text,"textLength":length,"textOffset":text_offset,"nextTextOffset":if end < length {Some(end)}else{None},"children":all.iter().filter(|c|c.parent==n.id).count()})
++    }).collect();
++    json!({"blocks":results,"total":matches.len(),"nextOffset":if offset+results.len()<matches.len(){Some(offset+results.len())}else{None}})
++}
++
++pub fn target(doc: &Document, id: &str) -> Result<Node, String> {
++    nodes(doc).into_iter().find(|n| n.id == id).ok_or_else(|| "Block no longer exists. Read the document again.".into())
++}
++
++pub fn rects(doc: &Document, layout: &DocLayout, id: &str) -> Result<Value, String> {
++    let n = target(doc, id)?;
++    let mut rectangles = Vec::new();
++    for path in doc.para_paths(n.story).into_iter().filter(|p| p.0.starts_with(&n.path.0)) {
++        let Some(p) = doc.para(n.story, &path) else { continue };
++        let a = Pos::new(n.story, path.clone(), 0);
++        let b = Pos::new(n.story, path, p.text.len());
++        for (page, r) in layout.selection_rects(doc, &a, &b, 0) {
++            rectangles.push(json!({"page":page,"x":r.x,"y":r.y,"width":r.w.max(8.0),"height":r.h}));
++        }
++        if p.text.is_empty() {
++            if let Some(c) = layout.caret_on(&a, 0) {
++                rectangles.push(json!({"page":c.page,"x":c.x,"y":c.top,"width":80,"height":c.height}));
++            }
++        }
++    }
++    Ok(Value::Array(rectangles))
++}
++
++fn text(args: &Value) -> Result<&str, String> {
++    let value = args["text"].as_str().ok_or("text must be a string")?;
++    if value.len() > 100_000 || value.contains('\u{fffc}') {
++        return Err("Text is too large or contains an inline-object marker".into());
++    }
++    Ok(value)
++}
++
++fn index(args: &Value, key: &str, default: usize) -> Result<usize, String> {
++    match args.get(key) {
++        None => Ok(default),
++        Some(value) => value.as_u64().and_then(|v| usize::try_from(v).ok()).ok_or_else(|| format!("{key} must be a non-negative character offset")),
++    }
++}
++
++fn new_block(value: &Value) -> Result<Block, String> {
++    match value["kind"].as_str().unwrap_or("paragraph") {
++        "paragraph" | "heading" => {
++            let content = text(value)?;
++            if content.contains(['\n', '\r']) {
++                return Err("Use separate blocks for separate paragraphs".into());
++            }
++            let mut p = Paragraph::with_text(content, Default::default());
++            let style =
++                if value["kind"] == "heading" { value["style"].as_str().unwrap_or("Heading1") } else { value["style"].as_str().unwrap_or("Normal") };
++            p.props.style = Some(style.into());
++            Ok(Block::Para(p))
++        }
++        "table" => {
++            let rows = value["rows"].as_array().ok_or("rows must be an array of arrays of strings")?;
++            let cols = rows.first().and_then(Value::as_array).map_or(0, Vec::len);
++            if rows.is_empty() || rows.len() > 20 || cols == 0 || cols > 10 {
++                return Err("Use 1-20 rows and 1-10 columns".into());
++            }
++            let mut table = Table::new(rows.len(), cols, 432.0);
++            table.props.borders = Some(wordcraft_doc::props::Borders::all(wordcraft_doc::props::Border::single(0.5)));
++            for (r, row) in rows.iter().enumerate() {
++                let cells = row.as_array().ok_or("Invalid row")?;
++                if cells.len() != cols {
++                    return Err("Rows must have equal column counts".into());
++                }
++                for (c, cell) in cells.iter().enumerate() {
++                    let value = cell.as_str().ok_or("Cells must be strings")?;
++                    if value.len() > 10_000 || value.contains('\u{fffc}') {
++                        return Err("Invalid cell text".into());
++                    }
++                    table.rows[r].cells[c].blocks = vec![Arc::new(Block::Para(Paragraph::with_text(value, Default::default())))];
++                }
++            }
++            Ok(Block::Table(table))
++        }
++        _ => Err("Supported new blocks: paragraph, heading, table".into()),
++    }
++}
++
++pub fn edit(session: &mut Session, args: &Value) -> Result<Value, String> {
++    if session.doc.settings.protection.is_some() || session.doc.settings.track_changes {
++        return Err("Agent block editing is unavailable while document protection or native Track Changes is enabled".into());
++    }
++    let id = args["id"].as_str().ok_or("A target block ID is required")?;
++    let node = target(&session.doc, id)?;
++    let mut command_result = Value::Null;
++    match args["operation"].as_str().ok_or("operation is required")? {
++        "insert" => {
++            if matches!(node.kind, "row" | "cell") {
++                return Err("Insert relative to a paragraph or table, including paragraphs inside cells".into());
++            }
++            let values = args["blocks"].as_array().ok_or("blocks must be an array")?;
++            if values.is_empty() || values.len() > 50 {
++                return Err("Insert 1-50 blocks at a time".into());
++            }
++            let blocks: Vec<_> = values.iter().map(new_block).collect::<Result<_, _>>()?;
++            let after = match args["position"].as_str().unwrap_or("after") {
++                "after" => 1,
++                "before" => 0,
++                _ => return Err("position must be before or after".into()),
++            };
++            for (i, block) in blocks.into_iter().enumerate() {
++                let style = match &block {
++                    Block::Para(p) => p.props.style.clone(),
++                    _ => None,
++                };
++                let path = node.path.with_last(node.path.last() + after + i);
++                session.doc.insert_block(node.story, &path, block).map_err(|e| e.to_string())?;
++                if let Some(style) = style {
++                    // Reuse the editor's imported-style handling inside the private transaction.
++                    session.sel = Selection::caret(Pos::new(node.story, path, 0));
++                    session.run("para.style", &json!({"style":style})).map_err(|e| e.to_string())?;
++                }
++            }
++            session.doc.ensure_nonempty();
++        }
++        "update" => {
++            if matches!(node.kind, "table" | "row" | "cell") {
++                return Err("Update text using the paragraph IDs inside a cell; use command for table formatting".into());
++            }
++            let value = text(args)?;
++            if value.contains(['\n', '\r']) {
++                return Err("Use insert for multiple paragraphs".into());
++            }
++            let p = session.doc.para(node.story, &node.path).ok_or("Paragraph missing")?;
++            let start = index(args, "start", 0)?;
++            let end = index(args, "end", p.text.chars().count())?;
++            let offsets: Vec<_> = p.text.char_indices().map(|(i, _)| i).chain(std::iter::once(p.text.len())).collect();
++            if start > end || end >= offsets.len() {
++                return Err("Invalid character range; read the block again".into());
++            }
++            session.sel = Selection {
++                anchor: Pos::new(node.story, node.path.clone(), offsets[start]),
++                focus: Pos::new(node.story, node.path.clone(), offsets[end]),
++            };
++            session.run("text.insert", &json!({"text":value})).map_err(|e| e.to_string())?;
++        }
++        "delete" => {
++            if matches!(node.kind, "row" | "cell") {
++                return Err("Delete a paragraph or table; row/cell deletion is not exposed".into());
++            }
++            session.doc.remove_block(node.story, &node.path).map_err(|e| e.to_string())?;
++        }
++        "command" => {
++            let command = args["command"].as_str().ok_or("command is required")?;
++            if !super::allowed(command) || command.starts_with("edit.") || command.starts_with("caret.") || command.starts_with("select.") {
++                return Err("Command cannot be used as a targeted agent edit; use help for supported commands".into());
++            }
++            let paragraphs = session.doc.para_paths(node.story);
++            let paths: Vec<_> = paragraphs.iter().filter(|p| p.0.starts_with(&node.path.0)).collect();
++            let first = paths.first().ok_or("Target has no editable paragraph")?;
++            let last = paths.last().ok_or("Target has no editable paragraph")?;
++            let len = session.doc.para(node.story, last).map_or(0, |p| p.text.len());
++            session.sel = Selection { anchor: Pos::new(node.story, (*first).clone(), 0), focus: Pos::new(node.story, (*last).clone(), len) };
++            if command.starts_with("insert.") || command.starts_with("text.") {
++                session.sel = Selection::caret(session.sel.focus.clone());
++            }
++            command_result = session.run(command, args.get("params").unwrap_or(&json!({}))).map_err(|e| e.to_string())?;
++        }
++        _ => return Err("Unknown operation".into()),
++    }
++    session.clamp_selection();
++    Ok(command_result)
++}
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..5595831
+index 0000000..718bcd1
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,230 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -75,6 +441,7 @@ index 0000000..5595831
 +use wasm_bindgen::prelude::*;
 +use wordcraft_engine::Session;
 +use wordcraft_layout::DocLayout;
++mod agent;
 +
 +#[wasm_bindgen]
 +pub struct OfficeDocument {
@@ -83,6 +450,8 @@ index 0000000..5595831
 +    width: u32,
 +    height: u32,
 +    password: Option<String>,
++    id_prefix: String,
++    id_counter: u64,
 +}
 +
 +#[wasm_bindgen]
@@ -98,7 +467,7 @@ index 0000000..5595831
 +        if layout.pages.len() > 10000 || layout.pages.iter().any(|p| [p.w, p.h].iter().any(|v| !v.is_finite() || *v <= 0.0 || *v > 14400.0)) {
 +            return Err(JsValue::from_str("Document exceeds the page count or page size limit"));
 +        }
-+        Ok(Self { session, layout, width: 0, height: 0, password })
++        Ok(Self { session, layout, width: 0, height: 0, password, id_prefix: String::new(), id_counter: 0 })
 +    }
 +
 +    pub fn pages(&self) -> Result<String, JsValue> {
@@ -117,6 +486,9 @@ index 0000000..5595831
 +        let args: Value = serde_json::from_str(params).map_err(|e| JsValue::from_str(&e.to_string()))?;
 +        self.session.close_typing();
 +        self.session.run(command, &args).map_err(|e| JsValue::from_str(&e.to_string()))?;
++        if !self.id_prefix.is_empty() {
++            agent::normalize(&mut self.session.doc, &self.id_prefix, &mut self.id_counter);
++        }
 +        self.layout = self.session.layout();
 +        self.state()
 +    }
@@ -150,6 +522,79 @@ index 0000000..5595831
 +    pub fn export(&self) -> Result<Vec<u8>, JsValue> {
 +        wordcraft_engine::io::save_bytes_with("document.docx", &self.session.doc, self.password.as_deref(), &Default::default())
 +            .map_err(|e| JsValue::from_str(&e))
++    }
++
++    pub fn agent_init(&mut self, prefix: &str, metadata: &str) -> Result<(), JsValue> {
++        if prefix.is_empty() || prefix.len() > 60 {
++            return Err(JsValue::from_str("Invalid identity prefix"));
++        }
++        self.id_prefix = prefix.into();
++        if let Ok(value) = serde_json::from_str(metadata) {
++            let _ = agent::restore_ids(&mut self.session.doc, &value);
++        }
++        agent::normalize(&mut self.session.doc, prefix, &mut self.id_counter);
++        Ok(())
++    }
++
++    pub fn agent_metadata(&self) -> String {
++        agent::metadata(&self.session.doc).to_string()
++    }
++
++    pub fn agent_read(&self, args: &str) -> Result<String, JsValue> {
++        let args: Value = serde_json::from_str(args).map_err(|e| JsValue::from_str(&e.to_string()))?;
++        if args["operation"] == "selection" {
++            let selection = &self.session.sel;
++            let all = agent::nodes(&self.session.doc);
++            let focus = all.iter().find(|n| n.story == selection.focus.story && n.path == selection.focus.path);
++            let anchor = all.iter().find(|n| n.story == selection.anchor.story && n.path == selection.anchor.path);
++            let offset =
++                |pos: &wordcraft_doc::Pos| self.session.doc.para_at(pos).map_or(0, |p| p.text.get(..pos.off).unwrap_or(&p.text).chars().count());
++            let result = focus.map(|n| agent::read(&self.session.doc, &json!({"id":n.id}))).unwrap_or(json!({"blocks":[]}));
++            return Ok(json!({"content":result,"selection":{"anchorId":anchor.map(|n|&n.id),"focusId":focus.map(|n|&n.id),"start":offset(&selection.anchor),"end":offset(&selection.focus)},"selectedText":self.session.selected_text().chars().take(8000).collect::<String>()}).to_string());
++        }
++        Ok(agent::read(&self.session.doc, &args).to_string())
++    }
++
++    pub fn agent_rects(&self, id: &str) -> Result<String, JsValue> {
++        agent::rects(&self.session.doc, &self.layout, id).map(|v| v.to_string()).map_err(|e| JsValue::from_str(&e))
++    }
++
++    pub fn agent_edit(&mut self, args: &str) -> Result<String, JsValue> {
++        if args.len() > 160_000 {
++            return Err(JsValue::from_str("Agent edit is too large"));
++        }
++        let args: Value = serde_json::from_str(args).map_err(|e| JsValue::from_str(&e.to_string()))?;
++        if args["revision"].as_u64() != Some(self.session.rev()) {
++            return Err(JsValue::from_str("Document changed. Read the target again before editing."));
++        }
++        let before_ids: std::collections::HashSet<_> = agent::nodes(&self.session.doc).into_iter().map(|n| n.id).collect();
++        // Prepare on a private copy: failures leave content, revision, selection and undo intact.
++        let mut draft = Session::new(self.session.doc.clone());
++        draft.sel = self.session.sel.clone();
++        draft.author = self.session.author.clone();
++        let command_result = agent::edit(&mut draft, &args).map_err(|e| JsValue::from_str(&e))?;
++        agent::normalize(&mut draft.doc, &self.id_prefix, &mut self.id_counter);
++        if self.session.doc != draft.doc {
++            self.session.close_typing();
++            self.session.checkpoint("Agent document edit");
++            self.session.doc = draft.doc;
++            self.session.sel = draft.sel;
++            self.session.touch();
++        }
++        self.session.relayout();
++        self.layout = self.session.layout();
++        let nodes = agent::nodes(&self.session.doc);
++        let created: std::collections::HashSet<_> = nodes.iter().filter(|n| !before_ids.contains(&n.id)).map(|n| n.id.clone()).collect();
++        let roots: Vec<_> = nodes
++            .iter()
++            .filter(|n| created.contains(&n.id) && !created.contains(&n.parent))
++            .take(50)
++            .map(|n| json!({"id":n.id,"kind":n.kind,"parentId":n.parent}))
++            .collect();
++        let mut result: Value = serde_json::from_str(&self.state()?).map_err(|e| JsValue::from_str(&e.to_string()))?;
++        result["agentCreatedBlocks"] = json!(roots);
++        result["agentCommandResult"] = command_result;
++        Ok(result.to_string())
 +    }
 +
 +    pub fn render(&mut self, index: usize, scale: f32) -> Result<Vec<u8>, JsValue> {
@@ -217,6 +662,84 @@ index 0000000..5595831
 +            | "edit.redo"
 +    )
 +}
+diff --git a/crates/doc/src/props.rs b/crates/doc/src/props.rs
+index 768625d..7007150 100644
+--- a/crates/doc/src/props.rs
++++ b/crates/doc/src/props.rs
+@@ -686,6 +686,9 @@ pub struct TextFrame {
+ #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+ #[serde(default, rename_all = "camelCase")]
+ pub struct ParaProps {
++    /// AI Office identity; independent of content and position.
++    #[serde(default, skip_serializing_if = "String::is_empty")]
++    pub office_id: String,
+     /// Paragraph style id.
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub style: Option<String>,
+@@ -947,6 +950,9 @@ pub fn anchor_ooxml(a: VAlign) -> &'static str {
+ #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+ #[serde(default, rename_all = "camelCase")]
+ pub struct TableProps {
++    /// AI Office identity; independent of content and position.
++    #[serde(default, skip_serializing_if = "String::is_empty")]
++    pub office_id: String,
+     pub style: Option<String>,
+     /// Preferred width: points (`Some`) or automatic (`None`).
+     pub width: Option<f32>,
+@@ -1038,6 +1044,9 @@ pub enum HeightRule {
+ #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+ #[serde(default, rename_all = "camelCase")]
+ pub struct RowProps {
++    /// AI Office identity; independent of content and position.
++    #[serde(default, skip_serializing_if = "String::is_empty")]
++    pub office_id: String,
+     /// Points (meaning depends on `height_rule`).
+     pub height: Option<f32>,
+     pub height_rule: HeightRule,
+@@ -1064,6 +1073,9 @@ pub enum VMerge {
+ #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+ #[serde(default, rename_all = "camelCase")]
+ pub struct CellProps {
++    /// AI Office identity; independent of content and position.
++    #[serde(default, skip_serializing_if = "String::is_empty")]
++    pub office_id: String,
+     /// Preferred width, points.
+     pub width: Option<f32>,
+     /// Preferred width as a percentage of the table's (`w:tcW w:type="pct"`).
+diff --git a/crates/docbin/src/table.rs b/crates/docbin/src/table.rs
+index e341618..bf36563 100644
+--- a/crates/docbin/src/table.rs
++++ b/crates/docbin/src/table.rs
+@@ -246,6 +246,7 @@ pub(crate) fn assemble(paras: Vec<ParaOut>) -> Blocks {
+         }
+         Row {
+             props: RowProps {
++                office_id: String::new(),
+                 height: info.height,
+                 height_rule: info.height_rule,
+                 header: info.header,
+diff --git a/crates/docx/tests/roundtrip.rs b/crates/docx/tests/roundtrip.rs
+index 791cf20..88f560b 100644
+--- a/crates/docx/tests/roundtrip.rs
++++ b/crates/docx/tests/roundtrip.rs
+@@ -131,6 +131,7 @@ fn every_char_prop_round_trips() {
+ fn every_para_prop_round_trips() {
+     let b = Border { style: BorderStyle::Double, width: 0.75, color: Some(Rgb(9, 8, 7)), space: 4.0 };
+     let pp = ParaProps {
++        office_id: String::new(),
+         style: Some("Heading1".into()),
+         align: Some(Align::Justify),
+         indent_left: Some(36.0),
+@@ -278,7 +279,8 @@ fn tables_with_merges_round_trip() {
+     t.props.look = TableLook { header_row: true, total_row: true, banded_rows: false, first_column: false, last_column: true, banded_columns: true };
+     t.props.shading = Some(Rgb(1, 1, 1));
+     t.props.caption = Some("Sales".into());
+-    t.rows[0].props = RowProps { height: Some(20.0), height_rule: HeightRule::Exact, header: true, cant_split: true, fmt_change: None };
++    t.rows[0].props =
++        RowProps { office_id: String::new(), height: Some(20.0), height_rule: HeightRule::Exact, header: true, cant_split: true, fmt_change: None };
+     t.rows[1].props = RowProps { height: Some(15.0), height_rule: HeightRule::AtLeast, ..Default::default() };
+     t.merge(0, 0, 0, 1); // horizontal
+     t.merge(1, 2, 2, 2); // vertical
 diff --git a/crates/engine/src/cmd/insert.rs b/crates/engine/src/cmd/insert.rs
 index 1bc36b0..83e77a6 100644
 --- a/crates/engine/src/cmd/insert.rs
@@ -271,10 +794,10 @@ index cdbe790..4ee1b20 100644
      let kind = s.doc.styles.get(&id).map(|x| x.kind).unwrap_or_default();
      if kind == StyleKind::Character {
 diff --git a/docs/roadmap.md b/docs/roadmap.md
-index eb3810e..ed49a08 100644
+index eb3810e..cad9bb9 100644
 --- a/docs/roadmap.md
 +++ b/docs/roadmap.md
-@@ -88,3 +88,11 @@ languages, screen-reader access, ecosystem decisions (VBA, add-ins, cloud), an i
+@@ -88,3 +88,13 @@ languages, screen-reader access, ecosystem decisions (VBA, add-ins, cloud), an i
  | 2026-10-10 | major | Created: milestones moved from ROADMAP.md with remaining hours; Current focus from gaps.md; M15–M16 added |
  | 2026-10-10 | trivial | M11: ink pens and eraser landed (#307) |
  | 2026-10-11 | trivial | M11: lasso, Add Pen, Ink to Shape and Ink Replay landed (#395) |
@@ -286,3 +809,17 @@ index eb3810e..ed49a08 100644
 +AI Office Word editing update (2026-10-16): the preview bridge reports the current paragraph style, and insert.table accepts explicit borders so empty tables remain visible in imported documents. The host uses visual style/table menus and exports DOCX snapshots on save/backup instead of every keystroke.
 +
 +AI Office integration (2026-10-16): applying a built-in paragraph style to an imported DOCX now materializes only missing style definitions and their dependencies in the same undoable command. Existing custom definitions remain intact. The integration tests cover Title/Subtitle/headings, undo, save and reopen with a sparse imported style sheet.
++
++The October 17 integration adds internal identities for paragraphs, tables, rows and cells; bounded reads; atomic version-checked CRUD; targeted command results; and block rectangles for agent activity feedback. IDs are preserved by undo snapshots and the host stores validated private DOCX metadata for reopen. The host's synthetic WASM tests cover Unicode ranges, stale edits, rollback and persistence. This local bridge does not change upstream parity estimates.
+diff --git a/xtask/src/layers.rs b/xtask/src/layers.rs
+index a1f43d8..92e43af 100644
+--- a/xtask/src/layers.rs
++++ b/xtask/src/layers.rs
+@@ -54,6 +54,7 @@ pub const TABLE: &[(&str, Class)] = &[
+     ("wordcraft", Class::Exempt),
+     ("cli", Class::Exempt),
+     ("web", Class::Exempt),
++    ("preview", Class::Exempt),
+     ("xtask", Class::Exempt),
+ ];
+ 

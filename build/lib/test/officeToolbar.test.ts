@@ -156,4 +156,31 @@ suite('Office toolbar in a browser', () => {
 			} finally { await page.close(); }
 		}
 	});
+	test('Agent shimmer follows page coordinates, clears and respects reduced motion', async () => {
+		const page = await browser.newPage({ reducedMotion: 'reduce' });
+		try {
+			await page.goto(address);
+			await page.getByRole('button', { name: 'More Formatting' }).waitFor();
+			await page.evaluate(() => {
+				const send = (data: unknown) => window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data }));
+				send({ type: 'state', kind: 'word', name: 'Preview.docx', pages: [[612, 792]], state: { revision: 2 } });
+				send({ type: 'agentActivity', rects: [{ page: 0, x: 72, y: 100, width: 300, height: 24 }] });
+			});
+			const shimmer = page.locator('.agent-shimmer');
+			assert.equal(await shimmer.count(), 1);
+			assert.equal(await shimmer.evaluate(element => getComputedStyle(element).pointerEvents), 'none');
+			assert.equal(await shimmer.evaluate(element => getComputedStyle(element).animationName), 'none');
+			assert.equal(await page.locator('#pages').getAttribute('aria-busy'), 'true');
+			assert.match(await page.getByRole('status').innerText(), /Agent is working/);
+			const before = await shimmer.boundingBox();
+			await page.setViewportSize({ width: 700, height: 900 });
+			await page.waitForTimeout(250);
+			const after = await shimmer.boundingBox();
+			assert.ok(before && after && after.width < before.width);
+			await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: { type: 'agentActivity', rects: [] } })));
+			assert.equal(await shimmer.count(), 0);
+			assert.equal(await page.locator('#pages').getAttribute('aria-busy'), 'false');
+			assert.equal(await page.locator('.agent-status').innerText(), '');
+		} finally { await page.close(); }
+	});
 });

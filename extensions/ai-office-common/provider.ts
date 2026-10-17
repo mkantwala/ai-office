@@ -4,11 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { writeFile, rename, unlink } from 'node:fs/promises';
 import { EngineClient } from './client.js';
 import type { Kind, State, Command } from './types.js';
+import { registerDocumentTools, type DocumentToolInput } from './documentTools.js';
 
 interface View { state: State; pages: number[][]; commands?: Command[] }
 class Document implements vscode.CustomDocument {
@@ -22,10 +23,13 @@ class Document implements vscode.CustomDocument {
 	dirty = false;
 	saving = false;
 	serial = Promise.resolve();
+	instance = randomUUID();
+	activity?: { id: string; rects: State['rects']; timer: ReturnType<typeof setTimeout> };
 	constructor(readonly uri: vscode.Uri, readonly kind: Kind, readonly context: vscode.ExtensionContext, private readonly onDispose: () => void) {
 		this.client = new EngineClient(vscode.Uri.joinPath(context.extensionUri, 'out', 'engineWorker.cjs').fsPath);
 	}
 	async load(bytes: Uint8Array) {
+		this.instance = randomUUID();
 		this.view = await this.client.request<View>('open', { kind: this.kind, name: basename(this.uri.path), bytes, extensionsRoot: vscode.Uri.joinPath(this.context.extensionUri, '..').fsPath, password: this.password });
 		this.latestBytes = bytes;
 		this.snapshotRevision = this.view.state.revision;
@@ -44,8 +48,20 @@ class Document implements vscode.CustomDocument {
 	}
 	async broadcast(command?: string) {
 		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'state', kind: this.kind, ...this.view, name: basename(this.uri.path), command })));
+		if (this.activity) { await this.sendActivity(this.activity.rects); }
 	}
-	dispose() { this.onDispose(); this.client.dispose(); }
+	async sendActivity(rects: State['rects']) {
+		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'agentActivity', rects: rects || [] })));
+	}
+	async stopActivity() { if (this.activity) { clearTimeout(this.activity.timer); this.activity = undefined; } await this.sendActivity([]); }
+	async startActivity(id: string) {
+		const rects = await this.client.request<State['rects']>('agentRects', { blockId: id });
+		await this.stopActivity();
+		this.activity = { id, rects, timer: setTimeout(() => { void this.stopActivity(); }, 30000) };
+		await this.sendActivity(rects);
+	}
+	get version() { return `${this.instance}:${this.view.state.revision}`; }
+	dispose() { if (this.activity) { clearTimeout(this.activity.timer); } this.onDispose(); this.client.dispose(); }
 }
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 async function read(uri: vscode.Uri) {
@@ -64,10 +80,12 @@ async function writeAtomic(uri: vscode.Uri, bytes: Uint8Array) {
 }
 export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[]) {
 	const documents = new Map<string, Document>();
+	const agentEdits = new Map<Kind, (doc: Document, input: DocumentToolInput, token: vscode.CancellationToken) => Promise<unknown>>();
 	for (const kind of kinds) {
 		const changed = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<Document>>();
 		context.subscriptions.push(changed);
 		const execute = async (doc: Document, command: string, args: Record<string, unknown>, notify = true) => {
+			await doc.stopActivity();
 			const before = doc.view.state.revision;
 			const result = await doc.client.request<View>('execute', { command, args });
 			if (kind !== 'word' && result.state.revision !== before) { doc.latestBytes = await doc.client.request<Uint8Array>('export'); }
@@ -83,6 +101,41 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			await doc.broadcast(command);
 			return result;
 		};
+		agentEdits.set(kind, async (doc, input, token) => {
+			if (!vscode.workspace.isTrusted) { throw new Error('Trust this workspace before allowing agent edits.'); }
+			if (input.version !== doc.version) { throw new Error('Document changed. Read the target again before editing.'); }
+			if (typeof input.id !== 'string') { throw new Error('Read the document to obtain a target block ID.'); }
+			if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+			const before = doc.view.state.revision;
+			const idsBefore = await doc.client.request<{ blocks: { id: string; parentId: string }[] }>('agentRead', { args: { id: input.id } });
+			const parentId = idsBefore.blocks[0]?.parentId;
+			await doc.startActivity(input.id);
+			const started = Date.now();
+			try {
+				if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+				const result = await doc.client.request<View>('agentEdit', { args: { ...input, revision: before } });
+				doc.view = { ...doc.view, ...result };
+				if (result.state.revision !== before) {
+					doc.dirty = true;
+					changed.fire({ document: doc, label: 'Agent document edit',
+						undo: async () => { const task = doc.serial.then(() => execute(doc, 'edit.undo', {}, false)); doc.serial = task.then(() => { }, () => { }); await task; },
+						redo: async () => { const task = doc.serial.then(() => execute(doc, 'edit.redo', {}, false)); doc.serial = task.then(() => { }, () => { }); await task; }
+					});
+				}
+				if (input.operation !== 'delete' && doc.activity) {
+					// Some text commands merge/remove the target; the edit still succeeded.
+					doc.activity.rects = await doc.client.request<State['rects']>('agentRects', { blockId: input.id }).catch(() => []);
+				}
+				await doc.broadcast();
+				const content = await doc.client.request<Record<string, unknown>>('agentRead', { args: input.operation === 'insert' || input.operation === 'delete' ? { parentId, limit: 20 } : { id: input.id } });
+				const commandResult = JSON.stringify(result.state.agentCommandResult ?? null).length <= 8000 ? result.state.agentCommandResult : { truncated: true, guidance: 'Read the relevant document/comment blocks in pages.' };
+				return { uri: doc.uri.toString(), version: doc.version, ...content, created: result.state.agentCreatedBlocks || [], commandResult, saved: false, undoable: result.state.revision !== before };
+			} finally {
+				// Give fast operations enough time to paint, without delaying the engine itself.
+				await new Promise(resolve => setTimeout(resolve, Math.max(0, 400 - (Date.now() - started))));
+				await doc.stopActivity();
+			}
+		});
 		const provider: vscode.CustomEditorProvider<Document> = {
 			onDidChangeCustomDocument: changed.event,
 			async openCustomDocument(uri, openContext) {
@@ -162,6 +215,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				await doc.enqueue(async () => writeAtomic(destination, await doc.snapshot()));
 			},
 			async revertCustomDocument(doc) {
+				await doc.stopActivity();
 				await doc.serial;
 				const bytes = await read(doc.uri);
 				await doc.load(bytes); doc.baseHash = hash(bytes); doc.dirty = false; await doc.broadcast();
@@ -180,5 +234,43 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			doc.serial = operation.catch(() => { });
 			await operation; return result;
 		}));
+	}
+	if (kinds.includes('word')) {
+		registerDocumentTools(context, {
+			async invoke(tool, input, token) {
+				if (!input || typeof input !== 'object' || JSON.stringify(input).length > 160000) { throw new Error('Document tool input is invalid or too large.'); }
+				if (tool === 'help' && input.guide !== undefined) {
+					if (!['content', 'commands', 'identity'].includes(String(input.guide))) { throw new Error('Unknown document guide.'); }
+					return { guide: new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(context.extensionUri, 'skills/ai-office-docs', String(input.guide) + '.md'))) };
+				}
+				const wordDocuments = [...documents.values()].filter(doc => doc.kind === 'word');
+				if (tool === 'read' && input.operation === 'list') {
+					return { documents: wordDocuments.map(doc => ({ uri: doc.uri.toString(), name: basename(doc.uri.path), version: doc.version, active: [...doc.panels].some(panel => panel.active) })) };
+				}
+				const doc = input.uri ? documents.get(vscode.Uri.parse(input.uri).toString()) : wordDocuments.find(doc => [...doc.panels].some(panel => panel.active)) || (wordDocuments.length === 1 ? wordDocuments[0] : undefined);
+				if (!doc || doc.kind !== 'word') { throw new Error('Open the Word document first. Use office_document_read with operation=list to identify open documents.'); }
+				const task = doc.serial.then(async () => {
+					if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+					if (tool === 'edit') { return agentEdits.get('word')!(doc, input, token); }
+					if (tool === 'activity') {
+						if (input.operation === 'stop') { await doc.stopActivity(); }
+						else {
+							if (input.version !== doc.version || typeof input.id !== 'string') { throw new Error('Read the target again before starting work.'); }
+							await doc.startActivity(input.id);
+						}
+						return { uri: doc.uri.toString(), active: !!doc.activity, expiresInSeconds: doc.activity ? 30 : 0 };
+					}
+					if (tool === 'help') {
+						const commands = doc.view.commands || [];
+						const category = typeof input.category === 'string' ? input.category : '';
+						const matches = commands.filter(command => input.command ? command.id === input.command : category ? command.id.startsWith(category + '.') : true);
+						return input.command || category ? { commands: matches, targeted: 'Use office_document_edit operation=command with a block ID. caret.*, select.* and edit.* are UI-only; other enabled commands run on the target.' } : { categories: [...new Set(commands.map(command => command.id.split('.')[0]))], operations: ['insert', 'update', 'delete', 'command'], guidance: 'Read the ai-office-docs skill. Request one category or command for its exact parameters; IDs are internal and must not appear in user-facing messages.' };
+					}
+					return { uri: doc.uri.toString(), version: doc.version, ...await doc.client.request<Record<string, unknown>>('agentRead', { args: input }) };
+				});
+				doc.serial = task.then(() => { }, () => { });
+				return task;
+			}
+		});
 	}
 }

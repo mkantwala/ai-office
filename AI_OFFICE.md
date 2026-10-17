@@ -1,6 +1,6 @@
 # AI Office
 
-AI Office is a VS Code fork with an office document explorer, direct Word/PDF/PowerPoint editing, a compact toolbar and shared CLI commands for agents. The extension marketplace is disabled. Markdown uses the existing editor.
+AI Office is a VS Code fork with an office document explorer, direct Word/PDF/PowerPoint editing, a compact toolbar and a Word document agent backed by Cloudflare Workers AI. The extension marketplace is disabled. Markdown uses the existing editor.
 
 Word and PDF use Rust engines compiled to WebAssembly. PowerPoint uses `@office-kit/pptx` and `@office-kit/pptx-preview`. The engines' native application interfaces are not embedded in the editor.
 
@@ -30,6 +30,8 @@ After building the VS Code client, launch with `scripts\code.bat`. For an alread
 ## Editing and agents
 
 Click in Word to type and drag to select. Click a PDF paragraph or PowerPoint text box/table cell to edit it; press Ctrl+Enter or click outside to finish. Ctrl+S saves; Ctrl+Z and Ctrl+Shift+Z undo and redo.
+
+For Word, the existing chat panel uses GLM-4.7-Flash without Copilot sign-in. Configure credentials through **AI Office: Configure Cloudflare**. The agent uses stable internal block IDs, structured live-document CRUD, undo, and a shimmer over its current target. The [document agent guide](extensions/ai-office-pdf/README.md#word-agent) explains configuration, the compact internal skill, boundaries and local-only tests.
 
 See [editing commands and CLI examples](extensions/ai-office-common/README.md). On Windows, `scripts\ai-office-cli.cmd` invokes the bundled CLI. All toolbar document operations use the same engine adapters as the CLI. PDF tables/lists and PowerPoint heading styles are disabled in this first editing surface.
 

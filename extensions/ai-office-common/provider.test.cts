@@ -18,6 +18,7 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 		unlink: async name => files.delete(name)
 	};
 	const vscode = {
+		lm: { registerTool: () => ({ dispose() {} }) },
 		Uri: { parse: uri, joinPath: (base, ...parts) => uri(path.posix.resolve(base.path, ...parts)) },
 		EventEmitter: class { event = () => { }; fire(value) { edits.push(value); } dispose() { } },
 		window: { registerCustomEditorProvider: (_id, value) => { provider = value; return { dispose() { } }; } },
@@ -76,4 +77,83 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 	assert.equal(Buffer.from(doc.latestBytes).toString(), 'external agent changed it');
 	await backup.delete(); doc.dispose();
 	await assert.rejects(execute('/memo.docx', 'text.insert', { text: 'closed' }), /Open the document/);
+});
+
+test('Word tools serialize edits, reject stale versions, clear activity, and respect cancellation and trust', async () => {
+	const tools = new Map(); const edits = []; const messages = [];
+	let provider;
+	const uri = value => ({ scheme: 'file', path: value, fsPath: value, toString: () => value });
+	const vscode = {
+		Uri: { parse: uri, joinPath: (base, ...parts) => uri(path.posix.resolve(base.path, ...parts)) },
+		EventEmitter: class { event = () => {}; fire(value) { edits.push(value); } dispose() {} },
+		CancellationError: class extends Error { constructor() { super('Cancelled'); } },
+		LanguageModelTextPart: class { constructor(value) { this.value = value; } },
+		LanguageModelToolResult: class { constructor(content) { this.content = content; } },
+		lm: { registerTool: (name, value) => { tools.set(name, value); return { dispose() {} }; } },
+		window: { registerCustomEditorProvider: (_id, value) => { provider = value; return { dispose() {} }; } },
+		commands: { registerCommand: () => ({ dispose() {} }) },
+		workspace: { isTrusted: true, fs: { stat: async () => ({ size: 32 }), readFile: async () => Buffer.from('Initial content') } }
+	};
+	class EngineClient {
+		text = 'Initial content'; revision = 0; past = [];
+		async request(method, args) {
+			if (method === 'agentRead') { return { blocks: [{ id: 'internal-id', parentId: 'body', text: this.text }] }; }
+			if (method === 'agentRects') { return [{ page: 0, x: 72, y: 72, width: 120, height: 20 }]; }
+			if (method === 'agentEdit') {
+				assert.equal(args.args.revision, this.revision);
+				if (args.args.text === 'fail') { throw new Error('Invalid edit'); }
+				this.past.push(this.text); this.text = args.args.text; this.revision++;
+			}
+			if (method === 'execute' && args.command === 'edit.undo') { this.text = this.past.pop(); this.revision++; }
+			if (method === 'export') { return Buffer.from(this.text); }
+			return { pages: [[612, 792]], state: { revision: this.revision }, commands: [{ id: 'format.bold', label: 'Bold', params: { value: 'boolean' } }] };
+		}
+		dispose() {}
+	}
+	const originalLoad = Module._load;
+	try {
+		Module._load = (id, ...args) => id === 'vscode' ? vscode : id === './client.js' ? { EngineClient } : originalLoad(id, ...args);
+		delete require.cache[require.resolve('../../.build/office-provider.cjs')];
+		require('../../.build/office-provider.cjs').registerEditors({ extensionUri: uri('/extension'), subscriptions: [] }, ['word']);
+	} finally { Module._load = originalLoad; }
+	const doc = await provider.openCustomDocument(uri('/memo.docx'), {});
+	const token = { isCancellationRequested: false };
+	const invoke = async (name, input, cancellation = token) => JSON.parse((await tools.get('office_document_' + name).invoke({ input }, cancellation)).content[0].value);
+	try {
+		doc.panels.add({ active: true, webview: { postMessage: async message => { messages.push(message); } } });
+		assert.equal(tools.size, 4);
+		const initial = await invoke('read', {});
+		assert.equal(initial.blocks[0].text, 'Initial content');
+		const first = invoke('edit', { operation: 'update', id: 'internal-id', version: initial.version, text: 'First change' });
+		const stale = invoke('edit', { operation: 'update', id: 'internal-id', version: initial.version, text: 'Stale overwrite' });
+		assert.equal((await first).saved, false);
+		assert.match((await stale).error, /Document changed/);
+		assert.equal(edits.length, 1);
+		assert.equal(Buffer.from(doc.latestBytes).toString(), 'Initial content', 'Agent edits also defer DOCX serialization');
+		assert.equal((await invoke('read', {})).blocks[0].text, 'First change');
+		assert.equal(Buffer.from(await doc.enqueue(() => doc.snapshot())).toString(), 'First change');
+		assert.ok(messages.some(message => message.type === 'agentActivity' && message.rects.length));
+		assert.deepEqual(messages.at(-1), { type: 'agentActivity', rects: [] });
+		await edits[0].undo();
+		assert.equal((await invoke('read', {})).blocks[0].text, 'Initial content');
+		assert.equal(Buffer.from(await doc.enqueue(() => doc.snapshot())).toString(), 'Initial content');
+		let current = await invoke('read', {});
+		const failure = await invoke('edit', { operation: 'update', id: 'internal-id', version: current.version, text: 'fail' });
+		assert.match(failure.error, /Invalid edit/);
+		assert.equal((await invoke('read', {})).version, current.version);
+		assert.deepEqual(messages.at(-1), { type: 'agentActivity', rects: [] });
+		await assert.rejects(invoke('edit', { operation: 'update', id: 'internal-id', version: current.version, text: 'Cancelled edit' }, { isCancellationRequested: true }), /Cancelled/);
+		vscode.workspace.isTrusted = false;
+		assert.match((await invoke('edit', { operation: 'update', id: 'internal-id', version: current.version, text: 'Untrusted edit' })).error, /Trust this workspace/);
+		vscode.workspace.isTrusted = true;
+		assert.deepEqual((await invoke('help', {})).categories, ['format']);
+		assert.equal((await invoke('help', { command: 'format.bold' })).commands.length, 1);
+		await invoke('activity', { operation: 'start', id: 'internal-id', version: current.version });
+		assert.ok(doc.activity);
+		await invoke('activity', { operation: 'stop' });
+		assert.equal(doc.activity, undefined);
+		await provider.revertCustomDocument(doc);
+		current = await invoke('read', {});
+		assert.notEqual(current.version, initial.version, 'Reopen/revert must invalidate old request versions even if engine revision resets');
+	} finally { doc.dispose(); }
 });

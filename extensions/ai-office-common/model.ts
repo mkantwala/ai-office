@@ -6,6 +6,8 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import { readWordIdentities, writeWordIdentities } from './wordIdentity.js';
 import { SlidesEngine } from './slides.js';
 import type { Engine, Kind, State, Command } from './types.js';
 
@@ -14,6 +16,11 @@ interface WasmDocument {
 	export(): Uint8Array; render(page: number, scale: number): Uint8Array;
 	image?(page: number, name: string, bytes: Uint8Array): string;
 	width: number; height: number; free(): void;
+	agent_init?(prefix: string, metadata: string): void;
+	agent_metadata?(): string;
+	agent_read?(args: string): string;
+	agent_edit?(args: string): string;
+	agent_rects?(id: string): string;
 }
 export async function openEngine(kind: Kind, name: string, bytes: Uint8Array, extensionsRoot: string, password?: string): Promise<Engine> {
 	if (bytes.length > 128 * 1024 * 1024) { throw new Error('Document exceeds the 128 MB limit.'); }
@@ -26,12 +33,21 @@ export async function openEngine(kind: Kind, name: string, bytes: Uint8Array, ex
 	const module = await import(pathToFileURL(join(directory, project + '.js')).href);
 	await module.default({ module_or_path: await readFile(join(directory, project + '_bg.wasm')) });
 	const doc: WasmDocument = new module.OfficeDocument(name, bytes, password);
+	if (kind === 'word' && doc.agent_init) {
+		// Encrypted files are not ZIP packages until the engine decrypts them.
+		doc.agent_init(randomUUID(), JSON.stringify(password ? [] : readWordIdentities(bytes)));
+	}
 	const state = (serialized = doc.state()): State => {
 		const value = JSON.parse(serialized);
 		if (kind === 'pdf') { value.blocks = value.blocks.map((block: { paragraph: number; text: string; editor_text: string; rect: number[]; font: string; size: number }) => ({ id: block.paragraph, text: block.editor_text || block.text, rect: block.rect, font: block.font, size: block.size })); }
 		return value;
 	};
 	return {
+		agent: kind === 'word' && doc.agent_read && doc.agent_edit && doc.agent_rects ? {
+			read: args => JSON.parse(doc.agent_read!(JSON.stringify(args))),
+			edit: async args => JSON.parse(doc.agent_edit!(JSON.stringify(args))),
+			rects: id => JSON.parse(doc.agent_rects!(id))
+		} : undefined,
 		pages: () => JSON.parse(doc.pages()), state,
 		commands: () => {
 			const commands: Command[] = JSON.parse(doc.commands());
@@ -48,7 +64,10 @@ export async function openEngine(kind: Kind, name: string, bytes: Uint8Array, ex
 			} else { doc.execute(id, JSON.stringify(args)); }
 			return state();
 		},
-		export: async () => doc.export(),
+		export: async () => {
+			const bytes = doc.export();
+			return kind === 'word' && doc.agent_metadata && !password ? writeWordIdentities(bytes, JSON.parse(doc.agent_metadata())) : bytes;
+		},
 		render: (page, scale) => ({ pixels: doc.render(page, scale), width: doc.width, height: doc.height }),
 		dispose: () => doc.free()
 	};

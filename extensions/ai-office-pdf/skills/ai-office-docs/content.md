@@ -1,0 +1,29 @@
+# Content operations
+
+Read results contain `uri`, `version`, and paginated blocks with `id`, `kind`, `parentId`, `style`, a text slice, `textLength`, `textOffset`, `nextTextOffset`, and child count. `nextOffset` continues the block list. Selection reads return `content`, `selection`, and bounded `selectedText`. A selection may be backwards or span multiple blocks; never assume its start/end describe one paragraph.
+
+## Create
+
+Use `operation: insert`, an existing paragraph/table `id`, `position: before|after`, and a `blocks` array. New IDs are assigned by the application. Existing IDs survive insertion. To insert inside a cell, target one of its paragraphs.
+
+- Paragraph: `{kind:"paragraph", text:"…", style:"Normal"}`.
+- Heading: `{kind:"heading", text:"…", style:"Heading1"}` (Heading1–Heading3 are standard choices).
+- Table: `{kind:"table", rows:[["Phase","Duration"],["Planning","1 week"]]}`.
+
+Use separate blocks for paragraphs, not newline-separated text. Insert at most 50 blocks per call; tables allow 1–20 rows and 1–10 columns with equal cell counts. Table text can be edited afterward by reading its row, cell, and paragraph children. Use paragraph formatting commands afterward to make list items. Unsupported styles must not be guessed.
+
+## Read
+
+Default reads return small snippets. Use `query` for text search or `parentId:"body"` for top-level content. Use `id` for an exact block and follow `nextTextOffset` for the rest. To inspect a table, read its children, then a row's cells, then a cell's paragraphs. Search results are individual text blocks, so a paragraph inside a table retains its parent cell ID. Secondary stories have parents like `part-…`; do not mix body text with headers, footers or comments.
+
+## Update
+
+Use `operation: update`, a paragraph/heading/list-item ID, and `text`. Without offsets this replaces the paragraph's text. Supply `start` and `end` for a smaller replacement. Offsets count Unicode code points, not UTF-16 code units or bytes; start is inclusive and end exclusive. An empty range inserts text. An empty replacement deletes that range. Preserve inline objects and formatting by targeting only the intended text range; whole-paragraph replacement also replaces its inline contents.
+
+Use `operation: command` for formatting, images, links or comments. Fetch the exact schema from help, then provide `command` and `params`. Formatting/review commands target the block's paragraph range; insert/text commands run at the end of that range. Current commands cannot target an arbitrary subset of cells as one noncontiguous selection.
+
+## Delete
+
+Use `operation: delete` for a paragraph or complete table. Deleting a table also deletes its descendants. Read first and verify that this matches the user's intent. The engine retains an empty paragraph when a container needs one. Row and cell IDs support navigation and targeting; structural row/cell deletion is not currently exposed.
+
+Edits require the latest `version`. After each edit, use the returned version or reread. For long documents, write coherent sections in separate calls and check cancellation between calls. There is no multi-call transaction or document-aware Keep/Undo review yet; each call is independently undoable through normal editor Undo.

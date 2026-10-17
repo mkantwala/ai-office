@@ -32,6 +32,20 @@ let pointerFrame = 0;
 let lastPointer: { page: number; x: number; y: number } | undefined;
 let initialized = false;
 let disposeToolbar: (() => void) | undefined;
+let agentRects: NonNullable<State['rects']> = [];
+const agentStatus = document.createElement('span');
+agentStatus.className = 'agent-status'; agentStatus.setAttribute('role', 'status'); agentStatus.setAttribute('aria-live', 'polite');
+el('info').append(agentStatus);
+function agentOverlay() {
+	pages.querySelectorAll('.agent-shimmer').forEach(node => node.remove());
+	for (const rect of agentRects) {
+		if (!pages.children[rect.page] || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)) { continue; }
+		const node = document.createElement('div'); node.className = 'agent-shimmer'; node.setAttribute('aria-hidden', 'true');
+		place(node, rect.page, rect.x, rect.y, rect.width, rect.height);
+	}
+	agentStatus.textContent = agentRects.length ? 'Agent is working on this content' : '';
+	pages.setAttribute('aria-busy', String(agentRects.length > 0));
+}
 let wordText = '';
 let wordTextTimer: ReturnType<typeof setTimeout> | undefined;
 let wordTypingUntil = 0;
@@ -208,13 +222,14 @@ function renderNext() {
 	// after the burst. Layout and saved document quality are always unchanged.
 	send('render', { request, page, scale: draft ? Math.min(scale, 1) : scale, ...(kind === 'word' && canvas && canvas.width > 1 ? { base: Number(canvas.dataset.frame) } : {}) });
 }
+function place(node: HTMLElement, page: number, x: number, y: number, w: number, h: number) {
+	const element = pages.children[page] as HTMLElement; if (!element) { return; }
+	node.style.left = x / dimensions[page][0] * 100 + '%'; node.style.top = y / dimensions[page][1] * 100 + '%';
+	node.style.width = w ? w / dimensions[page][0] * 100 + '%' : '2px'; node.style.height = h / dimensions[page][1] * 100 + '%'; element.append(node);
+}
 function overlay() {
 	pages.querySelectorAll('.selection,.caret,.block').forEach(node => node.remove());
-	const place = (node: HTMLElement, page: number, x: number, y: number, w: number, h: number) => {
-		const element = pages.children[page] as HTMLElement; if (!element) { return; }
-		node.style.left = x / dimensions[page][0] * 100 + '%'; node.style.top = y / dimensions[page][1] * 100 + '%';
-		node.style.width = w ? w / dimensions[page][0] * 100 + '%' : '2px'; node.style.height = h / dimensions[page][1] * 100 + '%'; element.append(node);
-	};
+
 	if (kind === 'word') {
 		for (const r of state.rects || []) { const node = document.createElement('div'); node.className = 'selection'; place(node, r.page, r.x, r.y, r.width, r.height); }
 		if (state.caret && !(state.rects?.length)) {
@@ -264,6 +279,7 @@ document.addEventListener('keydown', event => {
 });
 window.addEventListener('message', event => {
 	if (event.origin !== location.origin) { return; } const data = event.data;
+	if (data.type === 'agentActivity') { agentRects = Array.isArray(data.rects) ? data.rects : []; agentOverlay(); return; }
 	if (data.type === 'error') { message(data.error); renderBusy = false; return; }
 	if (data.type === 'saved') { el('hint').textContent = 'Saved'; return; }
 	if (data.type === 'state') {
@@ -283,7 +299,7 @@ window.addEventListener('message', event => {
 		(el('undo') as HTMLButtonElement).disabled = !state.undo; (el('redo') as HTMLButtonElement).disabled = !state.redo;
 		if (repaginated || !pages.children.length) { closeText(); makePages(); }
 		if (changed) { rendered.clear(); renderNext(); }
-		overlay();
+		overlay(); agentOverlay();
 	} else if (data.type === 'rendered') {
 		renderBusy = false;
 		const request = pendingRender.get(data.request); pendingRender.delete(data.request);
@@ -313,5 +329,5 @@ window.addEventListener('message', event => {
 	}
 });
 let resizeTimer: ReturnType<typeof setTimeout>;
-window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { rendered.clear(); renderNext(); overlay(); }, 200); });
+window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { rendered.clear(); renderNext(); overlay(); agentOverlay(); }, 200); });
 send('ready');

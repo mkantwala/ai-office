@@ -16,3 +16,19 @@ node extensions/ai-office-pdf/build.mts --word
 ```
 
 Requires sibling pdfcraft and wordcraft checkouts, Rust wasm32-unknown-unknown and wasm-bindgen 0.2.129 at `.build/pdf-tools/bin` (or WASM_BINDGEN). The shared worker and CLI also require the dependencies installed in `extensions/ai-office-slides`. PDFCRAFT_SOURCE, WORDCRAFT_SOURCE and CARGO_TARGET_DIR override source/target paths. `--ui-only` rebuilds TypeScript; `--package-only` packages existing Rust builds. Notices accompany generated engines. Opening a document does not save it.
+
+## Word agent
+
+The existing chat panel uses **AI Office** and one Cloudflare Workers AI model, `@cf/zai-org/glm-4.7-flash`. No GitHub/Copilot login is needed. Run **AI Office: Configure Cloudflare** to store your account ID and Workers AI token in VS Code SecretStorage, or set `CF_ACCOUNT_ID` and `CF_API_TOKEN` in the environment before launching the app. Stored credentials take precedence. Configuration, activation and model discovery never send a test request; inference starts only when you send a chat message. Credentials are never workspace settings, model input, browser/webview content or tracked files. The remove-credentials command clears SecretStorage; unset environment variables separately.
+
+GLM-4.7-Flash supports tool calling. [Cloudflare's published pricing](https://developers.cloudflare.com/workers-ai/models/glm-4.7-flash/) is $0.0605/M input tokens and $0.40/M output tokens as checked October 17, 2026. Thinking is disabled, output is capped at 4,096 tokens per request, and a user turn is capped at 16 model rounds. No automatic retries or model fallback occur. Conversation input is bounded to six prior text turns plus relevant tool results, with a 120,000-byte request budget. Stop cancels pending inference and prevents subsequent edits; already completed edits remain undoable.
+
+Open a DOCX and ask the agent to write or edit it. Four structured tools operate on the live editor: `office_document_read`, `office_document_edit`, `office_document_help`, and `office_document_activity`. Paragraphs (including headings/list items), tables, rows and cells have internal IDs. Inserts return the new root IDs; reads expose children and paged text. Updates use Unicode code point ranges. Each edit requires a fresh document version and creates one ordinary Undo step. Changes use normal Save/Auto Save and backup handling. A shimmer marks the target while the agent works and clears after edits, cancellation or expiry.
+
+The [internal document skill](skills/ai-office-docs/SKILL.md) is loaded automatically by this participant. Its short root describes the workflow; detailed CRUD, command and identity guides are loaded through `office_document_help` only as needed. Exact engine command schemas are discovered on demand. Other compatible agents can use the registered language-model tools and contributed skill.
+
+IDs survive normal save/reopen and Undo/Redo via private DOCX metadata. External package changes invalidate that mapping conservatively. Encrypted files currently retain IDs only within the open session. Inline images and links use the containing paragraph/range; they do not yet have standalone block IDs. Selective Keep/Undo review, semantic document diffs, arbitrary file creation and unsupported table border/row/column operations are not implemented by these tools.
+
+Run `node extensions/ai-office-common/test.mts --word` from the repository root for the Word/provider/Cloudflare checks without requiring the PDF engine bundle.
+
+Validation: synthetic DOCX integration tests cover CRUD, identity persistence, atomic rollback, stale requests and Unicode ranges; provider tests cover cancellation, workspace trust and undo; browser tests cover shimmer geometry and reduced motion. Cloudflare transport and tool-loop tests inject local fake responses and never use real credentials or the network.

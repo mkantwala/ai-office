@@ -69,6 +69,77 @@ test('Word: native editing, toolbar operations, undo, export and reopen', async 
 	} finally { engine.dispose(); }
 });
 
+test('Word: internal IDs, atomic CRUD, Unicode ranges, revision guards and persistence', async () => {
+	const engine = await openEngine('word', 'Agent.docx', docx, root);
+	type Node = { id: string; kind: string; text: string; parentId: string; nextTextOffset?: number };
+	try {
+		assert.ok(engine.agent, 'Rebuild the Word WASM engine before running agent tests');
+		const guide = await readFile(resolve(root, 'ai-office-pdf/skills/ai-office-docs/commands.md'), 'utf8');
+		for (const command of engine.commands()) { assert.ok(guide.includes('`' + command.id + '`'), `Skill lacks coverage for ${command.id}`); }
+		const skill = await readFile(resolve(root, 'ai-office-pdf/skills/ai-office-docs/SKILL.md'), 'utf8');
+		assert.ok(skill.split(/\s+/).length < 500, 'Keep the always-loaded skill concise');
+		const read = (args: Record<string, unknown> = {}) => engine.agent!.read(args) as { blocks: Node[]; nextOffset?: number };
+		const edit = (args: Record<string, unknown>) => engine.agent!.edit({ revision: engine.state().revision, ...args });
+		const original = read().blocks;
+		assert.equal(original.length, 2);
+		assert.notEqual(original[0].id, original[1].id);
+		const id = original[0].id;
+		const inserted = await edit({ operation: 'insert', id, position: 'before', blocks: [
+			{ kind: 'heading', text: 'Agent proposal', style: 'Heading1' },
+			{ kind: 'paragraph', text: original[0].text },
+			{ kind: 'table', rows: [['Phase', 'Duration'], ['Planning', '1 week']] }
+		] });
+		assert.equal(inserted.agentCreatedBlocks?.length, 3, 'Return only created root IDs for follow-up edits');
+		assert.equal(read({ id }).blocks[0].text, original[0].text, 'Insertion must not retarget existing IDs');
+		const all = read().blocks;
+		assert.equal(new Set(all.map(block => block.id)).size, all.length);
+		assert.ok(all.some(block => block.kind === 'heading'));
+		assert.ok(all.some(block => block.kind === 'cell'));
+		const table = all.find(block => block.kind === 'table')!;
+		assert.ok(engine.agent.rects(table.id)!.length > 0);
+		await engine.execute('edit.undo', {});
+		assert.deepEqual(read().blocks.map(block => block.id), original.map(block => block.id), 'A whole multi-block insert is one undo step');
+		await engine.execute('edit.redo', {});
+		assert.deepEqual(read().blocks.map(block => block.id), all.map(block => block.id), 'Redo restores the same new identities');
+		await edit({ operation: 'update', id, text: 'A😀 café' });
+		await edit({ operation: 'update', id, start: 1, end: 2, text: '🌍' });
+		assert.equal(read({ id }).blocks[0].text, 'A🌍 café');
+		const chunk = read({ id, textLimit: 2 }).blocks[0];
+		assert.equal(chunk.text, 'A🌍');
+		assert.equal(chunk.nextTextOffset, 2);
+		const revision = engine.state().revision;
+		await assert.rejects(engine.agent.edit({ operation: 'delete', id, revision: revision - 1 }), /Document changed/);
+		await assert.rejects(edit({ operation: 'insert', id, blocks: [{ kind: 'paragraph', text: 'Valid' }, { kind: 'unknown', text: 'Invalid' }] }), /Supported new blocks/);
+		await assert.rejects(edit({ operation: 'update', id, start: -1, end: 1, text: 'Invalid' }), /index|offset|range/i);
+		await assert.rejects(edit({ operation: 'update', id, start: 4294967296, end: 4294967297, text: 'Invalid' }), /index|offset|range/i);
+		assert.equal(engine.state().revision, revision, 'Failures leave revision and content unchanged');
+		assert.equal(read({ id }).blocks[0].text, 'A🌍 café');
+		await edit({ operation: 'command', id, command: 'format.bold', params: { value: true } });
+		assert.equal(read({ id }).blocks[0].id, id);
+		const comment = await edit({ operation: 'command', id, command: 'review.newComment', params: { text: 'Check this paragraph' } });
+		assert.ok(comment.agentCommandResult && typeof comment.agentCommandResult === 'object' && Object.hasOwn(comment.agentCommandResult, 'id'), 'Targeted commands return follow-up handles');
+		await engine.execute('edit.undo', {});
+		const child = read({ query: 'Planning' }).blocks[0];
+		await edit({ operation: 'update', id: child.id, text: 'Research' });
+		assert.equal(read({ id: child.id }).blocks[0].text, 'Research');
+		const beforeDelete = read().blocks;
+		await edit({ operation: 'delete', id: table.id });
+		assert.equal(read({ id: child.id }).blocks.length, 0, 'Deleting a table removes its descendants');
+		await engine.execute('edit.undo', {});
+		assert.deepEqual(read().blocks, beforeDelete);
+		const bytes = await engine.export();
+		const reopened = await openEngine('word', 'Agent.docx', bytes, root);
+		try { assert.deepEqual(reopened.agent!.read({}), read(), 'IDs and content survive a saved DOCX round-trip'); } finally { reopened.dispose(); }
+		const files = unzipSync(bytes);
+		files['word/document.xml'] = strToU8(strFromU8(files['word/document.xml']).replace('Research', 'External edit'));
+		const external = await openEngine('word', 'Agent.docx', zipSync(files), root);
+		try {
+			const current = external.agent!.read({}) as { blocks: Node[] };
+			assert.ok(current.blocks.every(block => !beforeDelete.some(old => old.id === block.id)), 'External edits invalidate private ID mappings');
+		} finally { external.dispose(); }
+	} finally { engine.dispose(); }
+});
+
 test('Word visual styles and visible table borders survive save and reopen', async () => {
 	const engine = await openEngine('word', 'table.docx', docx, root);
 	try {
@@ -102,6 +173,11 @@ test('Word imports missing built-in styles without replacing custom styles', asy
 	files['word/_rels/document.xml.rels'] = strToU8('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="styles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>');
 	const engine = await openEngine('word', 'import.docx', zipSync(files), root);
 	try {
+		const target = (engine.agent!.read({ limit: 1 }) as { blocks: { id: string }[] }).blocks[0];
+		await engine.agent!.edit({ revision: engine.state().revision, operation: 'insert', id: target.id, blocks: [{ kind: 'heading', text: 'Agent imported heading', style: 'Heading2' }] });
+		assert.equal(engine.state().paragraphStyle, 'Heading2');
+		await engine.execute('edit.undo', {});
+		assert.doesNotMatch(strFromU8(unzipSync(await engine.export())['word/styles.xml']), /w:styleId="Heading2"/);
 		await engine.execute('para.style', { style: 'Title' });
 		assert.equal(engine.state().paragraphStyle, 'Title');
 		await engine.execute('edit.undo', {});

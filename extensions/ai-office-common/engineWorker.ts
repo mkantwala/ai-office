@@ -23,6 +23,15 @@ parentPort?.on('message', message => {
 			} else {
 				if (!engine) { throw new Error('Document is not open.'); }
 				switch (message.method) {
+					case 'agentRead':
+						if (!engine.agent) { throw new Error('Rebuild the Word engine to enable document tools.'); }
+						result = engine.agent.read(message.args); break;
+					case 'agentRects':
+						if (!engine.agent) { throw new Error('Document tools are unavailable.'); }
+						result = engine.agent.rects(message.blockId); break;
+					case 'agentEdit':
+						if (!engine.agent) { throw new Error('Document tools are unavailable.'); }
+						result = { state: await engine.agent.edit(message.args), pages: engine.pages() }; break;
 					case 'execute': result = { state: await engine.execute(message.command, message.args), pages: engine.pages() }; break;
 					case 'export': result = await engine.export(); break;
 					case 'render': {

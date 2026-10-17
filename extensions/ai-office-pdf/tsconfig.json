@@ -1,4 +1,9 @@
 {
 	"extends": "../ai-office-common/tsconfig.json",
-	"include": ["extension.ts", "../ai-office-common/*.ts", "../../src/vscode-dts/vscode.d.ts"]
+	"include": [
+		"extension.ts",
+		"../ai-office-common/*.ts",
+		"../../src/vscode-dts/vscode.d.ts",
+		"../../src/vscode-dts/vscode.proposed.defaultChatParticipant.d.ts"
+	]
 }
