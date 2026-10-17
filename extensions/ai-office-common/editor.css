@@ -210,6 +210,54 @@ dialog::backdrop{background:#0005}dialog label{display:block;margin-bottom:12px;
 .word-document #info { border: 0; padding: 8px 24px; justify-content: flex-end; }
 .word-document #filename { display: none; }
 .word-document #pages { padding-top: 16px; }
+.word-document .caret { scroll-margin: 80px 20px 24px; }
+
+.word-style-control { display: inline-flex; }
+.word-style-control > button::after { content: ''; width: 5px; height: 5px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(45deg); margin-left: auto; }
+.word-visual-menu {
+	position: fixed;
+	inset: auto;
+	margin: 0;
+	box-sizing: border-box;
+	width: 280px;
+	max-width: calc(100vw - 16px);
+	max-height: calc(100vh - 16px);
+	overflow: auto;
+	padding: 8px;
+	border: 1px solid var(--vscode-widget-border, #8885);
+	border-radius: 9px;
+	background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+	color: var(--vscode-editor-foreground);
+	box-shadow: 0 8px 24px var(--vscode-widget-shadow, #0003);
+}
+.word-visual-menu button { color: inherit; cursor: pointer; }
+.word-style-preview {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	width: 100%;
+	min-height: 58px;
+	padding: 12px 8px;
+	background: transparent;
+	border-radius: 4px;
+	text-align: left;
+	font-size: 15px;
+}
+.word-style-preview + .word-style-preview { border-top: 1px solid var(--vscode-widget-border, #8883); }
+.word-style-preview:hover, .word-style-preview:focus-visible { background: var(--vscode-list-hoverBackground, #8882); }
+.word-style-preview:focus-visible, .word-table-cell:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+.word-style-check { flex: 0 0 18px; visibility: hidden; font-size: 16px; }
+.word-style-preview[aria-checked=true] .word-style-check { visibility: visible; }
+.word-style-preview[data-style=Title] { font-size: 30px; font-weight: 650; }
+.word-style-preview[data-style=Subtitle] { font-size: 24px; font-style: italic; color: var(--vscode-descriptionForeground, #777); }
+.word-style-preview[data-style=Heading1] { font-size: 27px; font-weight: 700; }
+.word-style-preview[data-style=Heading2] { font-size: 22px; font-weight: 700; }
+.word-style-preview[data-style=Heading3] { font-size: 18px; font-weight: 650; }
+.word-menu-heading { padding: 4px 4px 12px; font-size: 13px; }
+.word-table-grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; padding: 4px; }
+.word-table-grid .word-table-cell { display: block; min-width: 0; padding: 0; aspect-ratio: 1; border: 1px solid var(--vscode-widget-border, #8885); border-radius: 1px; background: color-mix(in srgb, var(--vscode-editor-foreground) 4%, var(--vscode-editor-background)); }
+.word-table-grid .word-table-cell.selected { border-color: var(--vscode-focusBorder); background: color-mix(in srgb, var(--vscode-focusBorder) 25%, var(--vscode-editor-background)); }
+.word-table-size { padding: 10px 4px 4px; text-align: center; font-size: 14px; }
 
 @media (forced-colors: active) {
 	#toolbar.word-toolbar, .word-toolbar-overflow { border-color: ButtonText; }

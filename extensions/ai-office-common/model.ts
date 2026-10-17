@@ -26,8 +26,8 @@ export async function openEngine(kind: Kind, name: string, bytes: Uint8Array, ex
 	const module = await import(pathToFileURL(join(directory, project + '.js')).href);
 	await module.default({ module_or_path: await readFile(join(directory, project + '_bg.wasm')) });
 	const doc: WasmDocument = new module.OfficeDocument(name, bytes, password);
-	const state = (): State => {
-		const value = JSON.parse(doc.state());
+	const state = (serialized = doc.state()): State => {
+		const value = JSON.parse(serialized);
 		if (kind === 'pdf') { value.blocks = value.blocks.map((block: { paragraph: number; text: string; editor_text: string; rect: number[]; font: string; size: number }) => ({ id: block.paragraph, text: block.editor_text || block.text, rect: block.rect, font: block.font, size: block.size })); }
 		return value;
 	};
@@ -39,6 +39,7 @@ export async function openEngine(kind: Kind, name: string, bytes: Uint8Array, ex
 			return commands;
 		},
 		execute: async (id, args) => {
+			if (kind === 'word') { return state(doc.execute(id, JSON.stringify(args))); }
 			if (id === 'image.insert' && doc.image) {
 				if (typeof args.data !== 'string' || args.data.length > 24 * 1024 * 1024) { throw new Error('Image data is missing or too large.'); }
 				const page = Number(args.page);

@@ -10,6 +10,7 @@ const path = require('node:path');
 test('custom editor saves, backs up, undoes and rejects external conflicts without poisoning its queue', async () => {
 	const files = new Map([['/memo.docx', Buffer.from('original document bytes')]]);
 	const commands = new Map(); const edits = []; let provider;
+	let exports = 0;
 	const uri = value => ({ scheme: 'file', path: value, fsPath: value, toString: () => value });
 	const nativeFiles = {
 		writeFile: async (name, bytes, options) => { assert.equal(options.flag, 'wx'); assert.equal(files.has(name), false); files.set(name, bytes); },
@@ -18,16 +19,18 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 	};
 	const vscode = {
 		Uri: { parse: uri, joinPath: (base, ...parts) => uri(path.posix.resolve(base.path, ...parts)) },
-		EventEmitter: class { event = () => {}; fire(value) { edits.push(value); } dispose() {} },
-		window: { registerCustomEditorProvider: (_id, value) => { provider = value; return { dispose() {} }; } },
-		commands: { registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() {} }; } },
-		workspace: { fs: {
-			stat: async value => ({ size: files.get(value.path).length }),
-			readFile: async value => files.get(value.path),
-			writeFile: async (value, bytes) => files.set(value.path, bytes),
-			rename: async () => { throw new Error('workspace rename would dispose the open custom-document model'); },
-			delete: async value => files.delete(value.path)
-		} }
+		EventEmitter: class { event = () => { }; fire(value) { edits.push(value); } dispose() { } },
+		window: { registerCustomEditorProvider: (_id, value) => { provider = value; return { dispose() { } }; } },
+		commands: { registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() { } }; } },
+		workspace: {
+			fs: {
+				stat: async value => ({ size: files.get(value.path).length }),
+				readFile: async value => files.get(value.path),
+				writeFile: async (value, bytes) => files.set(value.path, bytes),
+				rename: async () => { throw new Error('workspace rename would dispose the open custom-document model'); },
+				delete: async value => files.delete(value.path)
+			}
+		}
 	};
 	class EngineClient {
 		text = ''; revision = 0; past = []; future = [];
@@ -40,10 +43,10 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 				else { this.past.push(this.text); this.future = []; this.text = args.args.text; }
 				this.revision++;
 			}
-			if (method === 'export') { return Buffer.from(this.text); }
+			if (method === 'export') { exports++; return Buffer.from(this.text); }
 			return { pages: [[612, 792]], state: { revision: this.revision }, commands: [] };
 		}
-		dispose() {}
+		dispose() { }
 	}
 	const originalLoad = Module._load;
 	try {
@@ -56,14 +59,18 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 	await execute('/memo.docx', 'text.insert', { text: 'first edit' });
 	await execute('/memo.docx', 'text.insert', { text: 'second edit' });
 	await edits.at(-1).undo();
+	assert.equal(exports, 0, 'Typing and undo must not ZIP the document before displaying changes');
 	await provider.saveCustomDocument(doc);
+	assert.equal(exports, 1);
 	assert.equal(Buffer.from(files.get('/memo.docx')).toString(), 'first edit');
 	await edits.at(-1).redo();
 	const backup = await provider.backupCustomDocument(doc, { destination: uri('/backup') });
 	assert.equal(Buffer.from(files.get('/backup')).toString(), 'second edit');
+	assert.equal(exports, 2, 'Recovery captures the latest engine state');
 	files.set('/memo.docx', Buffer.from('external agent changed it'));
 	await assert.rejects(provider.saveCustomDocument(doc), /changed on disk/);
 	await provider.saveCustomDocumentAs(doc, uri('/copy.docx'));
+	assert.equal(exports, 2, 'An unchanged snapshot is reused');
 	assert.equal(Buffer.from(files.get('/copy.docx')).toString(), 'second edit');
 	await provider.revertCustomDocument(doc);
 	assert.equal(Buffer.from(doc.latestBytes).toString(), 'external agent changed it');

@@ -1,5 +1,9 @@
 # AI Office editing commands
 
+Word uses a visual paragraph-style menu and a 10-column by 8-row table picker. Table insertion sends `insert.table` with `rows`, `cols` and `borders: true`, ensuring visible borders even when an imported document lacks a usable TableGrid style. Title, Subtitle and Heading previews dispatch the same `para.style` command used by agents.
+
+Word input batches adjacent text for up to 16 ms, flushes before subsequent commands, and displays completed render frames during continuous typing. DOCX serialization occurs on save or recovery backup instead of on each keystroke. PDF and PowerPoint retain their existing toolbars and input handling.
+
 The toolbar, extension-host workers and CLI share these engine adapters. No network server is started. Word calls Wordcraft's command registry; PDF calls Pdfcraft's automation table; PowerPoint calls office-kit through the shared adapter. File/image pickers collect parameters for headless document commands.
 
 Word's compact toolbar groups history/save, paragraph style, font, emphasis, paragraph layout and insertion controls in a single row. More Formatting always contains table insertion and receives additional groups when the editor narrows. Controls keep their native keyboard behavior and document actions when moved. Escape closes the popover and returns focus to More Formatting. PDF and PowerPoint retain their existing toolbar layouts.
@@ -71,4 +75,6 @@ Build both Rust engines and both extensions before running. Editing round-trip a
 node extensions/ai-office-common/test.mts
 ```
 
-The tests create a small demo folder at `.build/office-edit-demo`. User documents are never used as test fixtures.
+The automated tests create synthetic documents in `.build/office-edit-demo`.
+
+Word rendering sends changed pixel rows when the webview still has the matching previous frame. Typing uses a temporary raster capped at one pixel per document point; full display resolution returns after a 200 ms pause. This affects only the preview, not layout or saved files. Imported DOCX files can apply missing built-in paragraph styles through the same `para.style` command used by the CLI; existing style definitions are preserved.

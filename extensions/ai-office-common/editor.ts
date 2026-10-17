@@ -24,7 +24,7 @@ let pendingText = false;
 let renderId = 0;
 const visible = new Set<number>();
 const rendered = new Set<number>();
-const pendingRender = new Map<number, { revision: number; page: number }>();
+const pendingRender = new Map<number, { revision: number; page: number; draft: boolean }>();
 let renderBusy = false;
 let composing = false;
 let drag = false;
@@ -32,9 +32,36 @@ let pointerFrame = 0;
 let lastPointer: { page: number; x: number; y: number } | undefined;
 let initialized = false;
 let disposeToolbar: (() => void) | undefined;
-window.addEventListener('pagehide', () => disposeToolbar?.(), { once: true });
-function send(type: string, data: Record<string, unknown> = {}) { api.postMessage({ type, ...data }); }
-function execute(command: string, args: Record<string, unknown> = {}) { el('error').hidden = true; send('execute', { command, args }); }
+let wordText = '';
+let wordTextTimer: ReturnType<typeof setTimeout> | undefined;
+let wordTypingUntil = 0;
+let wordRefineTimer: ReturnType<typeof setTimeout> | undefined;
+
+function wordTyping() {
+	wordTypingUntil = performance.now() + 200;
+	clearTimeout(wordRefineTimer);
+	wordRefineTimer = setTimeout(() => { rendered.clear(); renderNext(); }, 210);
+}
+let revealWordCaret = false;
+function flushWordInput() {
+	clearTimeout(wordTextTimer); wordTextTimer = undefined;
+	if (!wordText) { return; }
+	const text = wordText; wordText = '';
+	api.postMessage({ type: 'execute', command: 'text.insert', args: { text } });
+}
+function typeWordText(text: string) {
+	wordTyping();
+	wordText += text;
+	if (!wordTextTimer) { wordTextTimer = setTimeout(flushWordInput, 0); }
+}
+window.addEventListener('pagehide', () => { flushWordInput(); clearTimeout(wordRefineTimer); disposeToolbar?.(); }, { once: true });
+window.addEventListener('blur', flushWordInput);
+function send(type: string, data: Record<string, unknown> = {}) { if (type !== 'render' && type !== 'ready') { flushWordInput(); } api.postMessage({ type, ...data }); }
+function execute(command: string, args: Record<string, unknown> = {}) {
+	if (kind === 'word' && command.startsWith('text.')) { wordTyping(); }
+	el('error').hidden = true;
+	send('execute', { command, args });
+}
 function message(error: unknown) { el('error').hidden = false; el('error').textContent = String(error); }
 function selectionArgs() {
 	return kind === 'pdf' ? { page: currentPage + 1, paragraph: selected?.id } :
@@ -76,7 +103,8 @@ function buildToolbar() {
 	disposeToolbar?.();
 	toolbar.replaceChildren();
 	button('Text', 'Insert text', () => { if (kind === 'word') { keyboard.focus(); return; } void (async () => { const text = await ask('New text'); if (!text) { return; } execute(kind === 'pdf' ? 'page_add_text' : 'insert.text', { page: currentPage + 1, text, ...(kind === 'pdf' ? { at: [50, 50], width: 300 } : {}) }); })(); });
-	const style = menu('Normal text', [['Normal', 'Normal text'], ['Heading1', 'Heading 1'], ['Heading2', 'Heading 2'], ['Heading3', 'Heading 3']], style => execute('para.style', { style }), kind !== 'word');
+	const style = menu('Normal text', [['Normal', 'Normal text'], ...(kind === 'word' ? [['Title', 'Title'], ['Subtitle', 'Subtitle']] as [string, string][] : []), ['Heading1', 'Heading 1'], ['Heading2', 'Heading 2'], ['Heading3', 'Heading 3']], style => execute('para.style', { style }), kind !== 'word');
+	style.id = 'paragraph-style';
 	const font = menu('Font', (kind === 'pdf' ? [['helvetica', 'Sans'], ['times', 'Serif'], ['courier', 'Mono']] : [['Arial', 'Arial'], ['Times New Roman', 'Times New Roman'], ['Courier New', 'Courier New']]) as [string, string][], font => format('font', font));
 	const size = menu('Size', ['10', '11', '12', '14', '16', '18', '24', '32', '48'].map(x => [x, x]), size => format('size', Number(size)));
 	const emphasis: HTMLButtonElement[] = [];
@@ -100,11 +128,12 @@ function buildToolbar() {
 	});
 	const divider = document.createElement('span'); divider.className = 'divider'; toolbar.append(divider);
 	const table = button('Table', kind === 'pdf' ? 'PDF table insertion is not available' : 'Insert table', () => {
+		if (kind === 'word') { return; }
 		void (async () => {
 			const answer = await ask('Table size: rows x columns', '3 x 3'); if (!answer) { return; }
 			const match = /^(\d+)\s*[xX×]\s*(\d+)$/.exec(answer);
 			if (!match || Number(match[1]) > 20 || Number(match[2]) > 10 || Number(match[1]) < 1 || Number(match[2]) < 1) { message('Use 1-20 rows and 1-10 columns.'); return; }
-			flushText(); execute('insert.table', { rows: Number(match[1]), cols: Number(match[2]), ...(kind === 'word' ? {} : { page: currentPage + 1 }) });
+			flushText(); execute('insert.table', { rows: Number(match[1]), cols: Number(match[2]), page: currentPage + 1 });
 		})();
 	}, kind === 'pdf');
 	const image = button('Image', 'Insert image', () => { flushText(); send('image', { page: currentPage + 1 }); });
@@ -127,7 +156,8 @@ function buildToolbar() {
 	const redo = button('Redo', 'Redo (Ctrl+Shift+Z)', () => { closeText(); send('redo'); }); redo.id = 'redo';
 	const save = button('Save', 'Save (Ctrl+S)', () => { flushText(); send('save'); });
 	if (kind === 'word') {
-		disposeToolbar = arrangeWordToolbar(toolbar, { undo, redo, save, style, font, size, emphasis, align, list, spacing, table, image, link, comment });
+		disposeToolbar = arrangeWordToolbar(toolbar, { undo, redo, save, style, font, size, emphasis, align, list, spacing, table, image, link, comment },
+			(rows, cols) => execute('insert.table', { rows, cols, borders: true }), () => keyboard.focus({ preventScroll: true }));
 	}
 }
 function point(event: PointerEvent, page: HTMLElement) {
@@ -167,10 +197,16 @@ const observer = new IntersectionObserver(entries => {
 }, { rootMargin: '450px' });
 function renderNext() {
 	if (renderBusy) { return; }
-	const page = [...visible].find(index => !rendered.has(index)); if (page === undefined) { return; }
+	const caretPage = kind === 'word' ? state.caret?.page : undefined;
+	const page = caretPage !== undefined && visible.has(caretPage) && !rendered.has(caretPage) ? caretPage : [...visible].find(index => !rendered.has(index)); if (page === undefined) { return; }
 	const node = pages.children[page] as HTMLElement;
-	const request = ++renderId; renderBusy = true; pendingRender.set(request, { revision: state.revision, page });
-	send('render', { request, page, scale: node.clientWidth * Math.min(devicePixelRatio, 2) / dimensions[page][0] });
+	const draft = kind === 'word' && performance.now() < wordTypingUntil;
+	const request = ++renderId; renderBusy = true; pendingRender.set(request, { revision: state.revision, page, draft });
+	const canvas = node.querySelector('canvas');
+	const scale = node.clientWidth * Math.min(devicePixelRatio, 2) / dimensions[page][0];
+	// Use a smaller raster while keys are arriving; restore full display resolution
+	// after the burst. Layout and saved document quality are always unchanged.
+	send('render', { request, page, scale: draft ? Math.min(scale, 1) : scale, ...(kind === 'word' && canvas && canvas.width > 1 ? { base: Number(canvas.dataset.frame) } : {}) });
 }
 function overlay() {
 	pages.querySelectorAll('.selection,.caret,.block').forEach(node => node.remove());
@@ -183,6 +219,7 @@ function overlay() {
 		for (const r of state.rects || []) { const node = document.createElement('div'); node.className = 'selection'; place(node, r.page, r.x, r.y, r.width, r.height); }
 		if (state.caret && !(state.rects?.length)) {
 			const c = state.caret; const node = document.createElement('div'); node.className = 'caret'; place(node, c.page, c.x, c.y, 0, c.height);
+			if (revealWordCaret) { node.scrollIntoView({ block: 'nearest', inline: 'nearest' }); revealWordCaret = false; }
 			const box = node.getBoundingClientRect(); keyboard.style.left = box.x + 'px'; keyboard.style.top = box.y + 'px';
 		}
 	} else {
@@ -202,10 +239,10 @@ function overlay() {
 	}
 }
 keyboard.addEventListener('compositionstart', () => { composing = true; });
-keyboard.addEventListener('compositionend', event => { composing = false; if (event.data) { execute('text.insert', { text: event.data }); } keyboard.value = ''; });
+keyboard.addEventListener('compositionend', event => { composing = false; if (event.data) { typeWordText(event.data); } keyboard.value = ''; });
 keyboard.addEventListener('input', event => {
 	if (composing || (event as InputEvent).inputType === 'insertCompositionText') { return; }
-	if (keyboard.value) { execute('text.insert', { text: keyboard.value }); } keyboard.value = '';
+	if (keyboard.value) { typeWordText(keyboard.value); } keyboard.value = '';
 });
 keyboard.addEventListener('paste', event => { event.preventDefault(); const text = event.clipboardData?.getData('text/plain'); if (text) { execute('text.insert', { text }); } });
 document.addEventListener('copy', event => { if (document.activeElement === keyboard && state.selectedText) { event.preventDefault(); event.clipboardData?.setData('text/plain', state.selectedText); } });
@@ -233,10 +270,14 @@ window.addEventListener('message', event => {
 		kind = data.kind; const changed = state.revision !== data.state.revision;
 		const repaginated = JSON.stringify(dimensions) !== JSON.stringify(data.pages);
 		state = data.state; dimensions = data.pages;
+		revealWordCaret = kind === 'word' && (data.command?.startsWith('text.') || data.command === 'insert.table');
 		comments.replaceChildren(); comments.hidden = !state.comments?.length;
 		const summary = document.createElement('summary'); summary.textContent = `Comments (${state.comments?.length || 0})`; comments.append(summary);
 		for (const comment of state.comments || []) { const p = document.createElement('p'); p.textContent = (comment.author || 'Comment') + ': ' + comment.text; comments.append(p); }
 		if (!initialized) { initialized = true; buildToolbar(); }
+		if (kind === 'word') {
+			const style = el('paragraph-style'); style.dataset.currentStyle = state.paragraphStyle || ''; style.dispatchEvent(new Event('formatstate'));
+		}
 		el('filename').textContent = data.name;
 		el('hint').textContent = kind === 'word' ? 'Click to type · Ctrl+S to save' : 'Click text to edit · Ctrl+Enter to finish · Ctrl+S to save';
 		(el('undo') as HTMLButtonElement).disabled = !state.undo; (el('redo') as HTMLButtonElement).disabled = !state.redo;
@@ -246,7 +287,7 @@ window.addEventListener('message', event => {
 	} else if (data.type === 'rendered') {
 		renderBusy = false;
 		const request = pendingRender.get(data.request); pendingRender.delete(data.request);
-		if (!request || request.revision !== state.revision || !pages.children[data.page]) { renderNext(); return; }
+		if (!request || (kind !== 'word' && request.revision !== state.revision) || !pages.children[data.page]) { renderNext(); return; }
 		const node = pages.children[data.page]; const result = data.result;
 		if (result.svg) {
 			const clean = DOMPurify.sanitize(result.svg, { USE_PROFILES: { svg: true, svgFilters: true }, FORBID_TAGS: ['a', 'script', 'foreignObject', 'animate', 'set'] });
@@ -256,10 +297,19 @@ window.addEventListener('message', event => {
 			}
 			(node.querySelector('img') as HTMLImageElement).src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(parsed));
 		} else {
-			const canvas = node.querySelector('canvas')!; canvas.width = result.width; canvas.height = result.height;
-			canvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(result.pixels), result.width, result.height), 0, 0);
+			const canvas = node.querySelector('canvas')!;
+			const height = result.canvasHeight ?? result.height;
+			if (canvas.width !== result.width || canvas.height !== height) { canvas.width = result.width; canvas.height = height; }
+			if (result.height > 0) {
+				const pixels = result.pixels as Uint8Array<ArrayBuffer>;
+				canvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(pixels.buffer, pixels.byteOffset, pixels.byteLength), result.width, result.height), 0, result.y ?? 0);
+			}
+			canvas.dataset.frame = String(data.request);
+			canvas.dataset.revision = String(request.revision);
 		}
-		rendered.add(data.page); renderNext();
+		// Show completed Word frames during continuous typing instead of discarding
+		// every frame until the user stops. A newer revision still requests a refresh.
+		if (request.revision === state.revision && (!request.draft || performance.now() < wordTypingUntil)) { rendered.add(data.page); } renderNext();
 	}
 });
 let resizeTimer: ReturnType<typeof setTimeout>;

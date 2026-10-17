@@ -3,6 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { wordMenus } from './wordMenus.js';
+
 interface WordToolbarControls {
 	undo: HTMLButtonElement;
 	redo: HTMLButtonElement;
@@ -67,7 +69,7 @@ function iconSelect(select: HTMLSelectElement, name: 'align' | 'list' | 'spacing
 }
 
 /** Reorganize the existing controls without duplicating document commands or selection state. */
-export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarControls): () => void {
+export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarControls, insertTable: (rows: number, cols: number) => void, focusDocument: () => void): () => void {
 	const events = new AbortController();
 	const listen = { signal: events.signal };
 	toolbar.classList.add('word-toolbar');
@@ -103,7 +105,8 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 		controls.emphasis[index].classList.add('word-emphasis-button');
 	}
 	const history = group('Document', [iconButton(controls.undo, 'undo'), iconButton(controls.redo, 'redo'), iconButton(controls.save, 'save')]);
-	const style = group('Styles', [controls.style]);
+	const menus = wordMenus(controls.style, controls.table, insertTable, focusDocument);
+	const style = group('Styles', [menus.style]);
 	const font = group('Font', [controls.font, controls.size]);
 	const emphasis = group('Text Formatting', controls.emphasis);
 	const paragraph = group('Paragraph', [iconSelect(controls.align, 'align'), iconSelect(controls.spacing, 'spacing'), iconSelect(controls.list, 'list')]);
@@ -147,7 +150,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	}, listen);
 	// Hide before a command opens a modal prompt, retaining the engine selection.
 	overflow.addEventListener('click', event => {
-		if (event.target instanceof Element && event.target.closest('button')) { overflow.hidePopover(); }
+		if (event.target instanceof Element && event.target.closest('button') && !event.target.closest('[data-word-menu]')) { overflow.hidePopover(); }
 	}, { ...listen, capture: true });
 	overflow.addEventListener('change', () => overflow.hidePopover(), listen);
 	overflow.addEventListener('keydown', event => {
@@ -180,7 +183,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	observer.observe(row);
 	layout();
 	return () => {
-		observer.disconnect(); events.abort(); overflow.remove();
+		observer.disconnect(); events.abort(); menus.dispose(); overflow.remove();
 		toolbar.classList.remove('word-toolbar'); document.body.classList.remove('word-document');
 	};
 }

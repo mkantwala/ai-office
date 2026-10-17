@@ -81,11 +81,11 @@ suite('Office toolbar in a browser', () => {
 			await page.waitForFunction(() => !document.querySelector('#word-toolbar-overflow')!.matches(':popover-open'));
 			await more.focus();
 			await page.keyboard.press('Enter');
-			await page.getByRole('combobox', { name: 'Paragraph Style' }).selectOption('Heading1');
+			await page.getByRole('button', { name: 'Paragraph Style', exact: true }).click();
+			await page.getByRole('menuitemradio', { name: 'Heading 1' }).click();
 			await more.click();
 			await page.getByRole('button', { name: 'Insert table', exact: true }).click();
-			await page.getByLabel('Table size: rows x columns').fill('2 x 3');
-			await page.getByRole('button', { name: 'Apply', exact: true }).click();
+			await page.getByRole('button', { name: '3 columns, 2 rows', exact: true }).click();
 			await page.getByRole('button', { name: 'Bold', exact: true }).click();
 			await page.getByRole('button', { name: 'Save (Ctrl+S)', exact: true }).click();
 			await page.getByRole('button', { name: 'Undo (Ctrl+Z)', exact: true }).click();
@@ -93,7 +93,7 @@ suite('Office toolbar in a browser', () => {
 			assert.deepStrictEqual(messages.filter((message: { type: string }) => message.type !== 'ready'), [
 				{ type: 'execute', command: 'format.font', args: { name: 'Arial' } },
 				{ type: 'execute', command: 'para.style', args: { style: 'Heading1' } },
-				{ type: 'execute', command: 'insert.table', args: { rows: 2, cols: 3 } },
+				{ type: 'execute', command: 'insert.table', args: { rows: 2, cols: 3, borders: true } },
 				{ type: 'execute', command: 'format.bold', args: {} },
 				{ type: 'save' }, { type: 'undo' },
 			]);
@@ -102,6 +102,45 @@ suite('Office toolbar in a browser', () => {
 			await page.keyboard.press('Escape');
 			assert.equal(await more.evaluate(element => element === document.activeElement), true);
 			assert.equal(await page.getByRole('button', { name: 'Redo (Ctrl+Shift+Z)', exact: true }).isDisabled(), true);
+		} finally { await page.close(); }
+	});
+	test('Word shows style previews and a table grid with hover and keyboard selection', async () => {
+		const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+		try {
+			await page.goto(address);
+			await page.getByRole('button', { name: 'Paragraph Style', exact: true }).click();
+			const normal = page.getByRole('menuitemradio', { name: 'Normal text' });
+			const heading = page.getByRole('menuitemradio', { name: 'Heading 1' });
+			assert.ok(await heading.evaluate(el => parseFloat(getComputedStyle(el).fontSize)) > await normal.evaluate(el => parseFloat(getComputedStyle(el).fontSize)));
+			await page.screenshot({ path: path.join(root, '.build/word-style-picker.png') });
+			await page.getByRole('menuitemradio', { name: 'Subtitle', exact: true }).click();
+			await page.getByRole('button', { name: 'More Formatting' }).click();
+			await page.getByRole('button', { name: 'Insert table', exact: true }).click();
+			await page.getByRole('button', { name: '7 columns, 3 rows', exact: true }).hover();
+			assert.equal(await page.locator('.word-table-cell.selected').count(), 21);
+			assert.equal(await page.locator('.word-table-size').innerText(), '7 × 3');
+			await page.screenshot({ path: path.join(root, '.build/word-table-picker.png') });
+			await page.getByRole('button', { name: '1 columns, 1 rows', exact: true }).focus();
+			await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+			assert.deepStrictEqual(await page.evaluate(() => Reflect.get(window, 'officeMessages').at(-1)), { type: 'execute', command: 'insert.table', args: { rows: 2, cols: 2, borders: true } });
+			assert.equal(await page.locator('#dialog').evaluate(el => (el as HTMLDialogElement).open), false);
+			await page.screenshot({ path: path.join(root, '.build/word-menus-browser.png') });
+		} finally { await page.close(); }
+	});
+	test('Word batches text without reordering a following formatting command', async () => {
+		const page = await browser.newPage();
+		try {
+			await page.goto(address);
+			await page.getByRole('button', { name: 'Paragraph Style', exact: true }).waitFor();
+			await page.evaluate(() => {
+				const input = document.getElementById('keyboard') as HTMLTextAreaElement;
+				for (const value of ['a', 'b', 'c']) { input.value = value; input.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: value })); }
+				(document.querySelector('[aria-label="Bold"]') as HTMLButtonElement).click();
+			});
+			assert.deepStrictEqual(await page.evaluate(() => Reflect.get(window, 'officeMessages').slice(-2)), [
+				{ type: 'execute', command: 'text.insert', args: { text: 'abc' } },
+				{ type: 'execute', command: 'format.bold', args: {} }
+			]);
 		} finally { await page.close(); }
 	});
 	test('PDF and slides retain their existing controls', async () => {

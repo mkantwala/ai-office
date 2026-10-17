@@ -62,10 +62,10 @@ index 0000000..8f0a4fe
 +wasm-bindgen = "0.2"
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..2c86000
+index 0000000..5595831
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,151 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -143,7 +143,8 @@ index 0000000..2c86000
 +            .values()
 +            .map(|c| json!({"author":c.author,"text":self.session.doc.plain_text(wordcraft_doc::StoryRef::Part(c.part))}))
 +            .collect();
-+        serde_json::to_string(&json!({"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
++        let style = self.session.doc.para(sel.focus.story, &sel.focus.path).and_then(|p| p.props.style.as_deref()).unwrap_or("Normal");
++        serde_json::to_string(&json!({"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
 +    }
 +
 +    pub fn export(&self) -> Result<Vec<u8>, JsValue> {
@@ -216,11 +217,64 @@ index 0000000..2c86000
 +            | "edit.redo"
 +    )
 +}
+diff --git a/crates/engine/src/cmd/insert.rs b/crates/engine/src/cmd/insert.rs
+index 1bc36b0..83e77a6 100644
+--- a/crates/engine/src/cmd/insert.rs
++++ b/crates/engine/src/cmd/insert.rs
+@@ -23,7 +23,7 @@ pub fn specs() -> Vec<CommandSpec> {
+             sel_result(s)
+         }),
+         CommandSpec::new("insert.coverPage", "Cover Page", "Insert › Pages", cover_page).params(r#"{"title"?: string, "subtitle"?: string, "author"?: string}"#),
+-        CommandSpec::new("insert.table", "Table", "Insert › Tables", table).params(r#"{"rows": n, "cols": n, "style"?: string}"#),
++        CommandSpec::new("insert.table", "Table", "Insert › Tables", table).params(r#"{"rows": n, "cols": n, "style"?: string, "borders"?: bool}"#),
+         CommandSpec::new("insert.picture", "Pictures", "Insert › Illustrations", picture).params(r#"{"path"?: string, "data"?: base64, "width"?: pt, "alt"?: string}"#),
+         CommandSpec::new("insert.icon", "Icons", "Insert › Illustrations", icon)
+             .params(r#"{"id"?: string (omit to list the library), "color"?: "RRGGBB", "size"?: pt, "query"?: string, "category"?: string}"#),
+@@ -128,6 +128,11 @@ fn table(s: &mut Session, v: &Value) -> CmdResult {
+     let cols = p::u64(v, "cols").unwrap_or(2).clamp(1, 63) as usize;
+     let width = s.doc.sections().first().map(|(_, sp)| sp.text_width()).unwrap_or(468.0);
+     let mut t = Table::new(rows, cols, width);
++    // Explicit borders keep newly inserted tables visible even in imported
++    // documents whose TableGrid style is absent or has no visible borders.
++    if v.get("borders").and_then(Value::as_bool) == Some(true) {
++        t.props.borders = Some(wordcraft_doc::props::Borders::all(wordcraft_doc::props::Border::single(0.5)));
++    }
+     if let Some(st) = p::str(v, "style") {
+         let id = s.doc.styles.find(st).map(|x| x.id.clone()).ok_or_else(|| CmdError::Params(format!("no table style `{st}`")))?;
+         t.props.style = Some(id);
+diff --git a/crates/engine/src/cmd/para.rs b/crates/engine/src/cmd/para.rs
+index cdbe790..4ee1b20 100644
+--- a/crates/engine/src/cmd/para.rs
++++ b/crates/engine/src/cmd/para.rs
+@@ -418,6 +418,23 @@ fn apply_styles(s: &mut Session, v: &Value) -> CmdResult {
+ 
+ fn apply_style(s: &mut Session, v: &Value) -> CmdResult {
+     let name = p::req_str(v, "style")?;
++    // Imported style sheets often contain only the styles already used in the file.
++    // Materialize a requested built-in and its dependencies inside this undoable edit.
++    if s.doc.styles.find(name).is_none() {
++        let builtins = wordcraft_doc::styles::StyleSheet::builtin();
++        if let Some(style) = builtins.find(name) {
++            let mut pending = vec![style.id.clone()];
++            while let Some(id) = pending.pop() {
++                if s.doc.styles.get(&id).is_some() {
++                    continue;
++                }
++                if let Some(style) = builtins.get(&id) {
++                    pending.extend([&style.based_on, &style.next, &style.linked].into_iter().filter_map(|id| id.clone()));
++                    s.doc.styles.upsert(style.clone());
++                }
++            }
++        }
++    }
+     let id = style_id(s, name)?;
+     let kind = s.doc.styles.get(&id).map(|x| x.kind).unwrap_or_default();
+     if kind == StyleKind::Character {
 diff --git a/docs/roadmap.md b/docs/roadmap.md
-index eb3810e..524a836 100644
+index eb3810e..ed49a08 100644
 --- a/docs/roadmap.md
 +++ b/docs/roadmap.md
-@@ -88,3 +88,7 @@ languages, screen-reader access, ecosystem decisions (VBA, add-ins, cloud), an i
+@@ -88,3 +88,11 @@ languages, screen-reader access, ecosystem decisions (VBA, add-ins, cloud), an i
  | 2026-10-10 | major | Created: milestones moved from ROADMAP.md with remaining hours; Current focus from gaps.md; M15–M16 added |
  | 2026-10-10 | trivial | M11: ink pens and eraser landed (#307) |
  | 2026-10-11 | trivial | M11: lasso, Add Pen, Ink to Shape and Ink Replay landed (#395) |
@@ -228,3 +282,7 @@ index eb3810e..524a836 100644
 +## Local AI Office preview integration (2026-10-14)
 +
 +`apps/ai-office-preview` exposes DOCX layout, page rasterization, caret/selection state, an allowlisted command registry and save bytes through WebAssembly. The sibling VS Code fork supplies a compact toolbar and caret input, and its CLI uses the same bridge for editing. Formatting, tables, images, links, comments and undo/redo are covered by synthetic export/reopen tests in `../vscode/extensions/ai-office-common`. Upstream editing parity estimates are unchanged.
++
++AI Office Word editing update (2026-10-16): the preview bridge reports the current paragraph style, and insert.table accepts explicit borders so empty tables remain visible in imported documents. The host uses visual style/table menus and exports DOCX snapshots on save/backup instead of every keystroke.
++
++AI Office integration (2026-10-16): applying a built-in paragraph style to an imported DOCX now materializes only missing style definitions and their dependencies in the same undoable command. Existing custom definitions remain intact. The integration tests cover Title/Subtitle/headings, undo, save and reopen with a sparse imported style sheet.

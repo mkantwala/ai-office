@@ -16,6 +16,7 @@ class Document implements vscode.CustomDocument {
 	readonly panels = new Set<vscode.WebviewPanel>();
 	view!: View;
 	latestBytes!: Uint8Array;
+	private snapshotRevision = -1;
 	password?: string;
 	baseHash = '';
 	dirty = false;
@@ -27,9 +28,22 @@ class Document implements vscode.CustomDocument {
 	async load(bytes: Uint8Array) {
 		this.view = await this.client.request<View>('open', { kind: this.kind, name: basename(this.uri.path), bytes, extensionsRoot: vscode.Uri.joinPath(this.context.extensionUri, '..').fsPath, password: this.password });
 		this.latestBytes = bytes;
+		this.snapshotRevision = this.view.state.revision;
 	}
-	async broadcast() {
-		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'state', kind: this.kind, ...this.view, name: basename(this.uri.path) })));
+	enqueue<T>(operation: () => Promise<T>): Promise<T> {
+		const task = this.serial.then(operation);
+		this.serial = task.then(() => { }, () => { });
+		return task;
+	}
+	async snapshot(): Promise<Uint8Array> {
+		if (this.kind === 'word' && this.snapshotRevision !== this.view.state.revision) {
+			this.latestBytes = await this.client.request<Uint8Array>('export');
+			this.snapshotRevision = this.view.state.revision;
+		}
+		return this.latestBytes;
+	}
+	async broadcast(command?: string) {
+		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'state', kind: this.kind, ...this.view, name: basename(this.uri.path), command })));
 	}
 	dispose() { this.onDispose(); this.client.dispose(); }
 }
@@ -56,7 +70,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 		const execute = async (doc: Document, command: string, args: Record<string, unknown>, notify = true) => {
 			const before = doc.view.state.revision;
 			const result = await doc.client.request<View>('execute', { command, args });
-			if (result.state.revision !== before) { doc.latestBytes = await doc.client.request<Uint8Array>('export'); }
+			if (kind !== 'word' && result.state.revision !== before) { doc.latestBytes = await doc.client.request<Uint8Array>('export'); }
 			doc.view = { ...doc.view, ...result };
 			if (notify && result.state.revision !== before) {
 				doc.dirty = true;
@@ -66,7 +80,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 					redo: async () => { const task = doc.serial.then(() => execute(doc, kind === 'pdf' ? 'edit_redo' : 'edit.redo', {}, false)); doc.serial = task.then(() => { }, () => { }); await task; }
 				});
 			}
-			await doc.broadcast();
+			await doc.broadcast(command);
 			return result;
 		};
 		const provider: vscode.CustomEditorProvider<Document> = {
@@ -102,7 +116,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 							switch (message.type) {
 								case 'ready': await doc.broadcast(); break;
 								case 'render': {
-									const result = await doc.client.request('render', { page: message.page, scale: message.scale });
+									const result = await doc.client.request('render', { page: message.page, scale: message.scale, ...(kind === 'word' ? { frame: message.request, base: message.base } : {}) });
 									await panel.webview.postMessage({ type: 'rendered', request: message.request, page: message.page, result }); break;
 								}
 								case 'execute': await execute(doc, message.command, message.args || {}); break;
@@ -136,16 +150,16 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				panel.onDidDispose(() => { doc.panels.delete(panel); listener.dispose(); reload.dispose(); watcher.dispose(); });
 			},
 			async saveCustomDocument(doc) {
-				await doc.serial;
-				const bytes = doc.latestBytes;
-				if (hash(await read(doc.uri)) !== doc.baseHash) { throw new Error('File changed on disk. Use Save As to keep your edits.'); }
-				doc.saving = true;
-				try { await writeAtomic(doc.uri, bytes); doc.baseHash = hash(bytes); doc.dirty = false; }
-				finally { doc.saving = false; }
+				return doc.enqueue(async () => {
+					const bytes = await doc.snapshot();
+					if (hash(await read(doc.uri)) !== doc.baseHash) { throw new Error('File changed on disk. Use Save As to keep your edits.'); }
+					doc.saving = true;
+					try { await writeAtomic(doc.uri, bytes); doc.baseHash = hash(bytes); doc.dirty = false; }
+					finally { doc.saving = false; }
+				});
 			},
 			async saveCustomDocumentAs(doc, destination) {
-				await doc.serial;
-				await writeAtomic(destination, doc.latestBytes);
+				await doc.enqueue(async () => writeAtomic(destination, await doc.snapshot()));
 			},
 			async revertCustomDocument(doc) {
 				await doc.serial;
@@ -153,9 +167,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				await doc.load(bytes); doc.baseHash = hash(bytes); doc.dirty = false; await doc.broadcast();
 			},
 			async backupCustomDocument(doc, backup) {
-				await doc.serial;
-				const bytes = doc.latestBytes;
-				await vscode.workspace.fs.writeFile(backup.destination, bytes);
+				await doc.enqueue(async () => vscode.workspace.fs.writeFile(backup.destination, await doc.snapshot()));
 				return { id: backup.destination.toString(), delete: async () => { try { await vscode.workspace.fs.delete(backup.destination); } catch { /* Backup may already have been consumed. */ } } };
 			}
 		};

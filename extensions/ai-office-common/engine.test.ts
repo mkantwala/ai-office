@@ -12,6 +12,7 @@ import { deflateSync } from 'node:zlib';
 import { zipSync, strToU8, unzipSync, strFromU8 } from '../ai-office-slides/node_modules/fflate/esm/index.mjs';
 import * as ppt from '../ai-office-slides/node_modules/@office-kit/pptx/dist/index.js';
 import { openEngine } from './model.js';
+import { WordFrame } from './wordFrame.js';
 
 const root = resolve('extensions');
 const demo = resolve('.build/office-edit-demo');
@@ -66,6 +67,73 @@ test('Word: native editing, toolbar operations, undo, export and reopen', async 
 		const xml = strFromU8(unzipSync(bytes)['word/document.xml']); assert.match(xml, /w:tbl/); assert.match(xml, /w:b/);
 		await assert.rejects(engine.execute('file.save', {}));
 	} finally { engine.dispose(); }
+});
+
+test('Word visual styles and visible table borders survive save and reopen', async () => {
+	const engine = await openEngine('word', 'table.docx', docx, root);
+	try {
+		for (const style of ['Title', 'Subtitle', 'Heading1', 'Heading2', 'Heading3', 'Normal']) {
+			await engine.execute('para.style', { style }); assert.equal(engine.state().paragraphStyle, style);
+		}
+		await engine.execute('caret.docEnd', {}); await engine.execute('text.newParagraph', {});
+		await engine.execute('insert.table', { rows: 3, cols: 7, borders: true });
+		const bytes = await engine.export();
+		const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+		assert.match(xml, /w:tblBorders/); assert.match(xml, /w:insideH/); assert.match(xml, /w:insideV/);
+		const reopened = await openEngine('word', 'table.docx', bytes, root);
+		try {
+			const raster = reopened.render(0, 1.5); let longest = 0;
+			for (let y = 0; y < raster.height!; y++) {
+				let run = 0;
+				for (let x = 0; x < raster.width!; x++) {
+					const offset = (y * raster.width! + x) * 4;
+					run = raster.pixels![offset] < 230 && raster.pixels![offset + 1] < 230 && raster.pixels![offset + 2] < 230 ? run + 1 : 0;
+					longest = Math.max(longest, run);
+				}
+			}
+			assert.ok(longest > 500, 'An empty table must paint continuous visible horizontal borders');
+		} finally { reopened.dispose(); }
+	} finally { engine.dispose(); }
+});
+
+test('Word imports missing built-in styles without replacing custom styles', async () => {
+	const files = unzipSync(docx);
+	files['word/styles.xml'] = strToU8('<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:sz w:val="26"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="Heading 1"/><w:rPr><w:sz w:val="44"/></w:rPr></w:style></w:styles>');
+	files['word/_rels/document.xml.rels'] = strToU8('<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="styles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>');
+	const engine = await openEngine('word', 'import.docx', zipSync(files), root);
+	try {
+		await engine.execute('para.style', { style: 'Title' });
+		assert.equal(engine.state().paragraphStyle, 'Title');
+		await engine.execute('edit.undo', {});
+		assert.doesNotMatch(strFromU8(unzipSync(await engine.export())['word/styles.xml']), /w:styleId="Title"/);
+		await engine.execute('edit.redo', {});
+		for (const style of ['Subtitle', 'Heading1', 'Heading2', 'Heading3', 'Title']) {
+			await engine.execute('para.style', { style }); assert.equal(engine.state().paragraphStyle, style);
+		}
+		await assert.rejects(engine.execute('para.style', { style: 'Missing custom style' }));
+		const bytes = await engine.export();
+		const styles = strFromU8(unzipSync(bytes)['word/styles.xml']);
+		assert.match(styles, /w:sz w:val="26"/); assert.match(styles, /w:sz w:val="44"/);
+		const reopened = await openEngine('word', 'saved.docx', bytes, root);
+		try { assert.equal(reopened.state().paragraphStyle, 'Title'); assert.ok(reopened.render(0, .5).pixels!.length); } finally { reopened.dispose(); }
+	} finally { engine.dispose(); }
+});
+
+test('Word frame patches reconstruct full pixels and reject stale bases', () => {
+	const cache = new WordFrame();
+	const initial = { pixels: new Uint8Array(400).fill(255), width: 10, height: 10 };
+	cache.update(initial, 0, 1, 1);
+	const edited = { ...initial, pixels: initial.pixels.slice() }; edited.pixels[125] = 0;
+	const patch = cache.update(edited, 0, 1, 2, 1);
+	assert.equal(patch.height, 1); assert.equal(patch.pixels.length, 40);
+	assert.equal(patch.y, 3);
+	const painted = initial.pixels.slice(); painted.set(patch.pixels, patch.y! * 40);
+	assert.deepEqual(painted, edited.pixels);
+	assert.equal(cache.update(edited, 0, 1, 3, 2).height, 0);
+	assert.equal(cache.update(edited, 0, 1, 4, 1).height, 10);
+	assert.equal(cache.update(edited, 1, 1, 5, 4).height, 10);
+	assert.equal(cache.update(edited, 1, 2, 6, 5).height, 10);
+	assert.equal(cache.update(edited, 1, 2, 7).height, 10);
 });
 
 test('PDF: edit paragraph, format, comments, links, undo and reopen', async () => {
