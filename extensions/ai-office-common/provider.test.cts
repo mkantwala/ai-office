@@ -20,6 +20,7 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 	};
 	const vscode = {
 		Uri: { parse: uri, joinPath: (base, ...parts) => uri(path.posix.resolve(base.path, ...parts)) },
+		CancellationError: class extends Error { constructor() { super('Cancelled'); } },
 		EventEmitter: class { event = () => { }; fire(value) { edits.push(value); } dispose() { } },
 		LanguageModelTextPart: class { constructor(value) { this.value = value; } },
 		LanguageModelToolResult: class { constructor(content) { this.content = content; } },
@@ -33,6 +34,7 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 			executeCommand: (id, ...args) => commands.get(id)(...args)
 		},
 		workspace: {
+			isTrusted: true,
 			fs: {
 				stat: async value => ({ size: files.get(value.path).length }),
 				readFile: async value => files.get(value.path),
@@ -104,6 +106,27 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 	const tool = tools.get('aiOfficeEdit');
 	const toolResult = await tool.invoke({ input: { command: 'text.insert', params: { text: 'via the chat tool' } } }, {});
 	assert.ok(toolResult.content[0].value.includes('"name":"memo.docx"'), 'The tool result reports the resolved file name');
+	const beforeRejectedCalls = { text: doc.client.text, revision: doc.client.revision, edits: edits.length };
+	const input = { command: 'text.insert', params: { text: 'Rejected agent edit' } };
+	await assert.rejects(tool.invoke({ input }, { isCancellationRequested: true }), /Cancelled/);
+	vscode.workspace.isTrusted = false;
+	await assert.rejects(tool.invoke({ input }, { isCancellationRequested: false }), /Trust this workspace/);
+	await assert.rejects(execute('memo.docx', input.command, input.params), /Trust this workspace/);
+	vscode.workspace.isTrusted = true;
+
+	// A call can be cancelled or lose trust while waiting behind document work.
+	for (const reason of ['cancel', 'trust']) {
+		const cancellation = { isCancellationRequested: false };
+		let release;
+		doc.serial = new Promise(resolve => { release = resolve; });
+		const pending = tool.invoke({ input }, cancellation);
+		if (reason === 'cancel') { cancellation.isCancellationRequested = true; }
+		else { vscode.workspace.isTrusted = false; }
+		release();
+		await assert.rejects(pending, reason === 'cancel' ? /Cancelled/ : /Trust this workspace/);
+		vscode.workspace.isTrusted = true;
+	}
+	assert.deepEqual({ text: doc.client.text, revision: doc.client.revision, edits: edits.length }, beforeRejectedCalls, 'Rejected calls never reach the engine or add undo events');
 
 	await backup.delete(); doc.dispose();
 	await assert.rejects(execute('/memo.docx', 'text.insert', { text: 'closed' }), /No open word document matches/);
@@ -191,12 +214,24 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 			state = await invoke('read', {});
 			await invoke('edit', { operation: 'update', id: 'internal-id', version: state.version, text: 'Third change' });
 		});
+		await navigate([{ requestId: 'test-request', applied: true }]);
+		assert.equal((await invoke('read', {})).blocks[0].text, 'Third change', 'Navigating an already-applied chat preserves later edits');
 		await navigate([{ requestId: 'test-request', applied: true }, { requestId: 'second-request', applied: false }]);
 		assert.equal((await invoke('read', {})).blocks[0].text, 'First change', 'Checkpoint restores every operation in the selected request');
 		await navigate([{ requestId: 'test-request', applied: true }, { requestId: 'second-request', applied: true }]);
 		assert.equal((await invoke('read', {})).blocks[0].text, 'Third change', 'Default timeline Redo reapplies all operations');
 		await navigate([{ requestId: 'test-request', applied: false }, { requestId: 'second-request', applied: false }]);
 		assert.equal((await invoke('read', {})).blocks[0].text, 'Initial content', 'Start Over restores all requests');
+		await navigate([{ requestId: 'test-request', applied: true }]);
+		assert.equal((await invoke('read', {})).blocks[0].text, 'First change', 'Redo of one chat must not replay another chat\'s later edits');
+		await navigate([{ requestId: 'test-request', applied: true }, { requestId: 'second-request', applied: true }]);
+		let latest = await invoke('read', {});
+		await invoke('edit', { operation: 'update', id: 'internal-id', version: latest.version, text: 'Later independent edit' });
+		latest = await invoke('history', { operation: 'status' });
+		await invoke('history', { operation: 'undo', version: latest.version });
+		await navigate([{ requestId: 'test-request', applied: true }, { requestId: 'second-request', applied: true }]);
+		assert.equal((await invoke('read', {})).blocks[0].text, 'Third change', 'Chat Redo leaves later independent edits undone');
+		await navigate([{ requestId: 'test-request', applied: false }, { requestId: 'second-request', applied: false }]);
 		await navigate([{ requestId: 'unrelated-session', applied: false }]);
 		assert.equal((await invoke('read', {})).blocks[0].text, 'Initial content');
 		let current = await invoke('read', {});

@@ -69,9 +69,9 @@ export async function prepareWordFormatting(input: Record<string, unknown>, read
 	} else {
 		let offset = 0;
 		for (; ;) {
-			const response = await read({ query, offset, limit: 20, textLimit: 8000 });
+			const response = await read({ query, offset, limit: input.scope === 'first' ? 1 : 20, textLimit: 8000 });
 			blocks.push(...response.blocks || []);
-			if ((response.total ?? blocks.length) > 200 || blocks.length > 200) { throw new Error('More than 200 blocks match. Narrow the query or provide smaller groups of IDs. No formatting was applied.'); }
+			if ((input.scope !== 'first' && (response.total ?? blocks.length) > 200) || blocks.length > 200) { throw new Error('More than 200 blocks match. Narrow the query or provide smaller groups of IDs. No formatting was applied.'); }
 			if ((response.nextOffset === null || response.nextOffset === undefined) || input.scope === 'first' && blocks.length) { break; }
 			if (response.nextOffset <= offset) { throw new Error('Document search did not advance. No formatting was applied.'); }
 			offset = response.nextOffset;

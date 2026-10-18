@@ -84,6 +84,10 @@ class Document implements vscode.CustomDocument {
 	dispose() { if (this.activity) { clearTimeout(this.activity.timer); } this.onDispose(); this.client.dispose(); }
 }
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+function checkAgentAccess(token?: vscode.CancellationToken) {
+	if (token?.isCancellationRequested) { throw new vscode.CancellationError(); }
+	if (!vscode.workspace.isTrusted) { throw new Error('Trust this workspace before allowing agent edits.'); }
+}
 async function read(uri: vscode.Uri) {
 	if ((await vscode.workspace.fs.stat(uri)).size > 128 * 1024 * 1024) { throw new Error('Document exceeds the 128 MB limit.'); }
 	const bytes = await vscode.workspace.fs.readFile(uri);
@@ -110,7 +114,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 		const recordEdit = (doc: Document, before: State, label: string, request?: string): void => {
 			if (request) { doc.history.checkpoint(request); }
 			const steps = Math.max(1, (doc.view.state.undoDepth ?? 0) - (before.undoDepth ?? 0));
-			doc.history.record(steps);
+			doc.history.record(steps, request);
 			const position = doc.history.cursor;
 			changed.fire({
 				document: doc, label,
@@ -124,9 +128,10 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				})
 			});
 		};
-		const execute = async (doc: Document, command: string, args: Record<string, unknown>, notify = true, agent = false) => {
+		const execute = async (doc: Document, command: string, args: Record<string, unknown>, notify = true, agent = false, token?: vscode.CancellationToken) => {
 			const request = agent ? activeAgentRequest() : undefined;
 			await doc.stopActivity();
+			if (agent) { checkAgentAccess(token); }
 			const beforeState = doc.view.state;
 			const before = beforeState.revision;
 			const result = await doc.client.request<View>('execute', { command, args });
@@ -303,16 +308,18 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			if (matches.length > 1) { throw new Error(`"${target}" matches more than one open document: ${list(matches)}.`); }
 			throw new Error(`No open ${kind} document matches "${target}". Open: ${list(candidates)}.`);
 		};
-		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.' + kind + '.execute', async (uriOrName: string | undefined, command: string, args: Record<string, unknown> = {}) => {
+		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.' + kind + '.execute', async (uriOrName: string | undefined, command: string, args: Record<string, unknown> = {}, token?: vscode.CancellationToken) => {
+			checkAgentAccess(token);
 			if (typeof command !== 'string' || !command) { throw new Error(`A command id is required: 'aiOffice.${kind}.execute(fileNameOrUri, command, params)'.`); }
 			const doc = resolveDocument(typeof uriOrName === 'string' && uriOrName.trim() ? uriOrName.trim() : undefined);
 			if (['edit.undo', 'edit.redo', 'edit_undo', 'edit_redo'].includes(command)) {
 				await doc.serial;
+				checkAgentAccess(token);
 				await vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri.toString(), command.endsWith('redo') ? 'redo' : 'undo');
 				return { ...doc.view, name: basename(doc.uri.path), uri: doc.uri.toString() };
 			}
 			let result: View | undefined;
-			const operation = doc.serial.then(async () => { result = await execute(doc, command, args, true, true); });
+			const operation = doc.serial.then(async () => { result = await execute(doc, command, args, true, true, token); });
 			doc.serial = operation.catch(() => { });
 			await operation;
 			return result && { ...result, name: basename(doc.uri.path), uri: doc.uri.toString() };
@@ -332,13 +339,14 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			return viewType?.startsWith('aiOffice.') ? viewType.slice('aiOffice.'.length) as Kind : undefined;
 		};
 		context.subscriptions.push(vscode.lm.registerTool<{ command: string; file?: string; params?: Record<string, unknown> }>('aiOfficeEdit', {
-			invoke: async options => {
+			invoke: async (options, token) => {
+				checkAgentAccess(token);
 				const input: { command?: string; file?: string; params?: Record<string, unknown> } = options.input ?? {};
 				if (typeof input.command !== 'string' || !input.command) { throw new Error('A command id is required, e.g. content.replace.'); }
 				const file = typeof input.file === 'string' && input.file.trim() ? input.file.trim() : undefined;
 				const kind = kindOfTarget(file);
 				if (!kind) { throw new Error('Open the document to edit in AI Office first, or pass its file name (DOCX, PDF or PPTX).'); }
-				const result = await vscode.commands.executeCommand<View & { name: string; uri: string } | undefined>('aiOffice.' + kind + '.execute', file, input.command, input.params ?? {});
+				const result = await vscode.commands.executeCommand<View & { name: string; uri: string } | undefined>('aiOffice.' + kind + '.execute', file, input.command, input.params ?? {}, token);
 				return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result ?? {}))]);
 			}
 		}));
@@ -383,10 +391,12 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			const plans: { doc: Document; position: number }[] = [];
 			for (const doc of documents.values()) {
 				await doc.serial;
-				const relevant = requests.filter(request => doc.history.checkpoints.has(request.requestId));
+				const relevant = requests.filter(request => doc.history.checkpoints.has(request.requestId) && doc.history.requestEnd(request.requestId) !== undefined);
 				if (!relevant.length) { continue; }
 				const undone = relevant.filter(request => !request.applied).map(request => doc.history.checkpoints.get(request.requestId)!);
-				const position = undone.length ? Math.min(...undone) : doc.history.end;
+				// Redo stops at this chat's last edit, preserving unrelated later edits
+				// that are already applied without replaying ones that remain undone.
+				const position = undone.length ? Math.min(...undone) : Math.max(doc.history.cursor, ...relevant.map(request => doc.history.requestEnd(request.requestId)!));
 				if (position < doc.history.cursor && doc.history.nativeStepsTo(position) > (doc.view.state.undoDepth ?? doc.history.cursor)) {
 					throw new Error('This document checkpoint is older than the available undo history.');
 				}

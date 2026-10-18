@@ -15,25 +15,32 @@ export class DocumentHistory {
 	cursor = 0;
 	end = 0;
 	private readonly steps = new Map<number, number>();
+	private readonly requestEnds = new Map<string, number>();
 	readonly checkpoints = new Map<string, number>();
+	private forgetCheckpoint(id: string) { this.checkpoints.delete(id); this.requestEnds.delete(id); }
 	checkpoint(id: string) {
 		if (this.checkpoints.has(id)) { return; }
 		this.checkpoints.set(id, this.cursor);
-		if (this.checkpoints.size > 30) { this.checkpoints.delete(this.checkpoints.keys().next().value!); }
+		if (this.checkpoints.size > 30) { this.forgetCheckpoint(this.checkpoints.keys().next().value!); }
 	}
-	record(steps = 1) {
-		for (const [id, position] of this.checkpoints) { if (position > this.cursor) { this.checkpoints.delete(id); } }
+	requestEnd(id: string) { return this.requestEnds.get(id); }
+	record(steps = 1, request?: string) {
+		for (const [id, position] of this.checkpoints) {
+			if (position > this.cursor) { this.forgetCheckpoint(id); }
+			else if ((this.requestEnds.get(id) ?? 0) > this.cursor) { this.requestEnds.set(id, this.cursor); }
+		}
 		for (const position of this.steps.keys()) { if (position > this.cursor) { this.steps.delete(position); } }
 		this.end = ++this.cursor;
 		this.steps.set(this.cursor, steps);
+		if (request) { this.requestEnds.set(request, this.cursor); }
 		const oldest = this.cursor - 2048;
 		for (const position of this.steps.keys()) { if (position <= oldest) { this.steps.delete(position); } }
-		for (const [id, position] of this.checkpoints) { if (position < oldest) { this.checkpoints.delete(id); } }
+		for (const [id, position] of this.checkpoints) { if (position < oldest) { this.forgetCheckpoint(id); } }
 	}
 	nativeStepsTo(position: number) {
 		let steps = 0;
 		for (let index = position + 1; index <= this.cursor; index++) { steps += this.steps.get(index) ?? 1; }
 		return steps;
 	}
-	clear() { this.cursor = this.end = 0; this.checkpoints.clear(); this.steps.clear(); }
+	clear() { this.cursor = this.end = 0; this.checkpoints.clear(); this.requestEnds.clear(); this.steps.clear(); }
 }
