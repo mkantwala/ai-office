@@ -121,15 +121,23 @@ export async function prepareWordFormatting(input: Record<string, unknown>, read
 export function validateDocumentEdits(input: Record<string, unknown>) {
 	const edits = input.operation === 'batch' ? input.edits : [input];
 	if (!Array.isArray(edits)) { throw new Error('operation=batch requires an edits array.'); }
-	const common = ['operation', 'id', 'uri', 'version'];
-	const properties: Record<string, string[]> = { insert: ['position', 'blocks'], update: ['text', 'start', 'end'], delete: [], command: ['command', 'params', 'start', 'end'] };
+	const common = ['operation', 'id', 'uri', 'version', 'ifHash', 'allowDetach'];
+	const properties: Record<string, string[]> = { insert: ['position', 'blocks'], update: ['text', 'start', 'end'], replaceText: ['find', 'nth', 'text'], replaceBlocks: ['blocks'], delete: [], command: ['command', 'params', 'start', 'end'] };
 	for (const edit of edits) {
 		if (!edit || typeof edit !== 'object' || Array.isArray(edit)) { throw new Error('Each edit must be an object.'); }
 		const operation = edit.operation;
-		if (typeof operation !== 'string' || !Object.hasOwn(properties, operation)) { throw new Error('Use insert, update, delete or command for each edit.'); }
+		if (typeof operation !== 'string' || !Object.hasOwn(properties, operation)) { throw new Error('Use insert, update, replaceText, replaceBlocks, delete or command for each edit.'); }
+		if (edit.ifHash !== undefined && (typeof edit.ifHash !== 'string' || !/^[a-f0-9]{64}$/i.test(edit.ifHash))) { throw new Error('ifHash must be the full block hash from a read.'); }
+		if (edit.allowDetach !== undefined && typeof edit.allowDetach !== 'boolean') { throw new Error('allowDetach must be an explicit boolean.'); }
 		for (const key of Object.keys(edit)) {
 			if (![...common, ...properties[operation]].includes(key)) { throw new Error(`The ${operation} operation does not accept ${key}. For formatting, use office_document_format with query or ids and format properties. update only replaces text.`); }
 		}
-		if (operation === 'update' && typeof edit.text !== 'string') { throw new Error('update requires text. For formatting use office_document_format; do not replace unchanged text.'); }
+		if (operation === 'replaceText' && (typeof edit.find !== 'string' || !edit.find || edit.find.length > 2000 || edit.nth !== undefined && (!Number.isInteger(edit.nth) || edit.nth < 1))) { throw new Error('replaceText requires literal find text and optional positive nth.'); }
+		if (['update', 'replaceText'].includes(operation) && typeof edit.text !== 'string') { throw new Error('update requires text. For formatting use office_document_format; do not replace unchanged text.'); }
 	}
+}
+
+/** Only unchanged text targets can bypass unrelated document revisions, never structural operations. */
+export function canRebaseTextEdits(edits: Record<string, unknown>[]) {
+	return edits.length > 0 && edits.every(edit => ['update', 'replaceText'].includes(String(edit.operation)) && typeof edit.ifHash === 'string' && /^[a-f0-9]{64}$/i.test(edit.ifHash));
 }

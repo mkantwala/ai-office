@@ -11,7 +11,7 @@ declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const api = acquireVsCodeApi();
 const el = (id: string) => document.getElementById(id)!;
 const pages = el('pages');
-const wordReview = new WordReview(pages, (data, action, ids) => send('reviewDecide', { version: data.version, reviewVersion: data.reviewVersion, action, ids }), () => { overlay(); agentOverlay(); });
+const wordReview = new WordReview(pages, (data, action, ids) => send('reviewDecide', { version: data.version, reviewVersion: data.reviewVersion, action, ids }), () => { overlay(); agentOverlay(); }, id => send('draftDiscard', { id }));
 const reviewSummary = document.createElement('div'); reviewSummary.className = 'word-review-summary'; reviewSummary.hidden = true; pages.before(reviewSummary);
 function showReviewSummary() {
 	reviewSummary.replaceChildren(); reviewSummary.hidden = !wordReview.count;
@@ -322,9 +322,10 @@ document.addEventListener('keydown', event => {
 window.addEventListener('message', event => {
 	if (event.origin !== location.origin) { return; } const data = event.data;
 	if (data.type === 'agentActivity') { agentRects = Array.isArray(data.rects) ? data.rects : []; agentOverlay(); return; }
+	if (data.type === 'draft') { wordReview.updateDrafts(data.sections); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
 	if (data.type === 'review') { wordReview.update(data.review); showReviewSummary(); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
 	if (data.type === 'error') { message(data.error); renderBusy = false; return; }
-	if (data.type === 'saved') { el('hint').textContent = 'Saved'; return; }
+	if (data.type === 'saved') { el('hint').textContent = data.pendingSections ? `Saved · ${data.pendingSections} pending sections are editor-only` : 'Saved'; return; }
 	if (data.type === 'agent') { if (data.region) { showAgent(data.region, data.label); } return; }
 	if (data.type === 'state') {
 		kind = data.kind; const changed = state.revision !== data.state.revision;
@@ -333,7 +334,7 @@ window.addEventListener('message', event => {
 		revealWordCaret = kind === 'word' && (data.command?.startsWith('text.') || data.command === 'insert.table');
 		comments.replaceChildren(); comments.hidden = !state.comments?.length;
 		const summary = document.createElement('summary'); summary.textContent = `Comments (${state.comments?.length || 0})`; comments.append(summary);
-		for (const comment of state.comments || []) { const p = document.createElement('p'); p.textContent = (comment.author || 'Comment') + ': ' + comment.text; comments.append(p); }
+		for (const comment of state.comments || []) { const p = document.createElement('p'); p.textContent = (comment.resolved ? 'Resolved · ' : '') + (comment.author || 'Comment') + ': ' + comment.text; if (typeof comment.parentId === 'number') { p.style.marginInlineStart = '24px'; } comments.append(p); }
 		if (!initialized) { initialized = true; buildToolbar(); }
 		if (kind === 'word') {
 			const style = el('paragraph-style'); style.dataset.currentStyle = state.paragraphStyle || ''; style.dispatchEvent(new Event('formatstate'));

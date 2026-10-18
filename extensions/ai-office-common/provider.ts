@@ -12,14 +12,16 @@ import { activityRegion, type ActivityRegion } from './agentActivity.js';
 import type { Kind, State, Command, DocumentReview, DocumentReviewChanges } from './types.js';
 import { registerDocumentTools, type DocumentToolInput } from './documentTools.js';
 import { activeAgentRequest, DocumentHistory, withAgentToolRequest } from './agentRequest.js';
-import { prepareWordFormatting } from './wordFormatting.js';
+import { prepareWordFormatting, canRebaseTextEdits } from './wordFormatting.js';
 import { DocumentVersions } from './documentVersions.js';
+import { DocumentDrafts } from './documentDrafts.js';
 
 interface View { state: State; pages: number[][]; commands?: Command[] }
 class Document implements vscode.CustomDocument {
 	readonly client: EngineClient;
 	readonly panels = new Set<vscode.WebviewPanel>();
 	readonly history = new DocumentHistory();
+	readonly drafts = new DocumentDrafts();
 	reviewRequest?: string;
 	reviewVersion = 0;
 	review?: DocumentReview;
@@ -43,6 +45,7 @@ class Document implements vscode.CustomDocument {
 	async load(bytes: Uint8Array) {
 		this.instance = randomUUID();
 		this.history.clear();
+		this.drafts.discard();
 		this.reviewRequest = undefined;
 		this.reviewVersion++;
 		this.review = undefined;
@@ -68,6 +71,8 @@ class Document implements vscode.CustomDocument {
 		if (this.kind === 'word') {
 			const changes = this.review?.changes.length ? await this.client.request<DocumentReview['changes']>('reviewLayout', { changes: this.review.changes }) : [];
 			await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'review', review: { ...this.review, version: this.version, reviewVersion: this.reviewVersion, changes } })));
+			const drafts = await Promise.all(this.drafts.pending().map(async section => ({ ...section, anchorRects: await this.client.request<State['rects']>('agentRects', { blockId: section.anchor.id }).catch(() => []) })));
+			await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'draft', sections: drafts })));
 		}
 		if (this.activity) { await this.sendActivity(this.activity.rects); }
 	}
@@ -203,21 +208,23 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 		agentEdits.set(kind, async (doc, input, token) => {
 			const request = activeAgentRequest();
 			if (!vscode.workspace.isTrusted) { throw new Error('Trust this workspace before allowing agent edits.'); }
-			if (input.version !== doc.version) { throw new Error('Document changed. Read the target again before editing.'); }
 			const edits = input.operation === 'batch' ? input.edits as Record<string, unknown>[] : [input];
-			if (!Array.isArray(edits) || !edits.length || edits.length > 200 || edits.some(edit => !edit || typeof edit.id !== 'string')) { throw new Error('Read the document to obtain a target block ID for every edit (1-200 edits).'); }
-			const targetId = edits[0].id as string;
+			if (!Array.isArray(edits) || !edits.length || edits.length > 200 || edits.some(edit => !edit || typeof edit.id !== 'string' && !(edit.operation === 'comment' && edit.action !== 'add'))) { throw new Error('Read the document to obtain a target block ID for every edit (1-200 edits).'); }
+			const observed = typeof input.version === 'string' && input.version.startsWith(doc.instance + ':') ? Number(input.version.slice(doc.instance.length + 1)) : -1;
+			const rebased = input.version !== doc.version;
+			if (rebased && (!Number.isSafeInteger(observed) || observed < 0 || observed > doc.view.state.revision || !canRebaseTextEdits(edits))) { throw new Error('Document changed. Read the target again before editing. Structural operations need a fresh version.'); }
+			const targetId = typeof edits[0].id === 'string' ? edits[0].id : undefined;
 			if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
 			await beforeRequest(doc, request);
 			const beforeState = doc.view.state;
 			const before = beforeState.revision;
-			const idsBefore = await doc.client.request<{ blocks: { id: string; parentId: string }[] }>('agentRead', { args: { id: targetId } });
-			const parentId = idsBefore.blocks[0]?.parentId;
-			await doc.startActivity(targetId);
+			const idsBefore = targetId ? await doc.client.request<{ blocks: { id: string; parentId: string }[] }>('agentRead', { args: { id: targetId } }) : undefined;
+			const parentId = idsBefore?.blocks[0]?.parentId;
+			if (targetId) { await doc.startActivity(targetId); }
 			const started = Date.now();
 			try {
 				checkAgentAccess(token);
-				const result = await doc.client.request<View>('agentEdit', { args: { ...input, revision: before }, review: !!request });
+				const result = await doc.client.request<View>('agentEdit', { args: { ...input, revision: rebased ? observed : before }, review: !!request });
 				doc.view = { ...doc.view, ...result };
 				if (result.state.revision !== before) {
 					doc.dirty = true;
@@ -229,9 +236,9 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				}
 				await doc.broadcast();
 				await publishReview(doc, request);
-				const content = await doc.client.request<Record<string, unknown>>('agentRead', { args: input.operation === 'insert' || input.operation === 'delete' ? { parentId, limit: 20 } : { id: targetId } });
+				const content = await doc.client.request<Record<string, unknown>>('agentRead', { args: input.operation === 'comment' ? { operation: 'comments' } : ['insert', 'delete', 'replaceBlocks'].includes(String(input.operation)) ? { parentId, limit: 20 } : { id: targetId } });
 				const commandResult = JSON.stringify(result.state.agentCommandResult ?? null).length <= 8000 ? result.state.agentCommandResult : { truncated: true, guidance: 'Read the relevant document/comment blocks in pages.' };
-				return { uri: doc.uri.toString(), version: doc.version, ...content, created: result.state.agentCreatedBlocks || [], commandResult, appliedEdits: result.state.agentAppliedEdits || edits.map(edit => ({ id: edit.id, operation: edit.operation, command: edit.command, params: edit.params })), saved: false, undoable: result.state.revision !== before };
+				return { uri: doc.uri.toString(), version: doc.version, rebased, ...content, created: result.state.agentCreatedBlocks || [], commandResult, appliedEdits: result.state.agentAppliedEdits || edits.map(edit => ({ id: edit.id, operation: edit.operation, command: edit.command, params: edit.params })), saved: false, undoable: result.state.revision !== before };
 			} finally {
 				// Give fast operations enough time to paint, without delaying the engine itself.
 				await new Promise(resolve => setTimeout(resolve, Math.max(0, 400 - (Date.now() - started))));
@@ -295,10 +302,11 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 										await doc.enqueue(async () => { doc.review = await reviewData(doc); await doc.broadcast(); });
 									}); break;
 								case 'versions': void vscode.commands.executeCommand('aiOffice.word.versions', doc.uri.toString()); break;
+								case 'draftDiscard': doc.drafts.discard(message.id); await doc.broadcast(); break;
 								case 'undo': void vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri.toString(), 'undo').then(undefined, error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
 								case 'redo': void vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri.toString(), 'redo').then(undefined, error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
 								case 'save':
-									void vscode.commands.executeCommand('workbench.action.files.save').then(() => panel.webview.postMessage({ type: 'saved' }), error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
+									void vscode.commands.executeCommand('workbench.action.files.save').then(() => panel.webview.postMessage({ type: 'saved', pendingSections: doc.drafts.status().pending }), error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
 								case 'image': {
 									const files = await vscode.window.showOpenDialog({ canSelectMany: false, filters: { Images: ['png', 'jpg', 'jpeg', 'gif', 'webp'] } });
 									if (!files?.[0]) { break; }
@@ -541,7 +549,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			async invoke(tool, input, token) {
 				if (!input || typeof input !== 'object' || JSON.stringify(input).length > 160000) { throw new Error('Document tool input is invalid or too large.'); }
 				if (tool === 'help' && input.guide !== undefined) {
-					if (!['content', 'commands', 'identity'].includes(String(input.guide))) { throw new Error('Unknown document guide.'); }
+					if (!['content', 'commands', 'identity', 'drafting', 'comments'].includes(String(input.guide))) { throw new Error('Unknown document guide.'); }
 					return { guide: new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(context.extensionUri, 'skills/ai-office-docs', String(input.guide) + '.md'))) };
 				}
 				const wordDocuments = [...documents.values()].filter(doc => doc.kind === 'word');
@@ -553,6 +561,33 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				if (tool === 'history') { return history(doc, input, token); }
 				const task = doc.serial.then(async () => {
 					if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+					if (tool === 'comments') {
+						const action = input.operation ?? 'list';
+						if (!['list', 'add', 'reply', 'update', 'resolve', 'delete'].includes(String(action))) { throw new Error('Use list, add, reply, update, resolve or delete for comments.'); }
+						if (action === 'list') { return { uri: doc.uri.toString(), version: doc.version, ...await doc.client.request<Record<string, unknown>>('agentRead', { args: { ...input, operation: 'comments' } }) }; }
+						return agentEdits.get('word')!(doc, { ...input, operation: 'comment', action }, token);
+					}
+					if (tool === 'draft') {
+						const operation = input.operation ?? 'status';
+						if (operation === 'status') { return { uri: doc.uri.toString(), version: doc.version, ...doc.drafts.status() }; }
+						checkAgentAccess(token);
+						if (operation === 'discard') { doc.drafts.discard(typeof input.sectionId === 'string' ? input.sectionId : undefined); await doc.broadcast(); return { uri: doc.uri.toString(), version: doc.version, ...doc.drafts.status() }; }
+						if (input.version !== doc.version) { throw new Error('Document changed. Read its current version before planning or filling a section.'); }
+						if (operation === 'plan') {
+							if (typeof input.id !== 'string' || input.position !== undefined && !['before', 'after'].includes(String(input.position))) { throw new Error('A draft needs a current paragraph/table ID and position before or after.'); }
+							const read = await doc.client.request<{ blocks: { id: string; kind: string }[] }>('agentRead', { args: { id: input.id } });
+							if (!read.blocks.length || ['row', 'cell'].includes(read.blocks[0].kind)) { throw new Error('Plan sections relative to a current paragraph or table.'); }
+							checkAgentAccess(token);
+							doc.drafts.plan({ id: input.id, position: input.position === 'before' ? 'before' : 'after' }, input.sections as { title: string; intent: string; level?: number }[]);
+							await doc.broadcast(); return { uri: doc.uri.toString(), version: doc.version, ...doc.drafts.status() };
+						}
+						if (operation !== 'fill' || typeof input.sectionId !== 'string') { throw new Error('Use plan, status, fill or discard for drafting.'); }
+						const section = doc.drafts.section(input.sectionId), anchor = doc.drafts.location(input.sectionId);
+						if (!Array.isArray(input.blocks) || !input.blocks.length || input.blocks.length > 49) { throw new Error('Fill a section with 1-49 content blocks; its heading is added automatically.'); }
+						const result = await agentEdits.get('word')!(doc, { operation: 'insert', id: anchor.id, position: anchor.position, version: input.version, blocks: [{ kind: 'heading', text: section.title, style: 'Heading' + section.level }, ...input.blocks] }, token) as { created: { id: string }[] };
+						doc.drafts.complete(section.id, result.created.map(block => block.id)); await doc.broadcast();
+						return { ...result, filledSectionId: section.id, draft: doc.drafts.status() };
+					}
 					if (tool === 'format') {
 						if (input.ids !== undefined && input.version !== doc.version || input.version !== undefined && input.version !== doc.version) { throw new Error('Document changed. Read the target again before formatting IDs. Query-only formatting can resolve fresh targets without a prior read.'); }
 						const plan = await prepareWordFormatting(input, args => doc.client.request('agentRead', { args }));
@@ -576,9 +611,9 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 						const commands = doc.view.commands || [];
 						const category = typeof input.category === 'string' ? input.category : '';
 						const matches = commands.filter(command => input.command ? command.id === input.command : category ? command.id.startsWith(category + '.') : true);
-						return input.command || category ? { commands: matches, ...(matches.length ? {} : { error: 'No exact command matched. Use category with one of the available prefixes.', categories: [...new Set(commands.map(command => command.id.split('.')[0]))] }), targeted: 'Use office_document_edit operation=command with a block ID. caret.*, select.* and edit.* are UI-only; other enabled commands run on the target.' } : { categories: [...new Set(commands.map(command => command.id.split('.')[0]))], operations: ['insert', 'update', 'delete', 'command', 'batch'], history: historyStatus(doc), guidance: 'Read the ai-office-docs skill. Request one category or command for its exact parameters; IDs are internal and must not appear in user-facing messages.' };
+						return input.command || category ? { commands: matches, ...(matches.length ? {} : { error: 'No exact command matched. Use category with one of the available prefixes.', categories: [...new Set(commands.map(command => command.id.split('.')[0]))] }), targeted: 'Use office_document_edit operation=command with a block ID. caret.*, select.* and edit.* are UI-only; other enabled commands run on the target.' } : { categories: [...new Set(commands.map(command => command.id.split('.')[0]))], operations: ['insert', 'update', 'replaceText', 'replaceBlocks', 'delete', 'command', 'batch'], guides: ['content', 'commands', 'identity', 'drafting', 'comments'], tools: ['read', 'edit', 'format', 'draft', 'comments', 'history', 'activity', 'help'], history: historyStatus(doc), guidance: 'Read the ai-office-docs skill. Request one category or command for its exact parameters; IDs are internal and must not appear in user-facing messages.' };
 					}
-					return { uri: doc.uri.toString(), version: doc.version, history: historyStatus(doc), ...await doc.client.request<Record<string, unknown>>('agentRead', { args: input }) };
+					return { uri: doc.uri.toString(), version: doc.version, history: historyStatus(doc), draft: doc.drafts.status(), ...await doc.client.request<Record<string, unknown>>('agentRead', { args: input }) };
 				});
 				doc.serial = task.then(() => { }, () => { });
 				return task;

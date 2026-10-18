@@ -3,15 +3,17 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import type { DocumentReview, DocumentReviewChange } from './types.js';
+import type { DocumentReview, DocumentReviewChange, DraftViewSection } from './types.js';
 
 interface Zone { at: number; height: number; node: HTMLElement }
 /** Like code-editor view zones: insert deleted text without changing document layout or bytes. */
 export class WordReview {
 	private data?: DocumentReview;
+	private drafts: DraftViewSection[] = [];
 	private readonly zones = new Map<number, Zone[]>();
 	private busy = false;
-	constructor(private readonly pages: HTMLElement, private readonly decide: (data: DocumentReview, action: 'keep' | 'undo', ids: string[]) => void, private readonly onLayout: () => void) { }
+	constructor(private readonly pages: HTMLElement, private readonly decide: (data: DocumentReview, action: 'keep' | 'undo', ids: string[]) => void, private readonly onLayout: () => void, private readonly discardDraft: (id: string) => void) { }
+	updateDrafts(sections: DraftViewSection[]) { this.drafts = sections; }
 	update(data: DocumentReview) { this.data = data; this.busy = false; }
 	get count() { return this.data?.changes.length || 0; }
 	decideAll(action: 'keep' | 'undo') { if (this.data && !this.busy) { this.decide(this.data, action, this.data.changes.map(change => change.id)); } }
@@ -31,6 +33,7 @@ export class WordReview {
 		for (const action of ['keep', 'undo'] as const) {
 			const button = document.createElement('button'); button.textContent = action === 'keep' ? 'Keep' : 'Undo';
 			button.setAttribute('aria-label', `${button.textContent} This Change`); button.disabled = this.busy;
+			button.addEventListener('pointerdown', event => event.preventDefault());
 			button.addEventListener('click', () => {
 				if (this.busy || !this.data) { return; }
 				this.busy = true;
@@ -49,8 +52,8 @@ export class WordReview {
 			node.classList.remove('has-word-review'); node.style.height = ''; node.style.aspectRatio = dimensions[page]?.join(' / ') || '';
 			const source = node.querySelector('canvas'); if (source) { source.style.height = ''; }
 		}
-		if (!this.data?.changes.length) { return; }
-		for (const change of this.data.changes) {
+		if (!this.data?.changes.length && !this.drafts.length) { return; }
+		for (const change of this.data?.changes || []) {
 			const anchors = change.anchorRects?.length ? change.anchorRects : change.rects;
 			const anchor = change.anchor?.after ? anchors?.at(-1) : anchors?.[0];
 			const page = anchor?.page ?? 0, element = this.pages.children[page] as HTMLElement | undefined;
@@ -78,10 +81,26 @@ export class WordReview {
 			element.append(zone);
 			const zones = this.zones.get(page) || []; zones.push({ at, height: zone.offsetHeight, node: zone }); this.zones.set(page, zones);
 		}
+		for (const section of this.drafts) {
+			const anchor = section.anchor.position === 'after' ? section.anchorRects?.at(-1) : section.anchorRects?.[0];
+			const page = anchor?.page ?? 0, element = this.pages.children[page] as HTMLElement | undefined;
+			if (!element || !dimensions[page]) { continue; }
+			const scale = element.clientWidth / dimensions[page][0];
+			const at = anchor ? (anchor.y + (section.anchor.position === 'after' ? anchor.height : 0)) * scale : 40 * scale;
+			const zone = document.createElement('section'); zone.className = 'word-review-zone word-draft-zone'; zone.setAttribute('aria-label', 'Pending Document Section');
+			zone.style.left = '0'; zone.style.width = '100%'; zone.style.paddingInline = `${Math.max(16, (anchor?.x || 40) * scale)}px`;
+			zone.addEventListener('pointerdown', event => event.stopPropagation());
+			const label = document.createElement('small'); label.textContent = 'Pending section · Not saved in DOCX';
+			const title = document.createElement('strong'); title.textContent = section.title;
+			const intent = document.createElement('p'); intent.textContent = anchor ? section.intent : 'Anchor changed. Replan this section.';
+			const discard = document.createElement('button'); discard.textContent = 'Discard'; discard.addEventListener('pointerdown', event => event.preventDefault()); discard.setAttribute('aria-label', `Discard pending section: ${section.title}`); discard.addEventListener('click', () => this.discardDraft(section.id));
+			zone.append(label, title, intent, discard); element.append(zone);
+			const zones = this.zones.get(page) || []; zones.push({ at, height: zone.offsetHeight, node: zone }); this.zones.set(page, zones);
+		}
 		for (const [page, zones] of this.zones) {
 			zones.sort((a, b) => a.at - b.at); this.remeasure(page, dimensions);
 		}
-		for (const change of this.data.changes) {
+		for (const change of this.data?.changes || []) {
 			if (!change.afterText) { continue; }
 			for (const rect of change.rects || []) {
 				const element = this.pages.children[rect.page] as HTMLElement, scale = element.clientWidth / dimensions[rect.page][0];

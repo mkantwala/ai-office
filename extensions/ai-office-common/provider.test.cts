@@ -183,7 +183,7 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 	const invoke = async (name, input, cancellation = token) => JSON.parse((await tools.get('office_document_' + name).invoke({ input }, cancellation)).content[0].value);
 	try {
 		doc.panels.add({ active: true, webview: { postMessage: async message => { messages.push(message); } } });
-		assert.equal(tools.size, 7);
+		assert.equal(tools.size, 9);
 		const initial = await invoke('read', {});
 		assert.equal(initial.blocks[0].text, 'Initial content');
 		const other = await provider.openCustomDocument(uri('/other.docx'), {});
@@ -257,5 +257,25 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		await provider.revertCustomDocument(doc);
 		current = await invoke('read', {});
 		assert.notEqual(current.version, initial.version, 'Reopen/revert must invalidate old request versions even if engine revision resets');
+		assert.match((await invoke('edit', { operation: 'replaceText', id: 'internal-id', ifHash: 'a'.repeat(64), version: initial.version, find: 'Initial', text: 'Stale' })).error, /Document changed/);
+		const exportBefore = Buffer.from(await doc.enqueue(() => doc.snapshot())).toString();
+		const plan = await invoke('draft', { operation: 'plan', version: current.version, id: 'internal-id', sections: [{ title: 'Pending A', intent: 'Research A' }, { title: 'Pending B', intent: 'Research B' }] });
+		assert.equal(plan.pending, 2); assert.equal(plan.savedInDocument, false);
+		assert.equal((await invoke('draft', { operation: 'status' })).pending, 2);
+		assert.equal(Buffer.from(await doc.enqueue(() => doc.snapshot())).toString(), exportBefore);
+		assert.ok(messages.some(message => message.type === 'draft' && message.sections.length === 2));
+		const cancelled = { isCancellationRequested: true };
+		await assert.rejects(invoke('draft', { operation: 'fill', version: current.version, sectionId: plan.sections[0].id, blocks: [{ kind: 'paragraph', text: 'Never apply' }] }, cancelled), /Cancelled/);
+		assert.equal((await invoke('draft', { operation: 'status' })).pending, 2);
+		assert.match((await invoke('draft', { operation: 'discard', sectionId: 42 })).error, /sectionId/);
+		assert.equal((await invoke('draft', { operation: 'status' })).pending, 2);
+		vscode.workspace.isTrusted = false;
+		assert.match((await invoke('draft', { operation: 'discard' })).error, /Trust this workspace/);
+		vscode.workspace.isTrusted = true;
+		assert.equal((await invoke('draft', { operation: 'discard', sectionId: plan.sections[0].id })).pending, 1);
+		assert.equal((await invoke('draft', { operation: 'discard' })).pending, 0);
+		assert.match((await invoke('comments', { operation: 'resolve', version: current.version, commentId: 0 })).error, /explicit boolean/);
+		assert.match((await invoke('comments', { operation: 'reply', version: current.version, commentId: -1, text: 'No' })).error, /commentId/);
+
 	} finally { doc.dispose(); }
 });

@@ -8,7 +8,7 @@ These modules are retained for document workflows, with Word/DOCX as the first i
 | `markers` | Document consistency checks | Diagnostic storage, severity, grouping, filtering and Problems view | Extract document structure, run consistency rules, and navigate findings to document anchors |
 | Native Word snapshots and local versions | Document versioning without Git | Per-block Keep/Undo, saved-review recovery, timestamped DOCX snapshots and History comparisons | Further author-attributed revision history and version restore UI |
 | `multiDiffEditor` | Review of agent changes | Multi-file text comparison, source resolvers and review UI infrastructure | Read-only semantic document comparisons, formatting/structure changes, and proposal acceptance with revision checks |
-| `comments` | Document comments | Workbench Comments view and extension comment controllers; Word already creates and persists basic comments | Stable comment IDs, document anchors, thread state and navigation between the Comments view and Word webview |
+| `comments` | Document comments | Workbench Comments view and extension comment controllers; Word persists anchored threads with stable comment IDs, replies and resolved/orphaned state through agent tools | Workbench Comments view bridge and navigation between that view and native Word anchors |
 
 ## Current boundaries
 

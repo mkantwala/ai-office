@@ -15,7 +15,7 @@ export interface State {
 	rects?: { page: number; x: number; y: number; width: number; height: number }[];
 	selection?: unknown; selectedText?: string;
 	paragraphStyle?: string;
-	comments?: { author?: string; text: string }[];
+	comments?: { commentId?: number; parentId?: number | null; resolved?: boolean; author?: string; text: string }[];
 }
 export interface Command { id: string; label: string; params?: unknown }
 export interface DocumentAgent {
@@ -30,6 +30,7 @@ export interface DocumentAgent {
 	reviewImport?(value: string): void;
 	reviewProjection?(): string;
 }
+export interface DraftViewSection { id: string; title: string; intent: string; anchor: { id: string; position: 'before' | 'after' }; anchorRects?: State['rects'] }
 export interface DocumentReviewChange {
 	id: string; label: string; before: string; after: string;
 	beforeText?: string; afterText?: string;

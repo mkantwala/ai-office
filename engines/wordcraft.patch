@@ -1,8 +1,8 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index ae82a38..52990aa 100644
+index ae82a38..c8f0bd9 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -5311,6 +5311,18 @@ dependencies = [
+@@ -5311,6 +5311,19 @@ dependencies = [
   "wordcraft-metafile",
  ]
  
@@ -11,6 +11,7 @@ index ae82a38..52990aa 100644
 +version = "0.6.1"
 +dependencies = [
 + "serde_json",
++ "sha2",
 + "wasm-bindgen",
 + "wordcraft-doc",
 + "wordcraft-engine",
@@ -36,10 +37,10 @@ index 4e4f699..b853495 100644
 +incremental = false
 diff --git a/apps/ai-office-preview/Cargo.toml b/apps/ai-office-preview/Cargo.toml
 new file mode 100644
-index 0000000..8f0a4fe
+index 0000000..c26334e
 --- /dev/null
 +++ b/apps/ai-office-preview/Cargo.toml
-@@ -0,0 +1,20 @@
+@@ -0,0 +1,21 @@
 +[package]
 +name = "wordcraft-preview"
 +version.workspace = true
@@ -59,17 +60,20 @@ index 0000000..8f0a4fe
 +wordcraft-layout = { workspace = true }
 +wordcraft-render = { workspace = true }
 +serde_json = { workspace = true }
++sha2 = { workspace = true }
 +wasm-bindgen = "0.2"
 diff --git a/apps/ai-office-preview/src/agent.rs b/apps/ai-office-preview/src/agent.rs
 new file mode 100644
-index 0000000..54d0198
+index 0000000..bb439c3
 --- /dev/null
 +++ b/apps/ai-office-preview/src/agent.rs
-@@ -0,0 +1,376 @@
+@@ -0,0 +1,577 @@
 +//! Internal, revision-checked block editing for the AI Office agent.
 +use serde_json::{Value, json};
++use sha2::{Digest, Sha256};
 +use std::collections::HashSet;
 +use std::sync::Arc;
++use wordcraft_doc::para::InlineObject;
 +use wordcraft_doc::{Block, Blocks, Document, Paragraph, Path, Pos, StoryRef, Table};
 +use wordcraft_engine::{Selection, Session};
 +use wordcraft_layout::DocLayout;
@@ -83,6 +87,7 @@ index 0000000..54d0198
 +    pub path: Path,
 +    pub text: String,
 +    pub style: Option<String>,
++    pub level: Option<u8>,
 +}
 +
 +pub fn normalize(doc: &mut Document, prefix: &str, counter: &mut u64) {
@@ -122,13 +127,14 @@ index 0000000..54d0198
 +}
 +
 +pub fn nodes(doc: &Document) -> Vec<Node> {
-+    fn walk(blocks: &Blocks, story: StoryRef, prefix: &[u32], parent: &str, out: &mut Vec<Node>) {
++    fn walk(doc: &Document, blocks: &Blocks, story: StoryRef, prefix: &[u32], parent: &str, out: &mut Vec<Node>) {
 +        for (index, block) in blocks.iter().enumerate() {
 +            let mut path = prefix.to_vec();
 +            path.push(index as u32);
 +            match &**block {
 +                Block::Para(p) => {
-+                    let kind = if p.props.style.as_deref().is_some_and(|s| s.starts_with("Heading")) {
++                    let level = doc.styles.resolve_para(&p.props).outline_level.map(|level| level + 1);
++                    let kind = if level.is_some() {
 +                        "heading"
 +                    } else if p.props.numbering.is_some() {
 +                        "listItem"
@@ -143,6 +149,7 @@ index 0000000..54d0198
 +                        path: Path(path),
 +                        text: p.text.clone(),
 +                        style: p.props.style.clone(),
++                        level,
 +                    });
 +                }
 +                Block::Table(t) => {
@@ -154,6 +161,7 @@ index 0000000..54d0198
 +                        path: Path(path.clone()),
 +                        text: String::new(),
 +                        style: t.props.style.clone(),
++                        level: None,
 +                    });
 +                    for (r, row) in t.rows.iter().enumerate() {
 +                        let mut rp = path.clone();
@@ -166,6 +174,7 @@ index 0000000..54d0198
 +                            path: Path(rp.clone()),
 +                            text: String::new(),
 +                            style: None,
++                            level: None,
 +                        });
 +                        for (c, cell) in row.cells.iter().enumerate() {
 +                            let mut cp = rp.clone();
@@ -178,8 +187,9 @@ index 0000000..54d0198
 +                                path: Path(cp.clone()),
 +                                text: String::new(),
 +                                style: None,
++                                level: None,
 +                            });
-+                            walk(&cell.blocks, story, &cp, &cell.props.office_id, out);
++                            walk(doc, &cell.blocks, story, &cp, &cell.props.office_id, out);
 +                        }
 +                    }
 +                }
@@ -187,9 +197,9 @@ index 0000000..54d0198
 +        }
 +    }
 +    let mut out = Vec::new();
-+    walk(&doc.body, StoryRef::Body, &[], "body", &mut out);
++    walk(doc, &doc.body, StoryRef::Body, &[], "body", &mut out);
 +    for (id, part) in &doc.parts {
-+        walk(&part.blocks, StoryRef::Part(*id), &[], &format!("part-{id}"), &mut out);
++        walk(doc, &part.blocks, StoryRef::Part(*id), &[], &format!("part-{id}"), &mut out);
 +    }
 +    out
 +}
@@ -238,6 +248,60 @@ index 0000000..54d0198
 +    Ok(())
 +}
 +
++fn heading_level(node: &Node) -> Option<u8> {
++    node.level
++}
++
++pub fn block_hash(doc: &Document, node: &Node) -> String {
++    let value = match node.kind {
++        "table" => doc.table(node.story, &node.path).map(|value| json!(value)),
++        "row" | "cell" => {
++            let path = &node.path.0;
++            let count = if node.kind == "row" { 1 } else { 2 };
++            doc.table(node.story, &Path(path[..path.len() - count].to_vec())).and_then(|t| {
++                let row = t.rows.get(path[path.len() - count] as usize)?;
++                if count == 1 { Some(json!(row)) } else { row.cells.get(path[path.len() - 1] as usize).map(|cell| json!(cell)) }
++            })
++        }
++        _ => doc.para(node.story, &node.path).map(|value| json!(value)),
++    };
++    Sha256::digest(value.unwrap_or(Value::Null).to_string().as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
++}
++
++pub fn guarded_text_edit(edit: &Value) -> bool {
++    edit["ifHash"].as_str().is_some_and(|value| value.len() == 64 && value.bytes().all(|c| c.is_ascii_hexdigit()))
++        && matches!(edit["operation"].as_str(), Some("update" | "replaceText"))
++}
++
++pub fn validate_guards(doc: &Document, edits: &[Value], current_revision: bool) -> Result<(), String> {
++    if !current_revision && !edits.iter().all(guarded_text_edit) {
++        return Err("Document changed. Structural edits require a fresh document version.".into());
++    }
++    for edit in edits {
++        if let Some(hash) = edit.get("ifHash") {
++            let node = target(doc, edit["id"].as_str().ok_or("A block guard requires a target ID")?)?;
++            if hash.as_str() != Some(block_hash(doc, &node).as_str()) {
++                return Err("Block changed. Read this target again; your later edits were preserved.".into());
++            }
++        }
++    }
++    Ok(())
++}
++
++fn contains_comments(doc: &Document, node: &Node) -> bool {
++    doc.para_paths(node.story).iter().filter(|path| path.0.starts_with(&node.path.0)).any(|path| {
++        doc.para(node.story, path)
++            .is_some_and(|p| p.objects.iter().any(|o| matches!(o, InlineObject::CommentStart { .. } | InlineObject::CommentEnd { .. })))
++    })
++}
++
++fn require_detach(doc: &Document, node: &Node, args: &Value) -> Result<(), String> {
++    if args["allowDetach"] != true && contains_comments(doc, node) {
++        return Err("This would detach comment anchors. Preserve the commented content, or use allowDetach only when the user asked to remove it. Threads are retained as orphaned comments.".into());
++    }
++    Ok(())
++}
++
 +pub fn read(doc: &Document, args: &Value) -> Value {
 +    let all = nodes(doc);
 +    let id = args["id"].as_str();
@@ -248,8 +312,38 @@ index 0000000..54d0198
 +    let text_offset = usize::try_from(args["textOffset"].as_u64().unwrap_or(0)).unwrap_or(usize::MAX);
 +    let text_limit = args["textLimit"].as_u64().unwrap_or(if id.is_some() { 4000 } else { 160 }).clamp(1, 8000) as usize;
 +    let text_limit = text_limit.min(8000 / if id.is_some() { 1 } else { limit });
++    let section = args["sectionId"].as_str().and_then(|id| all.iter().position(|n| n.id == id));
++    let section_end = section.map(|start| {
++        let heading = &all[start];
++        all.iter()
++            .enumerate()
++            .skip(start + 1)
++            .find(|(_, n)| {
++                n.story == heading.story
++                    && n.parent == heading.parent
++                    && heading_level(n).is_some_and(|level| level <= heading_level(heading).unwrap_or(9))
++            })
++            .map(|(index, _)| index)
++            .unwrap_or(all.len())
++    });
++    let outline = args["operation"] == "outline";
 +    let matches: Vec<_> = all
 +        .iter()
++        .enumerate()
++        .filter(|(index, n)| {
++            let in_section = if args.get("sectionId").is_some() {
++                section.zip(section_end).is_some_and(|(start, end)| {
++                    *index >= start
++                        && *index < end
++                        && n.story == all[start].story
++                        && n.path.0.starts_with(&all[start].path.0[..all[start].path.0.len() - 1])
++                })
++            } else {
++                true
++            };
++            in_section && (!outline || heading_level(n).is_some() || n.kind == "table")
++        })
++        .map(|(_, n)| n)
 +        .filter(|n| {
 +            id.is_none_or(|id| n.id == id) && parent.is_none_or(|p| n.parent == p) && (query.is_empty() || n.text.to_lowercase().contains(&query))
 +        })
@@ -258,9 +352,9 @@ index 0000000..54d0198
 +        let length = n.text.chars().count();
 +        let text: String = n.text.chars().skip(text_offset).take(text_limit).collect();
 +        let end = text_offset + text.chars().count();
-+        json!({"id":n.id,"kind":n.kind,"parentId":n.parent,"style":n.style,"text":text,"textLength":length,"textOffset":text_offset,"nextTextOffset":if end < length {Some(end)}else{None},"children":all.iter().filter(|c|c.parent==n.id).count()})
++        json!({"id":n.id,"kind":n.kind,"parentId":n.parent,"style":n.style,"text":text,"textLength":length,"textOffset":text_offset,"nextTextOffset":if end < length {Some(end)}else{None},"ifHash":block_hash(doc,n),"headingLevel":heading_level(n),"children":all.iter().filter(|c|c.parent==n.id).count()})
 +    }).collect();
-+    json!({"blocks":results,"total":matches.len(),"nextOffset":if offset+results.len()<matches.len(){Some(offset+results.len())}else{None}})
++    json!({"blocks":results,"total":matches.len(),"nextOffset":if offset+results.len()<matches.len(){Some(offset+results.len())}else{None},"outline":outline,"summary":if outline {json!({"headings":all.iter().filter(|n|heading_level(n).is_some()).count(),"tables":all.iter().filter(|n|n.kind=="table").count(),"blocks":all.len()})}else{Value::Null}})
 +}
 +
 +pub fn target(doc: &Document, id: &str) -> Result<Node, String> {
@@ -345,6 +439,9 @@ index 0000000..54d0198
 +    if session.doc.settings.protection.is_some() || session.doc.settings.track_changes {
 +        return Err("Agent block editing is unavailable while document protection or native Track Changes is enabled".into());
 +    }
++    if args["operation"] == "comment" {
++        return edit_comment(session, args);
++    }
 +    let id = args["id"].as_str().ok_or("A target block ID is required")?;
 +    let node = target(&session.doc, id)?;
 +    let mut command_result = Value::Null;
@@ -378,7 +475,12 @@ index 0000000..54d0198
 +            }
 +            session.doc.ensure_nonempty();
 +        }
-+        "update" => {
++        "replaceBlocks" => {
++            require_detach(&session.doc, &node, args)?;
++            edit(session, &json!({"operation":"insert","id":id,"position":"before","blocks":args["blocks"]}))?;
++            edit(session, &json!({"operation":"delete","id":id,"allowDetach":args["allowDetach"]}))?;
++        }
++        "update" | "replaceText" => {
 +            if matches!(node.kind, "table" | "row" | "cell") {
 +                return Err("Update text using the paragraph IDs inside a cell; use command for table formatting".into());
 +            }
@@ -387,11 +489,17 @@ index 0000000..54d0198
 +                return Err("Use insert for multiple paragraphs".into());
 +            }
 +            let p = session.doc.para(node.story, &node.path).ok_or("Paragraph missing")?;
-+            let start = index(args, "start", 0)?;
-+            let end = index(args, "end", p.text.chars().count())?;
++            let (start, end) = if args["operation"] == "replaceText" {
++                find_range(p, args)?
++            } else {
++                (index(args, "start", 0)?, index(args, "end", p.text.chars().count())?)
++            };
 +            let offsets: Vec<_> = p.text.char_indices().map(|(i, _)| i).chain(std::iter::once(p.text.len())).collect();
 +            if start > end || end >= offsets.len() {
 +                return Err("Invalid character range; read the block again".into());
++            }
++            if args["allowDetach"] != true && p.text[offsets[start]..offsets[end]].contains('\u{fffc}') {
++                return Err("This text edit would remove inline objects or comment anchors. Use a smaller range or explicit replacement with allowDetach when requested.".into());
 +            }
 +            session.sel = Selection {
 +                anchor: Pos::new(node.story, node.path.clone(), offsets[start]),
@@ -400,6 +508,7 @@ index 0000000..54d0198
 +            session.run("text.insert", &json!({"text":value})).map_err(|e| e.to_string())?;
 +        }
 +        "delete" => {
++            require_detach(&session.doc, &node, args)?;
 +            if matches!(node.kind, "row" | "cell") {
 +                return Err("Delete a paragraph or table; row/cell deletion is not exposed".into());
 +            }
@@ -442,12 +551,106 @@ index 0000000..54d0198
 +    session.clamp_selection();
 +    Ok(command_result)
 +}
++
++fn find_range(paragraph: &Paragraph, args: &Value) -> Result<(usize, usize), String> {
++    let find = args["find"]
++        .as_str()
++        .filter(|s| !s.is_empty() && s.len() <= 2000 && !s.contains('\u{fffc}'))
++        .ok_or("find requires 1-2000 literal characters")?;
++    let matches: Vec<_> = paragraph.text.match_indices(find).collect();
++    if args.get("nth").is_none() && matches.len() > 1 {
++        return Err("The quoted text occurs more than once. Specify nth after reading the target.".into());
++    }
++    let nth = index(args, "nth", 1)?;
++    let (offset, _) = matches.get(nth.checked_sub(1).ok_or("nth starts at 1")?).ok_or("Quoted text was not found. Read the target again.")?;
++    let start = paragraph.text[..*offset].chars().count();
++    Ok((start, start + find.chars().count()))
++}
++
++pub fn comments(doc: &Document, args: &Value) -> Value {
++    let all = nodes(doc);
++    let offset = args["offset"].as_u64().unwrap_or(0) as usize;
++    let limit = args["limit"].as_u64().unwrap_or(20).clamp(1, 20) as usize;
++    let text_limit = args["textLimit"].as_u64().unwrap_or(160).clamp(1, 4000) as usize;
++    let text_offset = args["textOffset"].as_u64().unwrap_or(0) as usize;
++    let selected: Vec<_> = doc.comments.iter().filter(|(id, _)| args["commentId"].as_u64().is_none_or(|value| value == u64::from(**id))).collect();
++    let values: Vec<_> = selected.iter().skip(offset).take(limit).map(|(id,comment)| {
++        let mut root = **id;
++        for _ in 0..doc.comments.len() { if let Some(parent)=doc.comments.get(&root).and_then(|c|c.parent) {root=parent;} else {break;} }
++        let mut start: Option<Value> = None;
++        let mut end: Option<Value> = None;
++        for node in &all {
++            if matches!(node.kind,"table"|"row"|"cell") {continue;}
++            if let Some(p)=doc.para(node.story,&node.path) {
++                for (off, _) in p.text.char_indices().filter(|(_,c)|*c=='\u{fffc}') {
++                    match p.object_at(off) {
++                        Some(InlineObject::CommentStart{id}) if *id==root => start=Some(json!({"id":node.id,"offset":p.text[..off].chars().count()+1})),
++                        Some(InlineObject::CommentEnd{id}) if *id==root => end=Some(json!({"id":node.id,"offset":p.text[..off].chars().count()})),
++                        _=>{}
++                    }
++                }
++            }
++        }
++        let text=doc.plain_text(StoryRef::Part(comment.part));
++        let length=text.chars().count();
++        let slice:String=text.chars().skip(text_offset).take(text_limit.min(8000/limit)).collect();
++        let next=text_offset+slice.chars().count();
++        json!({"commentId":id,"parentId":comment.parent,"threadId":root,"author":comment.author,"resolved":comment.resolved,"text":slice,"textLength":length,"nextTextOffset":if next<length{Some(next)}else{None},"anchor":{"start":start,"end":end},"orphaned":start.is_none()||end.is_none()})
++    }).collect();
++    json!({"comments":values,"total":selected.len(),"nextOffset":if offset+values.len()<selected.len(){Some(offset+values.len())}else{None}})
++}
++
++fn edit_comment(session: &mut Session, args: &Value) -> Result<Value, String> {
++    let action = args["action"].as_str().ok_or("Comment action is required")?;
++    if !matches!(action, "add" | "reply" | "update" | "resolve" | "delete") {
++        return Err("Unknown comment action".into());
++    }
++    if matches!(action, "add" | "reply" | "update") && args["text"].as_str().is_none_or(|text| text.is_empty() || text.len() > 10000) {
++        return Err("Comment text requires 1-10000 characters".into());
++    }
++    let params = if action == "add" {
++        let node = target(&session.doc, args["id"].as_str().ok_or("Read the comment's target paragraph first")?)?;
++        let paragraph = session.doc.para(node.story, &node.path).ok_or("Comments target one paragraph")?;
++        let (start, end) = if args.get("find").is_some() {
++            find_range(paragraph, args)?
++        } else {
++            (index(args, "start", 0)?, index(args, "end", paragraph.text.chars().count())?)
++        };
++        let offsets: Vec<_> = paragraph.text.char_indices().map(|(i, _)| i).chain(std::iter::once(paragraph.text.len())).collect();
++        let (Some(&start), Some(&end)) = (offsets.get(start), offsets.get(end)) else {
++            return Err("Invalid comment anchor range".into());
++        };
++        if start > end {
++            return Err("Invalid comment anchor range".into());
++        }
++        session.sel = Selection { anchor: Pos::new(node.story, node.path.clone(), start), focus: Pos::new(node.story, node.path, end) };
++        json!({"text":args["text"]})
++    } else {
++        let id = args["commentId"].as_u64().and_then(|id| u32::try_from(id).ok()).ok_or("A commentId from the latest comment read is required")?;
++        let comment = session.doc.comments.get(&id).ok_or("Comment no longer exists")?;
++        if action == "reply" && comment.parent.is_some() {
++            return Err("Reply to the root threadId, not to a reply".into());
++        }
++        if action == "resolve" && args["resolved"].as_bool().is_none() {
++            return Err("resolved must be an explicit boolean".into());
++        }
++        json!({"id":id,"text":args["text"],"value":args["resolved"]})
++    };
++    let command = match action {
++        "add" => "review.newComment",
++        "reply" => "review.reply",
++        "update" => "review.editComment",
++        "resolve" => "review.resolveComment",
++        _ => "review.deleteComment",
++    };
++    session.run(command, &params).map_err(|error| error.to_string())
++}
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..c1d2f13
+index 0000000..8d863f4
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,308 @@
+@@ -0,0 +1,316 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -530,8 +733,8 @@ index 0000000..c1d2f13
 +            .session
 +            .doc
 +            .comments
-+            .values()
-+            .map(|c| json!({"author":c.author,"text":self.session.doc.plain_text(wordcraft_doc::StoryRef::Part(c.part))}))
++            .iter()
++            .map(|(id,c)| json!({"commentId":id,"parentId":c.parent,"resolved":c.resolved,"author":c.author,"text":self.session.doc.plain_text(wordcraft_doc::StoryRef::Part(c.part))}))
 +            .collect();
 +        let style = self.session.doc.para(sel.focus.story, &sel.focus.path).and_then(|p| p.props.style.as_deref()).unwrap_or("Normal");
 +        serde_json::to_string(&json!({"undoDepth":self.session.undo_depth(),"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
@@ -601,6 +804,15 @@ index 0000000..c1d2f13
 +
 +    pub fn agent_read(&self, args: &str) -> Result<String, JsValue> {
 +        let args: Value = serde_json::from_str(args).map_err(|e| JsValue::from_str(&e.to_string()))?;
++        if args["operation"] == "comments" {
++            return Ok(agent::comments(&self.session.doc, &args).to_string());
++        }
++        if let Some(id) = args["sectionId"].as_str() {
++            let node = agent::target(&self.session.doc, id).map_err(|e| JsValue::from_str(&e))?;
++            if node.kind != "heading" {
++                return Err(JsValue::from_str("sectionId must identify a heading"));
++            }
++        }
 +        if args["operation"] == "styles" {
 +            let query = args["query"].as_str().unwrap_or("").to_lowercase();
 +            let builtin = wordcraft_doc::styles::StyleSheet::builtin();
@@ -640,9 +852,6 @@ index 0000000..c1d2f13
 +            return Err(JsValue::from_str("Agent edit is too large"));
 +        }
 +        let args: Value = serde_json::from_str(args).map_err(|e| JsValue::from_str(&e.to_string()))?;
-+        if args["revision"].as_u64() != Some(self.session.rev()) {
-+            return Err(JsValue::from_str("Document changed. Read the target again before editing."));
-+        }
 +        let before_ids: std::collections::HashSet<_> = agent::nodes(&self.session.doc).into_iter().map(|n| n.id).collect();
 +        // Prepare on a private copy: failures leave content, revision, selection and undo intact.
 +        let mut draft = Session::new(self.session.doc.clone());
@@ -660,11 +869,13 @@ index 0000000..c1d2f13
 +        } else {
 +            vec![args.clone()]
 +        };
++        agent::validate_guards(&self.session.doc, &edits, args["revision"].as_u64() == Some(self.session.rev()))
++            .map_err(|error| JsValue::from_str(&error))?;
 +        let mut applied = Vec::new();
 +        let mut command_result = Value::Null;
 +        for edit in &edits {
 +            command_result = agent::edit(&mut draft, edit).map_err(|e| JsValue::from_str(&e))?;
-+            applied.push(json!({"id":edit["id"],"operation":edit["operation"],"command":edit["command"],"params":edit["params"]}));
++            applied.push(json!({"id":edit["id"],"operation":edit["operation"],"action":edit["action"],"commentId":edit["commentId"],"command":edit["command"],"params":edit["params"]}));
 +        }
 +        agent::normalize(&mut draft.doc, &self.id_prefix, &mut self.id_counter);
 +        if self.session.doc != draft.doc {

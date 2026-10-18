@@ -134,13 +134,14 @@ export async function runOfficeAgent(options: {
 						entry.total = value.total; entry.pending = entry.ids.size < value.total;
 						searches.set(key, entry);
 					}
-					if (!value.error && ['office_document_edit', 'office_document_format'].includes(call.function.name) && typeof value.uri === 'string' && Array.isArray(value.appliedEdits)) {
+					if (!value.error && ['office_document_edit', 'office_document_format', 'office_document_draft', 'office_document_comments'].includes(call.function.name) && typeof value.uri === 'string' && Array.isArray(value.appliedEdits)) {
 						for (const edit of value.appliedEdits) {
-							if (typeof edit.id !== 'string') { continue; }
-							const key = JSON.stringify([value.uri, edit.operation, edit.command, edit.params]);
-							const entry = applied.get(key) || { uri: value.uri, label: edit.command || edit.operation, ids: new Set<string>(), verified: false };
+							const target = typeof edit.id === 'string' ? edit.id : typeof edit.commentId === 'number' ? `comment:${edit.commentId}` : undefined;
+							if (!target) { continue; }
+							const key = JSON.stringify([value.uri, edit.operation, edit.action, edit.command, edit.params]);
+							const entry = applied.get(key) || { uri: value.uri, label: edit.command || (edit.action ? `${edit.operation}:${edit.action}` : edit.operation), ids: new Set<string>(), verified: false };
 							entry.verified ||= value.verifiedScope === true;
-							entry.ids.add(edit.id); applied.set(key, entry);
+							entry.ids.add(target); applied.set(key, entry);
 						}
 					}
 				} catch { /* Ordinary non-JSON results are still returned to the model. */ }
@@ -153,8 +154,8 @@ export async function runOfficeAgent(options: {
 				let compact: string | undefined;
 				try {
 					const value = JSON.parse(result);
-					if (['office_document_edit', 'office_document_format'].includes(call.function.name) && typeof value.version === 'string' && !value.error) {
-						compact = JSON.stringify({ completed: true, uri: value.uri, version: value.version, undoable: value.undoable, saved: value.saved, appliedEdits: value.appliedEdits, ...(JSON.stringify(value.created || []).length <= 8000 ? { created: value.created } : {}), contentTruncated: true, guidance: 'The edit completed. Read a smaller page or text chunk to inspect it. Do not repeat the completed edit.' });
+					if (['office_document_edit', 'office_document_format', 'office_document_draft', 'office_document_comments'].includes(call.function.name) && typeof value.version === 'string' && (['office_document_edit', 'office_document_format'].includes(call.function.name) || Array.isArray(value.appliedEdits)) && !value.error) {
+						compact = JSON.stringify({ completed: true, uri: value.uri, version: value.version, undoable: value.undoable, saved: value.saved, appliedEdits: value.appliedEdits, ...(JSON.stringify(value.created || []).length <= 8000 ? { created: value.created } : {}), commandResult: value.commandResult, filledSectionId: value.filledSectionId, draft: value.draft ? { pending: value.draft.pending } : undefined, contentTruncated: true, guidance: 'The edit completed. Read a smaller page or text chunk to inspect it. Do not repeat the completed edit.' });
 					}
 				} catch { /* Non-JSON results use the ordinary context limit error. */ }
 				result = compact || JSON.stringify({ error: 'Result exceeds the context budget. Request a smaller page, text chunk, guide or exact command.' });

@@ -293,3 +293,5 @@ dialog::backdrop{background:#0005}dialog label{display:block;margin-bottom:12px;
 .word-review-summary { display: flex; align-items: center; gap: 6px; padding: 8px 24px; background: var(--vscode-editorWidget-background); border-block: 1px solid var(--vscode-widget-border, #8883); color: var(--vscode-descriptionForeground); }
 .word-review-summary > span { margin-right: auto; }
 .word-review-summary button { padding: 4px 10px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+
+.word-draft-zone{border-left:3px dashed #6e9cdd;background:#f1f6ff;color:#34465f;padding-block:12px;font:14px/1.5 system-ui}.word-draft-zone small,.word-draft-zone strong{display:block}.word-draft-zone small{font-size:11px;color:#566d8b}.word-draft-zone strong{font-size:17px}.word-draft-zone p{margin:4px 0 8px}.word-draft-zone button{padding:3px 10px;cursor:pointer}

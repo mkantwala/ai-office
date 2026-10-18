@@ -103,3 +103,21 @@ test('Agent stops repeated invalid operations before spending its entire step bu
 	const result = await runOfficeAgent({ messages: [], tools, signal: new AbortController().signal, progress: () => { }, complete: async () => call('office_document_edit', '{"operation":"update","command":"bad"}'), invoke: async () => { calls++; return JSON.stringify({ error: 'update does not accept command. Use office_document_format.' }); } });
 	assert.equal(calls, 3); assert.match(result, /same invalid operation/); assert.match(result, /No successful document edit/);
 });
+
+
+test('Word agent distinguishes large comment reads from completed draft mutations', async () => {
+	for (const mutation of [false, true]) {
+		const name = mutation ? 'office_document_draft' : 'office_document_comments'; let rounds = 0;
+		const available: OfficeTool[] = [{ type: 'function', function: { name, description: 'Document tool', parameters: {} } }];
+		await runOfficeAgent({ messages: [], tools: available, signal: new AbortController().signal, progress: () => { },
+			complete: async messages => {
+				if (++rounds === 1) { return call(name, JSON.stringify({ operation: mutation ? 'fill' : 'list' })); }
+				if (rounds > 2) { return { role: 'assistant', content: 'Done.' }; }
+				const value = JSON.parse(messages.at(-1)!.content!);
+				if (mutation) { assert.equal(value.completed, true); assert.equal(value.filledSectionId, 'section'); assert.equal(value.draft.pending, 1); }
+				else { assert.equal(value.completed, undefined); assert.match(value.error, /smaller page/); }
+				return { role: 'assistant', content: 'Done.' };
+			}, invoke: async () => JSON.stringify({ uri: 'file:///memo.docx', version: 'v1', ...(mutation ? { appliedEdits: [{ id: 'p', operation: 'insert' }], filledSectionId: 'section', draft: { pending: 1 } } : {}), text: 'x'.repeat(25000) })
+		});
+	}
+});

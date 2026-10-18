@@ -16,6 +16,7 @@ import { openEngine } from './model.js';
 import { prepareWordFormatting, validateDocumentEdits } from './wordFormatting.js';
 import { WordFrame } from './wordFrame.js';
 import { activityRegion } from './agentActivity.js';
+import { DocumentDrafts } from './documentDrafts.js';
 import { DocumentVersions } from './documentVersions.js';
 import type { Block, State } from './types.js';
 
@@ -537,4 +538,150 @@ test('CLI content commands replace text without ids in every format', async () =
 			else { assert.match(reopened.state().blocks!.map(block => block.text).join(' '), /CLI content (PDF|Slides)/); }
 		} finally { reopened.dispose(); }
 	}
+});
+
+
+test('Word block guards preserve unrelated work and roll back conflicting batches', async () => {
+	const engine = await openEngine('word', 'Guards.docx', docx, root);
+	type Node = { id: string; text: string; ifHash: string };
+	const read = () => (engine.agent!.read({}) as { blocks: Node[] }).blocks;
+	const edit = (args: Record<string, unknown>) => engine.agent!.edit({ revision: engine.state().revision, ...args });
+	try {
+		const [first, second] = read(), revision = engine.state().revision;
+		assert.match(first.ifHash, /^[a-f0-9]{64}$/);
+		await edit({ operation: 'update', id: second.id, text: 'User changed another paragraph' });
+		await edit({ operation: 'replaceText', id: first.id, ifHash: first.ifHash, revision, find: 'AI Office', text: 'Office agent' });
+		assert.equal(read()[1].text, 'User changed another paragraph');
+		assert.equal(read()[0].text, 'Office agent editing');
+		await assert.rejects(edit({ operation: 'update', id: first.id, ifHash: first.ifHash, revision, text: 'Overwrite user' }), /Block changed/);
+		await assert.rejects(edit({ operation: 'delete', id: second.id, ifHash: read()[1].ifHash, revision }), /fresh document version/);
+		const current = read(), before = engine.state().revision;
+		await assert.rejects(edit({ operation: 'batch', edits: [
+			{ operation: 'update', id: first.id, ifHash: current[0].ifHash, text: 'Must roll back' },
+			{ operation: 'update', id: second.id, ifHash: second.ifHash, text: 'Conflict' }
+		] }), /Block changed/);
+		assert.equal(engine.state().revision, before); assert.deepEqual(read(), current);
+		await engine.execute('select.text', { text: 'Office agent' }); await engine.execute('format.bold', { value: true });
+		await assert.rejects(edit({ operation: 'replaceText', id: first.id, ifHash: current[0].ifHash, find: 'editing', text: 'changed' }), /Block changed/);
+	} finally { engine.dispose(); }
+});
+
+test('Word section outlines include nested headings and custom outline styles without leaking peer sections', async () => {
+	const engine = await openEngine('word', 'Outline.docx', docx, root);
+	type Node = { id: string; kind: string; text: string; headingLevel: number };
+	const read = (args: Record<string, unknown> = {}) => engine.agent!.read(args) as { blocks: Node[]; nextOffset: number | null; summary: unknown };
+	try {
+		const id = read().blocks[0].id;
+		await engine.agent!.edit({ revision: engine.state().revision, operation: 'insert', id, position: 'before', blocks: [
+			{ kind: 'heading', text: 'Scope A', style: 'Heading1' }, { kind: 'paragraph', text: 'A body' },
+			{ kind: 'heading', text: 'Nested', style: 'Heading2' }, { kind: 'paragraph', text: 'Nested body' },
+			{ kind: 'table', rows: [['Only A']] }, { kind: 'heading', text: 'Scope B', style: 'Heading1' }, { kind: 'paragraph', text: 'B body' }
+		] });
+		const outline = read({ operation: 'outline' });
+		assert.deepEqual(outline.blocks.map(n => n.text), ['Scope A', 'Nested', '', 'Scope B']);
+		assert.deepEqual(outline.blocks.filter(n => n.kind === 'heading').map(n => n.headingLevel), [1, 2, 1]);
+		const sectionId = outline.blocks[0].id, section = read({ sectionId });
+		assert.ok(section.blocks.some(n => n.text === 'Nested body')); assert.ok(section.blocks.some(n => n.text === 'Only A'));
+		assert.ok(!section.blocks.some(n => n.text.includes('Scope B') || n.text === 'B body'));
+		const page = read({ sectionId, limit: 2 }); assert.equal(page.nextOffset, 2);
+		assert.equal(read({ sectionId, offset: 2, limit: 2 }).blocks[0].text, 'Nested');
+		assert.throws(() => read({ sectionId: id }), /heading/);
+		const exported = unzipSync(await engine.export());
+		exported['word/document.xml'] = strToU8(strFromU8(exported['word/document.xml']).replace('<w:pPr>', '<w:pPr><w:outlineLvl w:val="2"/>').replace('w:val="Heading1"', 'w:val="CustomHeading"'));
+		const reopened = await openEngine('word', 'Custom.docx', zipSync(exported), root);
+		try { assert.equal((reopened.agent!.read({ operation: 'outline' }) as { blocks: Node[] }).blocks[0].headingLevel, 3); } finally { reopened.dispose(); }
+	} finally { engine.dispose(); }
+});
+
+test('Word literal edits preserve formatting and anchored comment threads through DOCX and review', async () => {
+	const engine = await openEngine('word', 'Comments.docx', docx, root);
+	type Comment = { commentId: number; parentId: number | null; text: string; orphaned: boolean; resolved: boolean; anchor: { start: { id: string; offset: number }; end: { id: string; offset: number } } };
+	const read = () => (engine.agent!.read({}) as { blocks: { id: string; text: string }[] }).blocks;
+	const comments = () => (engine.agent!.read({ operation: 'comments', textLimit: 4000 }) as { comments: Comment[] }).comments;
+	const edit = (args: Record<string, unknown>) => engine.agent!.edit({ revision: engine.state().revision, ...args });
+	try {
+		const id = read()[0].id;
+		await edit({ operation: 'update', id, text: '😀 hello hello end' });
+		await assert.rejects(edit({ operation: 'replaceText', id, find: 'hello', text: 'hi' }), /more than once/);
+		await edit({ operation: 'replaceText', id, find: 'hello', nth: 2, text: 'world' });
+		assert.equal(read()[0].text, '😀 hello world end');
+		await engine.execute('select.text', { text: 'hello' }); await engine.execute('format.bold', { value: true });
+		const added = await edit({ operation: 'comment', action: 'add', id, find: 'world', text: 'Confirm this word' });
+		const rootId = comments()[0].commentId; assert.equal((added.agentCommandResult as { id: number }).id, rootId);
+		assert.equal(comments()[0].orphaned, false);
+		await edit({ operation: 'comment', action: 'reply', commentId: rootId, text: 'Confirmed' });
+		const replyId = comments().find(c => c.parentId === rootId)!.commentId;
+		await assert.rejects(edit({ operation: 'comment', action: 'reply', commentId: replyId, text: 'Nested' }), /root threadId/);
+		await edit({ operation: 'comment', action: 'update', commentId: replyId, text: 'Updated reply' });
+		await edit({ operation: 'comment', action: 'resolve', commentId: rootId, resolved: true });
+		assert.equal(comments().find(c => c.commentId === rootId)!.resolved, true);
+		const start = comments()[0].anchor.start.offset;
+		engine.agent!.reviewStart!();
+		await edit({ operation: 'replaceText', id, find: 'end', text: 'finish' });
+		engine.agent!.reviewFinish!();
+		assert.equal(comments()[0].anchor.start.offset, start);
+		assert.equal(comments()[1].text, 'Updated reply');
+		assert.ok(engine.agent!.reviewRead!().changes.length);
+		await assert.rejects(edit({ operation: 'update', id, text: 'Would detach' }), /inline objects|comment anchors/i);
+		await assert.rejects(edit({ operation: 'delete', id }), /detach comment anchors/);
+		await assert.rejects(edit({ operation: 'replaceBlocks', id, blocks: [{ kind: 'paragraph', text: 'Replace' }] }), /detach comment anchors/);
+		const bytes = await engine.export(), xml = strFromU8(unzipSync(bytes)['word/document.xml']); assert.match(xml, /w:b/); assert.match(xml, /commentRangeStart/);
+		const reopened = await openEngine('word', 'Roundtrip.docx', bytes, root);
+		try { const cs = (reopened.agent!.read({ operation: 'comments', textLimit: 4000 }) as { comments: Comment[] }).comments; assert.equal(cs.length, 2); assert.ok(cs.every(c => !c.orphaned)); assert.ok(cs.some(c => c.text === 'Updated reply')); } finally { reopened.dispose(); }
+		await edit({ operation: 'delete', id, allowDetach: true }); assert.ok(comments().every(c => c.orphaned));
+		await engine.execute('edit.undo', {}); assert.ok(comments().every(c => !c.orphaned));
+		await edit({ operation: 'comment', action: 'delete', commentId: replyId }); assert.equal(comments().length, 1);
+		await edit({ operation: 'comment', action: 'delete', commentId: rootId }); assert.equal(comments().length, 0);
+	} finally { engine.dispose(); }
+});
+
+test('Word progressive draft intentions never serialize and out-of-order fills retain planned order with Undo', async () => {
+	const engine = await openEngine('word', 'Draft.docx', docx, root), draft = new DocumentDrafts();
+	const read = () => (engine.agent!.read({ parentId: 'body' }) as { blocks: { id: string; text: string }[] }).blocks;
+	try {
+		const before = await engine.export(), id = read()[0].id;
+		const plan = draft.plan({ id, position: 'after' }, [{ title: 'First section', intent: 'Research A' }, { title: 'Second section', intent: 'Research B' }]);
+		assert.equal(plan.pending, 2); assert.deepEqual(await engine.export(), before);
+		assert.throws(() => draft.plan({ id, position: 'after' }, [{ title: 'Other', intent: 'Other' }]), /unfinished/);
+		for (const section of [plan.sections[1], plan.sections[0]]) {
+			const anchor = draft.location(section.id);
+			const result = await engine.agent!.edit({ revision: engine.state().revision, operation: 'insert', ...anchor, blocks: [{ kind: 'heading', text: section.title, style: 'Heading2' }, { kind: 'paragraph', text: section.intent }] });
+			draft.complete(section.id, result.agentCreatedBlocks!.map(b => b.id));
+		}
+		assert.deepEqual(read().map(b => b.text).slice(1, 5), ['First section', 'Research A', 'Second section', 'Research B']);
+		assert.equal(draft.status().pending, 0); draft.discard(); assert.equal(read().length, 6);
+		await engine.execute('edit.undo', {}); assert.ok(!read().some(b => b.text === 'First section')); assert.ok(read().some(b => b.text === 'Second section'));
+		const exported = strFromU8(unzipSync(await engine.export())['word/document.xml']); assert.doesNotMatch(exported, /pending|Research A/);
+		const remaining = draft.plan({ id, position: 'before' }, [{ title: 'Unwritten', intent: 'Must stay editor-only' }]); draft.discard(remaining.sections[0].id); assert.equal(draft.pending().length, 0);
+	} finally { engine.dispose(); }
+});
+
+
+test('Word explicit structured replacement retires IDs and restores the original with Undo', async () => {
+	const engine = await openEngine('word', 'Replace.docx', docx, root);
+	const read = () => (engine.agent!.read({ parentId: 'body' }) as { blocks: { id: string; kind: string; text: string }[] }).blocks;
+	try {
+		const original = read(), revision = engine.state().revision;
+		const result = await engine.agent!.edit({ revision, operation: 'replaceBlocks', id: original[0].id, blocks: [{ kind: 'heading', text: 'New structure', style: 'Heading1' }, { kind: 'table', rows: [['Phase', 'State'], ['One', 'Ready']] }] });
+		assert.equal(result.agentCreatedBlocks?.length, 2); assert.ok(!read().some(b => b.id === original[0].id));
+		assert.equal(read()[1].kind, 'table'); assert.equal(read()[2].id, original[1].id);
+		await engine.execute('edit.undo', {}); assert.deepEqual(read(), original);
+		await engine.execute('edit.redo', {}); assert.equal(read()[0].text, 'New structure');
+	} finally { engine.dispose(); }
+});
+
+
+test('Word review undoes progressive fills and their dependent comment as one safe proposal', async () => {
+	const engine = await openEngine('word', 'Combined.docx', docx, root);
+	const read = () => (engine.agent!.read({ parentId: 'body' }) as { blocks: { id: string; text: string }[] }).blocks;
+	try {
+		const initial = read(), first = initial[0].id;
+		for (const title of ['Goals', 'Rollout']) {
+			engine.agent!.reviewStart!(); await engine.agent!.edit({ revision: engine.state().revision, operation: 'insert', id: first, blocks: [{ kind: 'heading', text: title, style: 'Heading2' }, { kind: 'paragraph', text: title + ' body' }] }); engine.agent!.reviewFinish!();
+		}
+		engine.agent!.reviewStart!(); await engine.agent!.edit({ revision: engine.state().revision, operation: 'comment', action: 'add', id: read().find(b => b.text === 'Goals body')!.id, find: 'Goals', text: 'Check this' }); engine.agent!.reviewFinish!();
+		assert.equal(engine.agent!.reviewRead!().changes[0].id, 'document');
+		engine.agent!.reviewDecide!(engine.state().revision, 'undo', ['document']);
+		assert.deepEqual(read(), initial); assert.equal(engine.state().comments!.length, 0); assert.equal(engine.agent!.reviewRead!().changes.length, 0);
+	} finally { engine.dispose(); }
 });

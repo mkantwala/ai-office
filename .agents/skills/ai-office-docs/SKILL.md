@@ -5,15 +5,17 @@ description: Read, create, update and delete content in AI Office documents (DOC
 
 # AI Office documents
 
+For live Word editing, first load the compact [Word agent guide](../../../extensions/ai-office-pdf/skills/ai-office-docs/SKILL.md). Prefer the `office_document_*` tools: outline/section reads, hash-guarded preserving edits, progressive editor-only drafts, anchored comments, formatting, history and native Keep/Undo review. Their IDs are private agent handles, never user-facing. The older cross-format commands below remain available for headless/PDF/PowerPoint work.
+
 AI Office edits DOCX, PDF and PPTX files. Agents change document contents without ever handling document, shape or paragraph ids: commands target content by text and resolve the engine target internally.
 
 ## Surfaces
 
 - **Files (headless):** `scripts\ai-office-cli.cmd` from the repository root (`node extensions/ai-office-pdf/out/cli.cjs` on any platform). Operates on a copy; the input file is untouched until a successful rename.
 - **Open editor (live):** VS Code command `aiOffice.<kind>.execute(fileNameOrUri?, command, params)` with `kind` = `word`, `pdf` or `slides`, applies to the already open document session and participates in its undo/save flow. Without a file argument the command edits the current active file; a bare file name (`'memo.docx'`) or a path fragment selects another open document. The result carries `name` and `uri` of the file that was edited. While it runs, the editor shimmers over the region the command touched.
-- **Open editor (chat tool):** the `aiOfficeEdit` language model tool (`#aiOffice`) takes `{ command, file?, params? }` and runs the same engine commands on an open document. It is the in-app agent's surface: with no `file` it edits the document the user is looking at — the user never has to name a file, and the agent must never ask for one. The tool result reports the resolved file `name`, `uri` and the new document state.
+- **Open editor (chat tool):** the `aiOfficeEdit` language model tool (`#aiOffice`) takes `{ command, file?, params? }` and runs the same engine commands on an open document. It is a cross-format compatibility surface: with no `file` it edits the document the user is looking at — the user never has to name a file, and the agent must never ask for one. The tool result reports the resolved file `name`, `uri` and the new document state.
 
-Prefer the `content.*` commands below. Use engine commands (further down) only for formatting, caret work or inserts that need explicit parameters.
+For cross-format compatibility, prefer the `content.*` commands below. Use engine commands (further down) only for formatting, caret work or inserts that need explicit parameters.
 
 ## Workflow (files)
 
