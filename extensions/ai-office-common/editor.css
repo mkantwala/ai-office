@@ -272,3 +272,24 @@ dialog::backdrop{background:#0005}dialog label{display:block;margin-bottom:12px;
 	#toolbar.word-toolbar, .word-toolbar-overflow { border-color: ButtonText; }
 	.word-toolbar button[aria-pressed=true] { outline: 2px solid Highlight; }
 }
+
+/* Inline review occupies view space only; it never changes DOCX pagination. */
+.has-word-review > canvas:first-child { visibility: hidden; }
+.page canvas.word-review-slice { position: absolute; left: 0; width: 100%; pointer-events: none; z-index: 0; }
+.word-review-zone { position: absolute; z-index: 4; background: #fff; padding-block: 4px 8px; cursor: default; user-select: text; font: 14px/1.55 Arial, sans-serif; color: #202124; border-left: 3px solid #ca5055; }
+.word-review-controls { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font: 12px var(--vscode-font-family); }
+.word-review-controls > span { margin-right: auto; color: #626872; }
+.word-review-controls button { color: #26313c; background: #f0f3f6; padding: 3px 9px; border: 1px solid #c9d1da; border-radius: 4px; }
+.word-review-controls button:first-of-type { color: #15683d; background: #e8f5ec; border-color: #a4d3b2; }
+.word-review-controls button:disabled { opacity: .5; }
+.word-review-deleted { background: #ffe9e9; color: #92262c; white-space: pre-wrap; overflow-wrap: anywhere; padding: 4px 8px; }
+.word-review-deleted del { text-decoration-thickness: 1px; }
+.word-review-sign { display: inline-block; width: 20px; font-weight: bold; }
+.word-review-added { background: #e1f5e7; color: #1b6037; white-space: pre-wrap; overflow-wrap: anywhere; padding: 4px 8px; }
+.word-review-insert { position: absolute; z-index: 2; pointer-events: none; background: #24b65d28; border-left: 3px solid #27944f; }
+.word-review-zone summary { cursor: pointer; font: 12px/1.6 var(--vscode-font-family); }
+.word-review-zone pre { font: 12px/1.6 var(--vscode-editor-font-family); max-height: 220px; overflow: auto; margin: 3px 0; }
+@media (forced-colors: active) { .word-review-deleted { border: 1px dashed CanvasText; } .word-review-insert { background: transparent; outline: 2px solid Highlight; } }
+.word-review-summary { display: flex; align-items: center; gap: 6px; padding: 8px 24px; background: var(--vscode-editorWidget-background); border-block: 1px solid var(--vscode-widget-border, #8883); color: var(--vscode-descriptionForeground); }
+.word-review-summary > span { margin-right: auto; }
+.word-review-summary button { padding: 4px 10px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }

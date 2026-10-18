@@ -9,6 +9,7 @@ interface WordToolbarControls {
 	undo: HTMLButtonElement;
 	redo: HTMLButtonElement;
 	save: HTMLButtonElement;
+	versions?: HTMLButtonElement;
 	style: HTMLSelectElement;
 	font: HTMLSelectElement;
 	size: HTMLSelectElement;
@@ -104,7 +105,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 		controls.emphasis[index].setAttribute('aria-label', label);
 		controls.emphasis[index].classList.add('word-emphasis-button');
 	}
-	const history = group('Document', [iconButton(controls.undo, 'undo'), iconButton(controls.redo, 'redo'), iconButton(controls.save, 'save')]);
+	const history = group('Document', [iconButton(controls.undo, 'undo'), iconButton(controls.redo, 'redo'), iconButton(controls.save, 'save'), ...(controls.versions ? [controls.versions] : [])]);
 	const menus = wordMenus(controls.style, controls.table, insertTable, focusDocument);
 	const style = group('Styles', [menus.style]);
 	const font = group('Font', [controls.font, controls.size]);

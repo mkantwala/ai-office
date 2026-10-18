@@ -13,6 +13,7 @@ import type { Kind, State, Command, DocumentReview, DocumentReviewChanges } from
 import { registerDocumentTools, type DocumentToolInput } from './documentTools.js';
 import { activeAgentRequest, DocumentHistory, withAgentToolRequest } from './agentRequest.js';
 import { prepareWordFormatting } from './wordFormatting.js';
+import { DocumentVersions } from './documentVersions.js';
 
 interface View { state: State; pages: number[][]; commands?: Command[] }
 class Document implements vscode.CustomDocument {
@@ -21,6 +22,9 @@ class Document implements vscode.CustomDocument {
 	readonly history = new DocumentHistory();
 	reviewRequest?: string;
 	reviewVersion = 0;
+	review?: DocumentReview;
+	readonly versions?: DocumentVersions;
+	readonly versionRequests = new Set<string>();
 	view!: View;
 	latestBytes!: Uint8Array;
 	agentActivity?: { region?: ActivityRegion; updated: number };
@@ -34,12 +38,15 @@ class Document implements vscode.CustomDocument {
 	activity?: { id: string; rects: State['rects']; timer: ReturnType<typeof setTimeout> };
 	constructor(readonly uri: vscode.Uri, readonly kind: Kind, readonly context: vscode.ExtensionContext, private readonly onDispose: () => void) {
 		this.client = new EngineClient(vscode.Uri.joinPath(context.extensionUri, 'out', 'engineWorker.cjs').fsPath);
+		if (kind === 'word' && context.globalStorageUri) { this.versions = new DocumentVersions(context.globalStorageUri.fsPath, uri.toString()); }
 	}
 	async load(bytes: Uint8Array) {
 		this.instance = randomUUID();
 		this.history.clear();
 		this.reviewRequest = undefined;
 		this.reviewVersion++;
+		this.review = undefined;
+		this.versionRequests.clear();
 		this.view = await this.client.request<View>('open', { kind: this.kind, name: basename(this.uri.path), bytes, extensionsRoot: vscode.Uri.joinPath(this.context.extensionUri, '..').fsPath, password: this.password });
 		this.latestBytes = bytes;
 		this.snapshotRevision = this.view.state.revision;
@@ -58,6 +65,10 @@ class Document implements vscode.CustomDocument {
 	}
 	async broadcast(command?: string) {
 		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'state', kind: this.kind, ...this.view, name: basename(this.uri.path), command })));
+		if (this.kind === 'word') {
+			const changes = this.review?.changes.length ? await this.client.request<DocumentReview['changes']>('reviewLayout', { changes: this.review.changes }) : [];
+			await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'review', review: { ...this.review, version: this.version, reviewVersion: this.reviewVersion, changes } })));
+		}
 		if (this.activity) { await this.sendActivity(this.activity.rects); }
 	}
 	async sendActivity(rects: State['rects']) {
@@ -112,11 +123,29 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 		const result = await doc.client.request<DocumentReviewChanges>('reviewRead');
 		return { uri: doc.uri.toString(), version: doc.version, reviewVersion: doc.reviewVersion, changes: result.changes || [] };
 	};
+	const captureVersion = async (doc: Document, label: string) => {
+		if (!doc.versions) { return; }
+		try {
+			const bytes = await doc.snapshot();
+			const projection = await doc.client.request<string>('reviewProjection');
+			const review = await doc.client.request<string>('reviewExport');
+			await doc.versions.capture(bytes, projection, label, doc.review?.changes.length ? { review, request: doc.reviewRequest } : undefined);
+		} catch { void vscode.window.showErrorMessage?.('The document is still open, but its local version history could not be saved. Check available disk space.'); }
+	};
+	const beforeRequest = async (doc: Document, request?: string) => {
+		if (!request || doc.versionRequests.has(request)) { return; }
+		await captureVersion(doc, 'Before Agent Edits'); doc.versionRequests.add(request);
+		if (doc.versionRequests.size > 30) { doc.versionRequests.delete(doc.versionRequests.values().next().value!); }
+	};
 	const publishReview = async (doc: Document, request?: string) => {
 		if (doc.kind !== 'word' || !request) { return; }
 		doc.reviewRequest = request;
 		doc.reviewVersion++;
 		const data = await reviewData(doc);
+		doc.review = data;
+		const changes = await doc.client.request<DocumentReview['changes']>('reviewLayout', { changes: data.changes });
+		await Promise.all([...doc.panels].map(panel => panel.webview.postMessage({ type: 'review', review: { ...data, changes } })));
+		await captureVersion(doc, data.changes.length ? 'Agent Edits' : 'Review Completed');
 		try { await vscode.commands.executeCommand('aiOffice.registerDocumentReview', request, data); }
 		catch { void vscode.window.showErrorMessage?.('Document changes were applied, but change review could not open. Reload AI Office before continuing.'); }
 	};
@@ -155,6 +184,8 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			const request = agent ? activeAgentRequest() : undefined;
 			await doc.stopActivity();
 			if (agent) { checkAgentAccess(token); }
+			await beforeRequest(doc, request);
+			if (agent) { checkAgentAccess(token); }
 			const beforeState = doc.view.state;
 			const before = beforeState.revision;
 			const result = await doc.client.request<View>('execute', { command, args, review: kind === 'word' && agent && !!request });
@@ -177,6 +208,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			if (!Array.isArray(edits) || !edits.length || edits.length > 200 || edits.some(edit => !edit || typeof edit.id !== 'string')) { throw new Error('Read the document to obtain a target block ID for every edit (1-200 edits).'); }
 			const targetId = edits[0].id as string;
 			if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+			await beforeRequest(doc, request);
 			const beforeState = doc.view.state;
 			const before = beforeState.revision;
 			const idsBefore = await doc.client.request<{ blocks: { id: string; parentId: string }[] }>('agentRead', { args: { id: targetId } });
@@ -184,7 +216,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			await doc.startActivity(targetId);
 			const started = Date.now();
 			try {
-				if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+				checkAgentAccess(token);
 				const result = await doc.client.request<View>('agentEdit', { args: { ...input, revision: before }, review: !!request });
 				doc.view = { ...doc.view, ...result };
 				if (result.state.revision !== before) {
@@ -225,6 +257,15 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 						}
 					}
 					doc.dirty = !!openContext.backupId;
+					if (doc.versions) {
+						try {
+							const pending = await doc.versions.restoreReview(bytes);
+							if (pending) {
+								await doc.client.request('reviewImport', { value: pending.review }); doc.reviewRequest = pending.request;
+								doc.review = await reviewData(doc);
+							}
+						} catch { void vscode.window.showErrorMessage('Local change review could not be restored. Document versions are still available from History.'); }
+					}
 					documents.set(uri.toString(), doc);
 					return doc;
 				} catch (error) { doc.dispose(); throw error; }
@@ -248,6 +289,12 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 									await panel.webview.postMessage({ type: 'rendered', request: message.request, page: message.page, result }); break;
 								}
 								case 'execute': await execute(doc, message.command, message.args || {}); break;
+								case 'reviewDecide':
+									void vscode.commands.executeCommand('aiOffice.word.reviewDecide', doc.uri.toString(), message.version, message.reviewVersion, message.action, message.ids).then(undefined, async error => {
+										await panel.webview.postMessage({ type: 'error', error: String(error) });
+										await doc.enqueue(async () => { doc.review = await reviewData(doc); await doc.broadcast(); });
+									}); break;
+								case 'versions': void vscode.commands.executeCommand('aiOffice.word.versions', doc.uri.toString()); break;
 								case 'undo': void vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri.toString(), 'undo').then(undefined, error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
 								case 'redo': void vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri.toString(), 'redo').then(undefined, error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
 								case 'save':
@@ -284,6 +331,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 					doc.saving = true;
 					try { await writeAtomic(doc.uri, bytes); doc.baseHash = hash(bytes); doc.dirty = false; }
 					finally { doc.saving = false; }
+					await captureVersion(doc, 'Saved Version');
 				});
 			},
 			async saveCustomDocumentAs(doc, destination) {
@@ -372,7 +420,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				const file = typeof input.file === 'string' && input.file.trim() ? input.file.trim() : undefined;
 				const kind = kindOfTarget(file);
 				if (!kind) { throw new Error('Open the document to edit in AI Office first, or pass its file name (DOCX, PDF or PPTX).'); }
-				const result = await withAgentToolRequest(options.toolInvocationToken, () => vscode.commands.executeCommand<View & { name: string; uri: string } | undefined>('aiOffice.' + kind + '.execute', file, input.command, input.params ?? {}, token));
+					const result = await withAgentToolRequest(options.toolInvocationToken, async () => vscode.commands.executeCommand<View & { name: string; uri: string } | undefined>('aiOffice.' + kind + '.execute', file, input.command, input.params ?? {}, token));
 				return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result ?? {}))]);
 			}
 		}));
@@ -411,6 +459,31 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 		return { uri: doc.uri.toString(), version: doc.version, ...historyStatus(doc), completed: true };
 	};
 	if (kinds.includes('word')) {
+		if (context.globalStorageUri) {
+			const versionText = new Map<string, string>();
+			context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('ai-office-version', {
+				provideTextDocumentContent: uri => versionText.get(uri.toString()) || ''
+			}));
+			context.subscriptions.push(vscode.workspace.onDidCloseTextDocument(document => versionText.delete(document.uri.toString())));
+			context.subscriptions.push(vscode.commands.registerCommand('aiOffice.word.versions', async (uri: string) => {
+				try {
+					const doc = documents.get(uri); if (!doc?.versions) { throw new Error('Open the Word document to view its versions.'); }
+					const versions = await doc.enqueue(async () => { await captureVersion(doc, 'Current Version'); return doc.versions!.list(); });
+					const chosen = await vscode.window.showQuickPick(versions.map((version, index) => ({
+						label: `${index === 0 ? '$(circle-filled) ' : '$(history) '}${version.label}`,
+						description: new Date(version.time).toLocaleString(), detail: 'Compare this document version with the current document', version
+					})), { title: 'Document Version History', placeHolder: 'Choose a version to review its differences from the current document' });
+					if (!chosen) { return; }
+					const original = await doc.versions.projection(chosen.version.id);
+					const current = await doc.enqueue(() => doc.client.request<string>('reviewProjection'));
+					const key = randomUUID(), name = basename(doc.uri.path);
+					const before = vscode.Uri.from({ scheme: 'ai-office-version', path: `/${name} — Previous.md`, query: key });
+					const after = vscode.Uri.from({ scheme: 'ai-office-version', path: `/${name} — Current.md`, query: key });
+					versionText.set(before.toString(), original); versionText.set(after.toString(), current);
+					await vscode.commands.executeCommand('vscode.diff', before, after, `${name} · ${new Date(chosen.version.time).toLocaleString()} ↔ Current`, { preview: true });
+				} catch (error) { void vscode.window.showErrorMessage(String(error)); }
+			}));
+		}
 		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.word.reviewStatus', async (uri: string) => {
 			const doc = documents.get(uri);
 			if (!doc) { throw new Error('Open the document before reviewing its changes.'); }
@@ -425,7 +498,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			if (!doc || doc.kind !== 'word') { throw new Error('Open the Word document before reviewing its changes.'); }
 			return doc.enqueue(async () => {
 				if (doc.version !== version || doc.reviewVersion !== reviewVersion) { throw new Error('Document changed. Refresh the review before deciding.'); }
-				if (!Array.isArray(ids) || ids.length > 2000 || ids.some(id => typeof id !== 'string')) { throw new Error('Invalid review changes'); }
+				if (!['keep', 'undo'].includes(action) || !Array.isArray(ids) || ids.length > 2000 || ids.some(id => typeof id !== 'string')) { throw new Error('Invalid review changes'); }
 				const before = doc.view.state;
 				const result = await doc.client.request<View>('reviewDecide', { revision: before.revision, action, ids });
 				doc.view = { ...doc.view, ...result };

@@ -6,7 +6,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { deflateSync } from 'node:zlib';
 import { zipSync, strToU8, unzipSync, strFromU8 } from '../ai-office-slides/node_modules/fflate/esm/index.mjs';
@@ -15,6 +16,7 @@ import { openEngine } from './model.js';
 import { prepareWordFormatting, validateDocumentEdits } from './wordFormatting.js';
 import { WordFrame } from './wordFrame.js';
 import { activityRegion } from './agentActivity.js';
+import { DocumentVersions } from './documentVersions.js';
 import type { Block, State } from './types.js';
 
 const root = resolve('extensions');
@@ -276,6 +278,51 @@ test('Word file review restores inserted and deleted blocks while preserving unr
 		try { assert.deepEqual((reopened.agent!.read({ limit: 20 }) as typeof original).blocks.map(block => block.text), ['Unrelated manual content', original.blocks[1].text]); }
 		finally { reopened.dispose(); }
 	} finally { engine.dispose(); }
+});
+
+test('Word inline review preserves text, deleted-block anchors and decisions across native reopen', async () => {
+	const engine = await openEngine('word', 'persistent-review.docx', docx, root);
+	try {
+		const agent = engine.agent!, blocks = (agent.read({ limit: 20 }) as { blocks: { id: string; text: string }[] }).blocks;
+		agent.reviewStart!();
+		await agent.edit({ revision: engine.state().revision, operation: 'batch', edits: [
+			{ operation: 'update', id: blocks[0].id, text: 'Revised paragraph 🌍' },
+			{ operation: 'delete', id: blocks[1].id }
+		] }); agent.reviewFinish!();
+		const pending = agent.reviewRead!().changes;
+		assert.deepEqual(pending.map(change => [change.beforeText, change.afterText, change.anchor]), [
+			[blocks[0].text, 'Revised paragraph 🌍', { id: blocks[0].id, after: false }],
+			[blocks[1].text, '', { id: blocks[0].id, after: true }]
+		]);
+		const reopened = await openEngine('word', 'persistent-review.docx', await engine.export(), root);
+		try {
+			reopened.agent!.reviewImport!(agent.reviewExport!());
+			assert.deepEqual(reopened.agent!.reviewRead!().changes, pending);
+			reopened.agent!.reviewDecide!(reopened.state().revision, 'undo', pending.map(change => change.id));
+			assert.deepEqual((reopened.agent!.read({ limit: 20 }) as { blocks: { text: string }[] }).blocks.map(block => block.text), blocks.map(block => block.text));
+		} finally { reopened.dispose(); }
+	} finally { engine.dispose(); }
+});
+
+test('Word document versions deduplicate snapshots, retain review only for matching bytes and prune old versions', async () => {
+	const directory = await mkdtemp(resolve(tmpdir(), 'office-versions-'));
+	try {
+		const versions = new DocumentVersions(directory, 'file:///private/memo.docx');
+		await versions.capture(Buffer.from('original'), 'Before', 'Before Agent Edits');
+		await versions.capture(Buffer.from('proposal'), 'After', 'Agent Edits', { review: '{"private":"native snapshot"}', request: 'request' });
+		await versions.capture(Buffer.from('proposal'), 'After', 'Saved Version', { review: '{"private":"native snapshot"}', request: 'request' });
+		assert.equal((await versions.list()).length, 2);
+		const reopened = new DocumentVersions(directory, 'file:///private/memo.docx');
+		assert.equal((await reopened.restoreReview(Buffer.from('proposal')))?.request, 'request');
+		assert.equal(await reopened.restoreReview(Buffer.from('external edit')), undefined);
+		const original = (await reopened.list()).at(-1)!;
+		assert.equal(await reopened.projection(original.id), 'Before');
+		await assert.rejects(reopened.projection('../index'), /no longer available/);
+		for (let index = 0; index < 31; index++) { await reopened.capture(Buffer.from(`version${index}`), `Text ${index}`, 'Saved Version'); }
+		assert.equal((await reopened.list()).length, 30);
+		await assert.rejects(reopened.projection(original.id), /no longer available/);
+		assert.equal(await reopened.restoreReview(Buffer.from('version30')), undefined);
+	} finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test('Word visual styles and visible table borders survive save and reopen', async () => {

@@ -24,6 +24,13 @@ parentPort?.on('message', message => {
 				if (!engine) { throw new Error('Document is not open.'); }
 				switch (message.method) {
 					case 'reviewRead': result = engine.agent?.reviewRead?.() || { changes: [] }; break;
+					case 'reviewExport': result = engine.agent?.reviewExport?.() || ''; break;
+					case 'reviewImport': engine.agent?.reviewImport?.(message.value); result = true; break;
+					case 'reviewProjection': result = engine.agent?.reviewProjection?.() || ''; break;
+					case 'reviewLayout': result = message.changes.map((change: { id: string; anchor?: { id: string } }) => {
+						const rects = (id: string) => { try { return engine?.agent?.rects(id) || []; } catch { return []; } };
+						return { ...change, rects: change.id === 'document' ? [] : rects(change.id.slice(change.id.indexOf(':') + 1)), anchorRects: change.anchor ? rects(change.anchor.id) : [] };
+					}); break;
 					case 'reviewDecide':
 						if (!engine.agent?.reviewDecide) { throw new Error('Word change review is unavailable.'); }
 						result = { state: engine.agent.reviewDecide(message.revision, message.action, message.ids), pages: engine.pages() }; break;

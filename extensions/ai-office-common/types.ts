@@ -26,8 +26,18 @@ export interface DocumentAgent {
 	reviewFinish?(): void;
 	reviewRead?(): DocumentReviewChanges;
 	reviewDecide?(revision: number, action: 'keep' | 'undo', ids: string[]): State;
+	reviewExport?(): string;
+	reviewImport?(value: string): void;
+	reviewProjection?(): string;
 }
-export interface DocumentReviewChanges { changes: { id: string; label: string; before: string; after: string }[] }
+export interface DocumentReviewChange {
+	id: string; label: string; before: string; after: string;
+	beforeText?: string; afterText?: string;
+	anchor?: { id: string; after: boolean };
+	rects?: NonNullable<State['rects']>;
+	anchorRects?: NonNullable<State['rects']>;
+}
+export interface DocumentReviewChanges { changes: DocumentReviewChange[] }
 export interface DocumentReview extends DocumentReviewChanges { uri: string; version: string; reviewVersion: number }
 export interface Engine {
 	agent?: DocumentAgent;

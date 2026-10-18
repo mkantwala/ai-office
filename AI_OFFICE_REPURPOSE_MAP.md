@@ -83,3 +83,7 @@ Implement in this order:
 5. Workbench comment integration using stable IDs and the same anchor resolver.
 
 These stages have separate completion checks. Retaining imports, changing panel labels or passing dependency tests does not establish that a document workflow is implemented.
+
+## Implemented Word review and local versions
+
+Word agent changes now have native chat review entries and inline Word page view zones. Red deleted text and green proposed text appear at the affected paragraph/table, with per-change and document Keep/Undo; native chat keeps file and all-file decisions. Private native baseline/proposal snapshots and timestamped DOCX versions are kept in extension storage, without Git. History compares a selected version with the current text/formatting projection. Saved files and matching backups restore pending inline review on reload; content hashes reject mismatched external documents. The earlier proposal discussion above describes future work, rather than the immediate-apply review behavior now used by Word, which follows VS Code chat editing: Keep resolves the proposal and Undo reverses only its selected blocks.

@@ -6,10 +6,23 @@
 import DOMPurify from '../ai-office-slides/node_modules/dompurify/dist/purify.es.mjs';
 import type { Kind, State, Block } from './types.js';
 import { arrangeWordToolbar } from './wordToolbar.js';
+import { WordReview } from './wordReview.js';
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const api = acquireVsCodeApi();
 const el = (id: string) => document.getElementById(id)!;
 const pages = el('pages');
+const wordReview = new WordReview(pages, (data, action, ids) => send('reviewDecide', { version: data.version, reviewVersion: data.reviewVersion, action, ids }), () => { overlay(); agentOverlay(); });
+const reviewSummary = document.createElement('div'); reviewSummary.className = 'word-review-summary'; reviewSummary.hidden = true; pages.before(reviewSummary);
+function showReviewSummary() {
+	reviewSummary.replaceChildren(); reviewSummary.hidden = !wordReview.count;
+	if (!wordReview.count) { return; }
+	const text = document.createElement('span'); text.textContent = `${wordReview.count} proposed ${wordReview.count === 1 ? 'change' : 'changes'} · Before Agent → Current`;
+	reviewSummary.append(text);
+	for (const action of ['keep', 'undo'] as const) {
+		const button = document.createElement('button'); button.textContent = action === 'keep' ? 'Keep All' : 'Undo All'; button.setAttribute('aria-label', `${button.textContent} Changes in This Document`);
+		button.addEventListener('click', () => { wordReview.decideAll(action); }); reviewSummary.append(button);
+	}
+}
 const toolbar = el('toolbar');
 const comments = document.createElement('details');
 comments.className = 'comments'; pages.before(comments);
@@ -169,14 +182,16 @@ function buildToolbar() {
 	const undo = button('Undo', 'Undo (Ctrl+Z)', () => { closeText(); send('undo'); }); undo.id = 'undo';
 	const redo = button('Redo', 'Redo (Ctrl+Shift+Z)', () => { closeText(); send('redo'); }); redo.id = 'redo';
 	const save = button('Save', 'Save (Ctrl+S)', () => { flushText(); send('save'); });
+	const versions = kind === 'word' ? button('History', 'Document Version History', () => send('versions')) : undefined;
 	if (kind === 'word') {
-		disposeToolbar = arrangeWordToolbar(toolbar, { undo, redo, save, style, font, size, emphasis, align, list, spacing, table, image, link, comment },
+		disposeToolbar = arrangeWordToolbar(toolbar, { undo, redo, save, versions, style, font, size, emphasis, align, list, spacing, table, image, link, comment },
 			(rows, cols) => execute('insert.table', { rows, cols, borders: true }), () => keyboard.focus({ preventScroll: true }));
 	}
 }
 function point(event: PointerEvent, page: HTMLElement) {
 	const bounds = page.getBoundingClientRect(); const index = Number(page.dataset.page);
-	return { page: index, x: (event.clientX - bounds.left) * dimensions[index][0] / bounds.width, y: (event.clientY - bounds.top) * dimensions[index][1] / bounds.height };
+	const scale = bounds.width / dimensions[index][0];
+	return { page: index, x: (event.clientX - bounds.left) / scale, y: (kind === 'word' ? wordReview.toDocument(index, event.clientY - bounds.top) : event.clientY - bounds.top) / scale };
 }
 function makePages() {
 	observer.disconnect(); visible.clear(); rendered.clear(); pages.replaceChildren();
@@ -185,6 +200,7 @@ function makePages() {
 		page.setAttribute('aria-label', (kind === 'slides' ? 'Slide ' : 'Page ') + (index + 1));
 		const content = document.createElement(kind === 'slides' ? 'img' : 'canvas'); page.append(content); pages.append(page);
 		page.addEventListener('pointerdown', event => {
+			if ((event.target as HTMLElement).closest('.word-review-zone')) { return; }
 			if (event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLButtonElement) { return; }
 			currentPage = index;
 			if (kind === 'word') {
@@ -205,7 +221,7 @@ const observer = new IntersectionObserver(entries => {
 	for (const entry of entries) {
 		const index = Number((entry.target as HTMLElement).dataset.page);
 		if (entry.isIntersecting) { visible.add(index); }
-		else { visible.delete(index); rendered.delete(index); const canvas = entry.target.querySelector('canvas'); if (canvas) { canvas.width = canvas.height = 1; } }
+		else { visible.delete(index); rendered.delete(index); const canvas = entry.target.querySelector('canvas'); if (canvas) { canvas.width = canvas.height = 1; } entry.target.querySelectorAll('.word-review-slice').forEach(node => node.remove()); }
 	}
 	renderNext();
 }, { rootMargin: '450px' });
@@ -224,8 +240,9 @@ function renderNext() {
 }
 function place(node: HTMLElement, page: number, x: number, y: number, w: number, h: number) {
 	const element = pages.children[page] as HTMLElement; if (!element) { return; }
-	node.style.left = x / dimensions[page][0] * 100 + '%'; node.style.top = y / dimensions[page][1] * 100 + '%';
-	node.style.width = w ? w / dimensions[page][0] * 100 + '%' : '2px'; node.style.height = h / dimensions[page][1] * 100 + '%'; element.append(node);
+	const scale = element.clientWidth / dimensions[page][0];
+	node.style.left = x * scale + 'px'; node.style.top = (kind === 'word' ? wordReview.toView(page, y * scale) : y * scale) + 'px';
+	node.style.width = w ? w * scale + 'px' : '2px'; node.style.height = h * scale + 'px'; element.append(node);
 }
 function overlay() {
 	pages.querySelectorAll('.selection,.caret,.block').forEach(node => node.remove());
@@ -305,6 +322,7 @@ document.addEventListener('keydown', event => {
 window.addEventListener('message', event => {
 	if (event.origin !== location.origin) { return; } const data = event.data;
 	if (data.type === 'agentActivity') { agentRects = Array.isArray(data.rects) ? data.rects : []; agentOverlay(); return; }
+	if (data.type === 'review') { wordReview.update(data.review); showReviewSummary(); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
 	if (data.type === 'error') { message(data.error); renderBusy = false; return; }
 	if (data.type === 'saved') { el('hint').textContent = 'Saved'; return; }
 	if (data.type === 'agent') { if (data.region) { showAgent(data.region, data.label); } return; }
@@ -325,6 +343,7 @@ window.addEventListener('message', event => {
 		(el('undo') as HTMLButtonElement).disabled = !state.undo; (el('redo') as HTMLButtonElement).disabled = !state.redo;
 		if (repaginated || !pages.children.length) { closeText(); makePages(); }
 		if (changed) { rendered.clear(); renderNext(); }
+		if (kind === 'word') { wordReview.layout(dimensions); }
 		overlay(); agentOverlay();
 	} else if (data.type === 'rendered') {
 		renderBusy = false;
@@ -348,6 +367,7 @@ window.addEventListener('message', event => {
 			}
 			canvas.dataset.frame = String(data.request);
 			canvas.dataset.revision = String(request.revision);
+			if (kind === 'word') { wordReview.paint(data.page, dimensions); }
 		}
 		// Show completed Word frames during continuous typing instead of discarding
 		// every frame until the user stops. A newer revision still requests a refresh.
@@ -355,5 +375,5 @@ window.addEventListener('message', event => {
 	}
 });
 let resizeTimer: ReturnType<typeof setTimeout>;
-window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { rendered.clear(); renderNext(); overlay(); agentOverlay(); }, 200); });
+window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { rendered.clear(); renderNext(); if (kind === 'word') { wordReview.layout(dimensions); } overlay(); agentOverlay(); }, 200); });
 send('ready');
