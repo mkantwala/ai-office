@@ -243,7 +243,7 @@ import { PlanAgentDefaultModel } from './planAgentDefaultModel.js';
 import './planReviewFeedback/planReviewFeedbackEditorOverlay.js';
 import { IPlanReviewFeedbackService, PlanReviewFeedbackService } from './planReviewFeedback/planReviewFeedbackService.js';
 import { PluginAutoUpdate } from './pluginAutoUpdate.js';
-import { BrowserPluginGitCommandService } from './pluginGitCommandService.js';
+import { DisabledPluginGitService } from '../common/plugins/disabledPluginGitService.js';
 import { PluginInstallService } from './pluginInstallService.js';
 import { PluginUrlHandler } from './pluginUrlHandler.js';
 import './promptSyntax/promptCodingAgentActionContribution.js';
@@ -3413,7 +3413,7 @@ registerSingleton(IAgentPluginService, AgentPluginService, InstantiationType.Del
 registerSingleton(IPluginMarketplaceService, PluginMarketplaceService, InstantiationType.Delayed);
 registerSingleton(IWorkspacePluginSettingsService, WorkspacePluginSettingsService, InstantiationType.Delayed);
 registerSingleton(IAgentPluginRepositoryService, AgentPluginRepositoryService, InstantiationType.Delayed);
-registerSingleton(IPluginGitService, BrowserPluginGitCommandService, InstantiationType.Delayed);
+registerSingleton(IPluginGitService, DisabledPluginGitService, InstantiationType.Delayed);
 registerSingleton(IPluginInstallService, PluginInstallService, InstantiationType.Delayed);
 registerSingleton(ILanguageModelToolsService, LanguageModelToolsService, InstantiationType.Delayed);
 registerSingleton(IToolResultCompressor, ToolResultCompressorService, InstantiationType.Delayed);

@@ -30,6 +30,11 @@ const excludedContributions = [
 	'remoteTunnel/electron-browser/remoteTunnel.contribution.ts',
 	'snippets/browser/snippets.contribution.ts',
 	'snippets/browser/snippets.service.contribution.ts',
+	'git/browser/git.contributions.ts',
+	'scm/browser/scm.contribution.ts',
+	'scm/browser/scm.service.contribution.ts',
+	'scm/browser/quickDiff.contribution.ts',
+	'github/browser/githubLinkPresentation.contribution.ts',
 ].map(file => `src/vs/workbench/contrib/${file}`);
 
 suite('AI Office workbench dependencies', () => {
@@ -60,7 +65,9 @@ suite('AI Office workbench dependencies', () => {
 					'comments/browser/comments.contribution.ts',
 					'timeline/browser/timeline.service.contribution.ts',
 					'localHistory/browser/localHistory.contribution.ts',
-					'scm/browser/scm.service.contribution.ts',
+					'scm/browser/scm.office.contribution.ts',
+					'git/browser/git.office.contribution.ts',
+					'chat/browser/chatEditing/chatEditingOfficeDocumentEntry.ts',
 					'notebook/browser/notebook.service.contribution.ts',
 					'remote/common/remote.service.contribution.ts',
 					'tasks/common/tasks.office.contribution.ts',
@@ -69,11 +76,20 @@ suite('AI Office workbench dependencies', () => {
 					required.push(...[
 						'timeline/browser/timeline.contribution.ts',
 						'markers/browser/markers.contribution.ts',
-						'scm/browser/scm.contribution.ts',
 					].map(file => `src/vs/workbench/contrib/${file}`));
 				}
 				required.push('src/vs/platform/markers/common/markerService.ts');
 				assert.deepStrictEqual(required.filter(file => !inputs.has(file)), []);
+				const excludedGit = [
+					'src/vs/workbench/contrib/chat/browser/pluginGitCommandService.ts',
+					'src/vs/workbench/contrib/chat/electron-browser/pluginGitCommandService.ts',
+					'src/vs/sessions/contrib/changes/browser/changes.contribution.ts',
+					'src/vs/sessions/contrib/changes/browser/sessionSyncChanges.ts',
+					'src/vs/sessions/contrib/codeReview/browser/codeReview.contributions.ts',
+					'src/vs/sessions/contrib/github/browser/github.contribution.ts',
+					'src/vs/sessions/contrib/applyCommitsToParentRepo/browser/applyChangesToParentRepo.ts',
+				];
+				assert.deepStrictEqual(excludedGit.filter(file => inputs.has(file)), []);
 			});
 		}
 	}

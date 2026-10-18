@@ -277,11 +277,10 @@ import './contrib/search/browser/search.contribution.js';
 import '../workbench/contrib/sash/browser/sash.contribution.js';
 
 // Git
-import '../workbench/contrib/git/browser/git.contributions.js';
+import '../workbench/contrib/git/browser/git.office.contribution.js';
 
 // SCM
-import '../workbench/contrib/scm/browser/quickDiff.contribution.js';
-import '../workbench/contrib/scm/browser/scm.service.contribution.js';
+import '../workbench/contrib/scm/browser/scm.office.contribution.js';
 
 // Debug (service)
 import { NullDebugService, NullDebugVisualizerService } from '../workbench/contrib/debug/common/nullDebugService.js';
@@ -476,11 +475,8 @@ import './services/sessions/browser/sessionComparisonService.js';
 import './services/sessions/browser/sessionSectionOrderService.js';
 import './services/agentHostFilter/browser/agentHostFilterService.js';
 import './contrib/sessions/browser/customizationsToolbar.contribution.js';
-import './contrib/changes/browser/changes.contribution.js';
-import './contrib/codeReview/browser/codeReview.contributions.js';
+import './contrib/changes/browser/changes.office.contribution.js';
 import './contrib/files/browser/files.contribution.js';
-import './contrib/github/browser/github.contribution.js';
-import './contrib/applyCommitsToParentRepo/browser/applyChangesToParentRepo.js';
 import './contrib/fileTreeView/browser/fileTreeView.contribution.js'; // view registration disabled; filesystem provider still needed
 import './contrib/configuration/browser/configuration.contribution.js';
 import './contrib/browserView/browser/sessionBrowserView.contribution.js';

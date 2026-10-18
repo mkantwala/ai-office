@@ -2,7 +2,7 @@
 
 The editor and Agents windows no longer import the developer feature entry points listed below, in either desktop or browser builds. Word's custom editor, webviews, chat, MCP, comments, terminal and multi-file diff review remain available.
 
-Timeline/local history, markers, SCM/Git, multi-diff and comments belong to the retained set. See the [reuse map](AI_OFFICE_REPURPOSE_MAP.md) for the intended document workflows, current implementation gaps and the distinction between document-workbench views and services retained in the Agents window.
+Timeline/local history, markers, multi-diff and comments belong to the retained set. Word versioning uses native snapshots and local document versions, independently of Git. See the [reuse map](AI_OFFICE_REPURPOSE_MAP.md) for the intended document workflows, current implementation gaps and the distinction between document-workbench views and services retained in the Agents window.
 
 | Feature | Removed from the application | Retained dependency |
 |---|---|---|
@@ -15,20 +15,21 @@ Timeline/local history, markers, SCM/Git, multi-diff and comments belong to the 
 | Remote | Remote Explorer, status indicator, Ports view/forwarding UI, browser remote-start entry and remote tunnel-host UI | Remote filesystem, extension-host and agent transport services needed for server-hosted operation |
 | Snippets | Snippet configuration/insertion commands, tab completion, user snippets and snippet suggestions | Empty snippets API service; Monaco's low-level snippet insertion used by chat remains available |
 | Interactive | Interactive Window and REPL notebook contributions | Interactive document/history APIs required by extension-host participants |
+| Git and Source Control | Source Control sidebar, repository graph, branches, staging, commit/sync controls, quick-diff SCM UI, GitHub PR integration, Agents-window repository Changes/commit/PR actions, and built-in Git/Git Base/GitHub extensions | Empty SCM/Git API services for shared chat/extension consumers; generic text diff and document history remain. Shared-process Git operations, agent-host repository probes/mutations and Git-backed plugin operations use disabled implementations that cannot launch Git; repository-clone welcome/picker links and merge/worktree agent tools are excluded |
 | GitHub sign-in | Chat title-bar Sign In pill, Copilot status-bar entry, accounts-menu sign-in item, chat-send setup flow, AI rename provider, model-picker sign-in placeholder, Add Models sign-in entry, Agents-window sign-in dialog and signed-out title-bar affordance | `defaultChatAgent` product configuration, Copilot and GitHub authentication extensions, chat entitlement/authentication services, the registered `workbench.action.chat.triggerSetup` handler (no longer wired to any user-facing entry point) |
 
 ## Extension exclusion
 
 `product.json` lists excluded built-ins in `disabledBuiltinExtensions`. Desktop and browser scanners honor this list, including development checkouts. Local extension packaging also excludes these extensions; their compile/media entries and downloaded JavaScript debugger definitions have been removed.
 
-Of the 98 built-in manifests in this checkout, 64 are excluded and 34 retained. This includes 54 newly excluded extensions beyond the initial feature cleanup. The earlier estimate of 106 extensions was not the inventory of this branch.
+Of the 98 built-in manifests in this checkout, 67 are excluded and 31 retained. This includes 54 newly excluded extensions beyond the initial feature cleanup. The earlier estimate of 106 extensions was not the inventory of this branch.
 
 | Retained group | Extensions and purpose |
 |---|---|
 | Office documents | `ai-office-pdf` (Word and PDF), `ai-office-slides` |
 | Documents and previews | Markdown language/editor, math, Mermaid, media preview, simple browser |
 | Agent access | Copilot, prompt-file support, GitHub and Microsoft authentication |
-| History | Git, Git Base, GitHub integration, diff grammar |
+| Document comparisons | Diff grammar; native Word snapshots and local version storage |
 | Configuration and diagnostics | Configuration editing, JSON grammar/language service, YAML for agent frontmatter, logs and search results |
 | Appearance | Existing color and icon themes, including the AI Office icon theme |
 
@@ -45,6 +46,7 @@ After installing root and build dependencies:
 ```sh
 node --test build/lib/test/officeWorkbench.test.ts
 node --test build/lib/test/builtinExtensionPolicy.test.ts
+node --test build/lib/test/officeGit.test.ts
 ```
 
 This bundles the actual desktop/browser entry points for both windows in memory and checks that excluded feature entry points are absent while document and agent infrastructure remain reachable. It does not launch Electron or a browser.
@@ -52,3 +54,5 @@ This bundles the actual desktop/browser entry points for both windows in memory 
 The extension-scanner suite includes a regression test that excludes a product-disabled built-in from fresh and cached scans while keeping the Word/PDF extension. Run it with the existing VS Code unit-test runner after compiling the client.
 
 The built-in policy tests verify the retained inventory, its declared extension dependencies, and policy selection for relative and absolute desktop/browser/media build inputs.
+
+Git source and interface files remain for upstream compatibility and development of the fork. They do not register the removed application features. The repository itself still uses Git for source development; no repository metadata or source history is deleted. GitHub authentication remains available to model integrations, independently of repository operations.

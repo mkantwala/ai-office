@@ -3,8 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { execFile } from 'child_process';
 import { createHash } from 'crypto';
+import { localize } from '../../../../nls.js';
 import { lstat, mkdir, readFile, realpath, rename, rmdir, stat, unlink, writeFile } from 'fs/promises';
 import { Sequencer, ThrottledDelayer } from '../../../../base/common/async.js';
 import { getErrorMessage } from '../../../../base/common/errors.js';
@@ -47,27 +47,8 @@ interface IMissionControlProjectsOptions {
 	readonly runGit?: typeof runGit;
 }
 
-function runGit(args: readonly string[], env: NodeJS.ProcessEnv, signal: AbortSignal, onProgress: (progress: number) => void): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const child = execFile('git', [...args], { env, signal, timeout: 5 * 60_000, maxBuffer: 4 * 1024 * 1024 }, (error, _stdout, stderr) => {
-			if (error) {
-				reject(new Error(stderr.trim() || error.message));
-			} else {
-				resolve();
-			}
-		});
-		let pending = '';
-		child.stderr?.on('data', (chunk: Buffer) => {
-			const lines = (pending + chunk.toString()).split(/[\r\n]/);
-			pending = lines.pop() ?? '';
-			for (const line of lines) {
-				const match = /(?:Receiving objects|Resolving deltas|Updating files):\s+(?<percent>\d+)%/.exec(line);
-				if (match?.groups) {
-					onProgress(Number(match.groups.percent));
-				}
-			}
-		});
-	});
+async function runGit(_args: readonly string[], _env: NodeJS.ProcessEnv, _signal: AbortSignal, _onProgress: (progress: number) => void): Promise<void> {
+	throw new Error(localize('git.unavailable', "Git is not available in AI Office. Open a document folder instead."));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -6,7 +6,7 @@ Word and PDF use Rust engines compiled to WebAssembly. PowerPoint uses `@office-
 
 Developer feature entry points and their associated built-ins are excluded from the office workbench. See the [removal map](AI_OFFICE_REMOVAL_MAP.md) for the removed UI, retained API dependencies and validation commands.
 
-Timeline/local history, markers, SCM/Git, multi-diff and comments are retained for document workflows. The [reuse map](AI_OFFICE_REPURPOSE_MAP.md) records their current capabilities, the missing Word adapters and the implementation order.
+Timeline/local history, markers, multi-diff and comments are retained for document workflows. Git and Source Control are excluded from the application; Word uses native snapshots and local document versions. The [reuse map](AI_OFFICE_REPURPOSE_MAP.md) records their current capabilities, the missing Word adapters and the implementation order.
 
 ## Source and build
 

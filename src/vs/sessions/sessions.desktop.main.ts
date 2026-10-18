@@ -107,7 +107,6 @@ import '../workbench/services/process/electron-browser/processService.js';
 import '../workbench/services/power/electron-browser/powerService.js';
 import '../workbench/services/localTranscription/electron-browser/localTranscriptionService.js';
 
-import { ILocalGitService } from '../platform/git/common/localGitService.js';
 import { InstantiationType, registerSingleton } from '../platform/instantiation/common/extensions.js';
 import { IRemoteAgentHostService } from '../platform/agentHost/common/remoteAgentHostService.js';
 import { AgentsWindowRemoteAgentHostService } from '../platform/agentHost/browser/remoteAgentHostServiceImpl.js';
@@ -115,21 +114,14 @@ import { IRemoteAgentHostLocationPreferenceService } from '../platform/agentHost
 import { RemoteAgentHostLocationPreferenceService } from '../platform/agentHost/browser/remoteAgentHostLocationPreferenceService.js';
 import { ISSHHostKeyTrustService } from '../platform/agentHost/common/sshHostKeyTrust.js';
 import { SSHHostKeyTrustService } from '../platform/agentHost/browser/sshHostKeyTrustService.js';
-import { registerSharedProcessRemoteService } from '../platform/ipc/electron-browser/services.js';
-import { IPluginGitService } from '../workbench/contrib/chat/common/plugins/pluginGitService.js';
-import { NativePluginGitCommandService } from '../workbench/contrib/chat/electron-browser/pluginGitCommandService.js';
 import { IUserDataInitializationService, UserDataInitializationService } from '../workbench/services/userData/browser/userDataInit.js';
 import { SyncDescriptor } from '../platform/instantiation/common/descriptors.js';
 
 registerSingleton(IUserDataInitializationService, new SyncDescriptor(UserDataInitializationService, [[]], true));
 
-// Override the browser PluginGitCommandService with the native one that always
-// runs git locally via the shared process.
-registerSingleton(IPluginGitService, NativePluginGitCommandService, InstantiationType.Delayed);
 registerSingleton(IRemoteAgentHostService, AgentsWindowRemoteAgentHostService, InstantiationType.Delayed);
 registerSingleton(IRemoteAgentHostLocationPreferenceService, RemoteAgentHostLocationPreferenceService, InstantiationType.Delayed);
 registerSingleton(ISSHHostKeyTrustService, SSHHostKeyTrustService, InstantiationType.Delayed);
-registerSharedProcessRemoteService(ILocalGitService, 'localGit');
 
 
 //#endregion

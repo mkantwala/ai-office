@@ -33,7 +33,7 @@ import { deriveGitHubEndpoints } from '../../../../platform/github/common/github
 import { asJson, IRequestService, isSuccess } from '../../../../platform/request/common/request.js';
 import { localize } from '../../../../nls.js';
 import { IActiveSession, ICreateNewSessionOptions, ISessionsManagementService, WorkspaceNotTrustedError } from '../../../services/sessions/common/sessionsManagement.js';
-import { GITHUB_REMOTE_FILE_SCHEME, ISession, ISessionWorkspace, SESSION_WORKSPACE_GROUP_GITHUB } from '../../../services/sessions/common/session.js';
+import { ISession, ISessionWorkspace, SESSION_WORKSPACE_GROUP_GITHUB } from '../../../services/sessions/common/session.js';
 import { IOpenNewSessionResult, ISessionsService } from '../../../services/sessions/browser/sessionsService.js';
 import { ISessionsProvidersService } from '../../../services/sessions/browser/sessionsProvidersService.js';
 import { isAllowSignedOutWhenUsableEnabled, shouldShowGitHubWorkspaceGroupSignIn } from '../../../browser/sessionsAuthGate.js';
@@ -870,37 +870,8 @@ export class NewChatWidget extends Disposable {
 		if (!folderUri || this._isPreferredServable(folderUri, pick)) {
 			return true;
 		}
-		const workspace = this._workspacePicker.selectedResolved?.workspace;
-		if (folderUri.scheme !== GITHUB_REMOTE_FILE_SCHEME || workspace?.group !== SESSION_WORKSPACE_GROUP_GITHUB) {
-			return false;
-		}
-		const [owner, repository] = folderUri.path.split('/').filter(Boolean);
-		if (!owner || !repository) {
-			return false;
-		}
-		try {
-			const repositoryPath = await this.commandService.executeCommand<string>(
-				'git.clone',
-				`https://github.com/${owner}/${repository}.git`,
-				undefined,
-				{ postCloneAction: 'none', returnRepositoryPath: true },
-			);
-			if (!repositoryPath || repositoryPath.endsWith('.code-workspace')) {
-				return false;
-			}
-			const localFolderUri = URI.file(repositoryPath);
-			if (!this._isPreferredServable(localFolderUri, pick)) {
-				this.logService.error(`Selected session type '${pick.sessionTypeId}' cannot use cloned repository '${localFolderUri.toString()}'`);
-				return false;
-			}
-			this._workspacePicker.setSelectedWorkspace(localFolderUri, { fireEvent: false, providerId: pick.providerId });
-			return true;
-		} catch (error) {
-			if (!isCancellationError(error)) {
-				onUnexpectedError(error);
-			}
-			return false;
-		}
+		// AI Office uses document folders; changing agent types must never clone a repository.
+		return false;
 	}
 
 	private _getWelcomeName(gitHubName: string | undefined, configuredName = this.configurationService.getValue<string>(NEW_SESSION_WELCOME_NAME_SETTING).trim()): string | undefined {

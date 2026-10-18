@@ -24,7 +24,7 @@ suite('AI Office built-in extensions', () => {
 	test('ships document, agent and shell essentials instead of programming tools', () => {
 		const expected = [
 			'ai-office-pdf', 'ai-office-slides', 'configuration-editing', 'copilot', 'diff',
-			'git', 'git-base', 'github', 'github-authentication', 'json', 'json-language-features',
+			'github-authentication', 'json', 'json-language-features',
 			'log', 'markdown-basics', 'markdown-language-features', 'markdown-math', 'media-preview',
 			'mermaid-markdown-features', 'microsoft-authentication', 'prompt-basics', 'search-result',
 			'simple-browser', 'theme-abyss', 'theme-defaults', 'theme-kimbie-dark', 'theme-modern-icons',

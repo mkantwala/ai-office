@@ -279,13 +279,10 @@ import './contrib/searchEditor/browser/searchEditor.contribution.js';
 import './contrib/sash/browser/sash.contribution.js';
 
 // Git
-import './contrib/git/browser/git.contributions.js';
-import './contrib/github/browser/githubLinkPresentation.contribution.js';
+import './contrib/git/browser/git.office.contribution.js';
 
 // SCM
-import './contrib/scm/browser/scm.contribution.js';
-import './contrib/scm/browser/quickDiff.contribution.js';
-import './contrib/scm/browser/scm.service.contribution.js';
+import './contrib/scm/browser/scm.office.contribution.js';
 
 // Debug API services (feature UI excluded from AI Office)
 import { NullDebugService, NullDebugVisualizerService } from './contrib/debug/common/nullDebugService.js';

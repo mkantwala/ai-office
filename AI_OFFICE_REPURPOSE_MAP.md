@@ -6,13 +6,13 @@ These modules are retained for document workflows, with Word/DOCX as the first i
 |---|---|---|---|
 | `timeline` and `localHistory` | Document version history | Timeline providers, history storage, retention settings, entry commands | Capture custom-document saves; open immutable DOCX snapshots in Word; compare and restore through the live document session |
 | `markers` | Document consistency checks | Diagnostic storage, severity, grouping, filtering and Problems view | Extract document structure, run consistency rules, and navigate findings to document anchors |
-| `scm` and built-in Git | Document versioning | Repository status, commits, history and file storage | Document-oriented actions and readable DOCX comparisons; connect saved document versions to explicit Git checkpoints |
+| Native Word snapshots and local versions | Document versioning without Git | Per-block Keep/Undo, saved-review recovery, timestamped DOCX snapshots and History comparisons | Further author-attributed revision history and version restore UI |
 | `multiDiffEditor` | Review of agent changes | Multi-file text comparison, source resolvers and review UI infrastructure | Read-only semantic document comparisons, formatting/structure changes, and proposal acceptance with revision checks |
 | `comments` | Document comments | Workbench Comments view and extension comment controllers; Word already creates and persists basic comments | Stable comment IDs, document anchors, thread state and navigation between the Comments view and Word webview |
 
 ## Current boundaries
 
-The document workbench imports all five groups. The Agents window retains comments, multi-diff, local history and the timeline/SCM services, but does not import the standard Timeline, Problems or SCM view contributions. Retaining those services does not add those panels to the Agents window. `build/lib/test/officeWorkbench.test.ts` protects these actual boundaries in desktop and browser builds. The built-in extension policy separately retains Git and Git Base.
+The document workbench retains document history, markers, multi-diff and comments. Git/SCM UI and built-in Git extensions are excluded from both application windows. Shared extension/chat consumers receive empty SCM/Git compatibility services, while the agent-host and shared-process Git implementations are disabled. The Agents window does not register repository Changes, commit/sync, PR polling or apply-commit actions. `build/lib/test/officeWorkbench.test.ts`, `officeGit.test.ts` and the built-in extension policy tests protect these boundaries.
 
 Word is implemented in [`extensions/ai-office-pdf`](extensions/ai-office-pdf), with the shared session and save lifecycle in [`provider.ts`](extensions/ai-office-common/provider.ts), the engine adapter in [`model.ts`](extensions/ai-office-common/model.ts), and the webview in [`editor.ts`](extensions/ai-office-common/editor.ts). The patched Rust engine is recorded in [`engines/wordcraft.patch`](engines/wordcraft.patch).
 
@@ -40,15 +40,11 @@ The existing Problems navigation opens a text-editor line/column selection. Intr
 
 Completion checks: a known inconsistent sample produces the expected findings; clicking a finding highlights its document location; fixing it removes the finding; undo restores it; late analysis cannot overwrite diagnostics from a newer revision.
 
-## Document versioning with Git
+## Document versioning without Git
 
-Reuse the [`SCM` services and views](src/vs/workbench/contrib/scm) and [`Git extension`](extensions/git). Git can already store DOCX files as repository content. Its ordinary text-diff and merge behavior does not supply readable Word changes because DOCX is a ZIP package.
+Git and Source Control have been removed from the application. Word uses private native baseline/proposal snapshots for per-change decisions and immutable DOCX versions for history. Versions are content-hashed, timestamped and stored in local extension storage outside the document and repository. The History control compares a selected version with the current readable text/formatting projection. Saved documents and matching backups recover pending inline review after reload; mismatched external files never receive stale review state.
 
-Keep automatic local document history available without a Git repository. Where a user enables repository versioning, expose explicit saved-document checkpoints, history and restore actions. Git operations remain separate from save and from accepting an agent proposal. Creating a document version must not implicitly stage unrelated files, commit other work, or push to a remote.
-
-Use the same immutable version model and semantic comparison adapter as local history and agent review. Keep exact DOCX bytes for fidelity; use extracted structure for explanation. Handle renames, external checkout changes and unsaved editor state through the existing conflict checks. Keep generated projections in application storage unless their inclusion in a repository is explicitly designed.
-
-Completion checks: commit and reopen a saved DOCX version; display a meaningful comparison; handle repository rename/checkout while a document is open; keep unrelated work out of a document checkpoint; work without any remote repository.
+Source Control and Git are not a future document-versioning dependency. Preserve the shared text diff editor, multi-file review and native chat Keep/Undo independently of repository services.
 
 ## Review of agent changes
 
@@ -77,7 +73,7 @@ All five workflows need a document adapter that provides immutable byte snapshot
 Implement in this order:
 
 1. Saved Word snapshots, the custom-save history connection, read-only historical opening and restore.
-2. Structured extraction, document anchors and semantic comparisons; use them for history and Git checkpoints.
+2. Structured extraction, document anchors and semantic comparisons; use them for local document history and revision checkpoints.
 3. Agent proposals with revision validation and accept/reject/undo.
 4. Deterministic consistency diagnostics with document navigation and fixes.
 5. Workbench comment integration using stable IDs and the same anchor resolver.

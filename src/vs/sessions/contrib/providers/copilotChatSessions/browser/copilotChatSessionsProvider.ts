@@ -15,7 +15,7 @@ import { isWeb } from '../../../../../base/common/platform.js';
 import { constObservable, derived, IObservable, ISettableObservable, ITransaction, observableFromPromise, observableValue, observableValueOpts, transaction } from '../../../../../base/common/observable.js';
 import { ThemeIcon } from '../../../../../base/common/themables.js';
 import { URI } from '../../../../../base/common/uri.js';
-import { ICommandService } from '../../../../../platform/commands/common/commands.js';
+import { CommandsRegistry, ICommandService } from '../../../../../platform/commands/common/commands.js';
 import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
 import { AgentSession } from '../../../../../platform/agentHost/common/agent.js';
 import { getGitHubRepositoryId, parseGitHubIssueUrl } from '../../../../../platform/github/common/githubUrls.js';
@@ -1197,6 +1197,7 @@ export class CopilotChatSessionsProvider extends Disposable implements ISessions
 	}
 
 	get browseActions(): readonly ISessionWorkspaceBrowseAction[] {
+		if (!CommandsRegistry.getCommand('git.clone')) { return []; }
 		const useConsolidatedRemoteWorkspaces = this.configurationService.getValue<boolean>(UNIFIED_WORKSPACE_PICKER_SETTING);
 		const isSandbox = this.providerMode === 'sandbox';
 		const repositoryAction: ISessionWorkspaceBrowseAction = {
@@ -2349,7 +2350,7 @@ export class CopilotChatSessionsProvider extends Disposable implements ISessions
 	}
 
 	private _supportsLocalRepositoryActions(): boolean {
-		return this.supportsLocalWorkspaces && !isWeb
+		return !!CommandsRegistry.getCommand('git.clone') && this.supportsLocalWorkspaces && !isWeb
 			&& (this.pathService.defaultUriScheme === Schemas.file
 				|| this.pathService.defaultUriScheme === GITHUB_REMOTE_FILE_SCHEME
 				|| this.pathService.defaultUriScheme === SessionType.CopilotCloud);
