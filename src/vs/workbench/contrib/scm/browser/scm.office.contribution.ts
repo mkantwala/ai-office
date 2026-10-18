@@ -19,13 +19,13 @@ class OfficeSCMService implements ISCMService {
 	readonly onDidRemoveRepository = Event.None;
 	readonly repositories: ISCMRepository[] = [];
 	readonly repositoryCount = 0;
-	registerSCMProvider(): never { throw new Error(localize('scm.unavailable', "Source Control is not available in AI Office.")); }
+	registerSCMProvider(): never { throw new Error(localize('scm.unavailable', "Source Control is not available in Sangam One.")); }
 	getRepository(): undefined { return undefined; }
 }
 
 class OfficeSCMViewService implements ISCMViewService {
 	declare readonly _serviceBrand: undefined;
-	readonly menus = { getRepositoryMenus(): never { throw new Error(localize('scm.unavailable', "Source Control is not available in AI Office.")); } };
+	readonly menus = { getRepositoryMenus(): never { throw new Error(localize('scm.unavailable', "Source Control is not available in Sangam One.")); } };
 	readonly selectionModeConfig = constObservable(ISCMRepositorySelectionMode.Single);
 	readonly explorerEnabledConfig = constObservable(false);
 	readonly graphShowIncomingChangesConfig = constObservable(false);

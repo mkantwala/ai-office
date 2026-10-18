@@ -10,7 +10,7 @@ import { IAgentHostGitService } from './agentHostGitService.js';
 /** Agent sessions use folders and document snapshots, without repository probes or Git processes. */
 export class DisabledAgentHostGitService implements IAgentHostGitService {
 	declare readonly _serviceBrand: undefined;
-	private async unavailable(): Promise<never> { throw new Error(localize('git.unavailable', "Git is not available in AI Office.")); }
+	private async unavailable(): Promise<never> { throw new Error(localize('git.unavailable', "Git is not available in Sangam One.")); }
 	async getCurrentBranch(): Promise<undefined> { return undefined; }
 	async getCurrentBranchName(): Promise<undefined> { return undefined; }
 	async getDefaultBranch(): Promise<undefined> { return undefined; }

@@ -37,277 +37,41 @@ dialog::backdrop{background:#0005}dialog label{display:block;margin-bottom:12px;
 
 .comments { margin: 8px 24px; padding: 10px 14px; background: var(--vscode-editorWidget-background, #20242c); border-radius: 6px; } .comments summary { cursor: pointer; } .comments p { white-space: pre-wrap; }
 
-/* Word uses a single quiet toolbar; secondary groups move to its popover. */
-.word-document {
-	background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-}
-
-#toolbar.word-toolbar {
-	top: 8px;
-	display: block;
-	margin: 8px 12px 0;
-	padding: 6px 8px;
-	border: 1px solid var(--vscode-contrastBorder, transparent);
-	border-radius: 9999px;
-	background: color-mix(in srgb, var(--vscode-focusBorder) 8%, var(--vscode-editor-background));
-}
-
-.word-toolbar-row {
-	display: flex;
-	align-items: center;
-	min-width: 0;
-	gap: 4px;
-}
-
-.word-toolbar-group {
-	display: flex;
-	flex: 0 0 auto;
-	align-items: center;
-	gap: 2px;
-}
-
-.word-toolbar-row > .word-toolbar-group {
-	padding-inline-end: 8px;
-	border-inline-end: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, transparent));
-}
-
-.word-toolbar button,
-.word-toolbar select,
-.word-toolbar-overflow button,
-.word-toolbar-overflow select {
-	height: 32px;
-	border-radius: 4px;
-	background: transparent;
-	color: var(--vscode-foreground);
-	font-size: 12px;
-	padding: 4px 8px;
-}
-
-.word-toolbar button,
-.word-toolbar-overflow button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	gap: 8px;
-	flex: 0 0 auto;
-}
-
-.word-toolbar button:hover:not(:disabled),
-.word-toolbar select:hover:not(:disabled),
-.word-toolbar-overflow button:hover:not(:disabled),
-.word-toolbar-overflow select:hover:not(:disabled),
-.word-icon-select:hover {
-	background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
-}
-
-.word-toolbar button:focus-visible,
-.word-toolbar select:focus-visible,
-.word-toolbar-overflow button:focus-visible,
-.word-toolbar-overflow select:focus-visible,
-.word-icon-select:focus-within {
-	outline: 2px solid var(--vscode-focusBorder);
-	outline-offset: -2px;
-}
-
-.word-toolbar button[aria-pressed=true],
-.word-toolbar-overflow button[aria-pressed=true],
-.word-toolbar button[aria-expanded=true] {
-	background: var(--vscode-editor-selectionBackground);
-	border-color: var(--vscode-contrastActiveBorder, transparent);
-}
-
-.word-toolbar-row .word-icon-button,
-.word-toolbar .word-emphasis-button {
-	width: 32px;
-	padding: 6px;
-}
-
-.word-toolbar svg,
-.word-toolbar-overflow svg {
-	width: 16px;
-	height: 16px;
-	flex: 0 0 16px;
-	fill: none;
-	stroke: currentColor;
-	stroke-width: 1.8;
-	stroke-linecap: round;
-	stroke-linejoin: round;
-}
-
-.word-toolbar-row .word-action-label {
-	display: none;
-}
-
-.word-style-select { width: 132px; }
-.word-font-select { width: 104px; }
-.word-size-select { width: 64px; }
-
-.word-toolbar select option,
-.word-toolbar-overflow select option {
-	color: var(--vscode-dropdown-foreground, var(--vscode-foreground));
-	background: var(--vscode-dropdown-background, var(--vscode-editor-background));
-}
-
-.word-icon-select {
-	position: relative;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	height: 32px;
-	min-width: 40px;
-	padding: 6px 16px 6px 6px;
-	border-radius: 4px;
-}
-
-.word-icon-select::after {
-	content: '';
-	position: absolute;
-	right: 6px;
-	top: 12px;
-	width: 4px;
-	height: 4px;
-	border-right: 1px solid currentColor;
-	border-bottom: 1px solid currentColor;
-	transform: rotate(45deg);
-}
-
-.word-icon-select select {
-	position: absolute;
-	inset: 0;
-	width: 100%;
-	opacity: 0;
-	cursor: pointer;
-}
-
-.word-toolbar-row .word-more-button { margin-inline-start: auto; }
-
-.word-toolbar-overflow {
-	position: fixed;
-	inset: auto;
-	margin: 0;
-	width: 272px;
-	max-width: calc(100vw - 16px);
-	padding: 8px;
-	border: 1px solid var(--vscode-contrastBorder, var(--vscode-widget-border, transparent));
-	border-radius: 8px;
-	background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-	color: var(--vscode-foreground);
-	box-shadow: 0 8px 24px var(--vscode-widget-shadow, transparent);
-	overflow: auto;
-}
-
-.word-toolbar-overflow .word-toolbar-group {
-	flex-wrap: wrap;
-	padding: 8px 4px;
-	gap: 4px;
-}
-
-.word-toolbar-overflow .word-toolbar-group + .word-toolbar-group {
-	border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, transparent));
-}
-
-.word-toolbar-overflow .word-toolbar-group::before {
-	content: attr(data-label);
-	width: 100%;
-	padding: 0 4px 4px;
-	font-size: 11px;
-	color: var(--vscode-descriptionForeground);
-}
-
-.word-toolbar-overflow .word-icon-select { gap: 8px; }
-.word-toolbar-overflow .word-emphasis-button { min-width: 32px; }
+.word-document { background: var(--vscode-sideBar-background, var(--vscode-editor-background)); }
 .word-document #info { border: 0; padding: 8px 24px; justify-content: flex-end; }
 .word-document #filename { display: none; }
 .word-document #pages { padding-top: 16px; }
 .word-document .caret { scroll-margin: 80px 20px 24px; }
 
-.word-style-control { display: inline-flex; }
-.word-style-control > button::after { content: ''; width: 5px; height: 5px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(45deg); margin-left: auto; }
-.word-visual-menu {
-	position: fixed;
-	inset: auto;
-	margin: 0;
-	box-sizing: border-box;
-	width: 280px;
-	max-width: calc(100vw - 16px);
-	max-height: calc(100vh - 16px);
-	overflow: auto;
-	padding: 8px;
-	border: 1px solid var(--vscode-widget-border, #8885);
-	border-radius: 9px;
-	background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-	color: var(--vscode-editor-foreground);
-	box-shadow: 0 8px 24px var(--vscode-widget-shadow, #0003);
-}
-.word-visual-menu button { color: inherit; cursor: pointer; }
-.word-style-preview {
-	display: flex;
-	align-items: center;
-	gap: 16px;
-	width: 100%;
-	min-height: 58px;
-	padding: 12px 8px;
-	background: transparent;
-	border-radius: 4px;
-	text-align: left;
-	font-size: 15px;
-}
-.word-style-preview + .word-style-preview { border-top: 1px solid var(--vscode-widget-border, #8883); }
-.word-style-preview:hover, .word-style-preview:focus-visible { background: var(--vscode-list-hoverBackground, #8882); }
-.word-style-preview:focus-visible, .word-table-cell:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
-.word-style-check { flex: 0 0 18px; visibility: hidden; font-size: 16px; }
-.word-style-preview[aria-checked=true] .word-style-check { visibility: visible; }
-.word-style-preview[data-style=Title] { font-size: 30px; font-weight: 650; }
-.word-style-preview[data-style=Subtitle] { font-size: 24px; font-style: italic; color: var(--vscode-descriptionForeground, #777); }
-.word-style-preview[data-style=Heading1] { font-size: 27px; font-weight: 700; }
-.word-style-preview[data-style=Heading2] { font-size: 22px; font-weight: 700; }
-.word-style-preview[data-style=Heading3] { font-size: 18px; font-weight: 650; }
-.word-menu-heading { padding: 4px 4px 12px; font-size: 13px; }
-.word-table-grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 4px; padding: 4px; }
-.word-table-grid .word-table-cell { display: block; min-width: 0; padding: 0; aspect-ratio: 1; border: 1px solid var(--vscode-widget-border, #8885); border-radius: 1px; background: color-mix(in srgb, var(--vscode-editor-foreground) 4%, var(--vscode-editor-background)); }
-.word-table-grid .word-table-cell.selected { border-color: var(--vscode-focusBorder); background: color-mix(in srgb, var(--vscode-focusBorder) 25%, var(--vscode-editor-background)); }
-.word-table-size { padding: 10px 4px 4px; text-align: center; font-size: 14px; }
+/* Paragraph settings are an intentional, temporary surface beside neither agent nor page. */
+.word-paragraph-dialog { width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; box-sizing: border-box; }
+.word-paragraph-dialog h2 { margin: 0 0 8px; font-size: 18px; }
+.word-paragraph-dialog p { font-size: 12px; color: var(--vscode-descriptionForeground); }
+.word-paragraph-dialog [role="alert"] { color: var(--vscode-errorForeground); }
+.word-paragraph-dialog fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; border: 0; border-top: 1px solid var(--vscode-widget-border, #8885); margin: 20px 0 0; padding: 14px 0 0; min-width: 0; }
+.word-paragraph-dialog legend { padding-right: 10px; font-size: 12px; font-weight: 600; }
+.word-paragraph-dialog label { display: flex; flex-direction: column; gap: 6px; margin: 0; font-size: 12px; min-width: 0; }
+.word-paragraph-dialog input, .word-paragraph-dialog select { box-sizing: border-box; width: 100%; margin: 0; min-height: 30px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border, #8886); border-radius: 4px; padding: 4px 6px; }
+.word-paragraph-dialog label:has(input[type="checkbox"]) { flex-direction: row-reverse; justify-content: flex-end; align-items: center; }
+.word-paragraph-dialog input[type="checkbox"] { width: 15px; min-height: 15px; accent-color: var(--vscode-focusBorder); }
+.word-paragraph-dialog input[type="color"] { padding: 2px; }
+.word-paragraph-dialog .word-paragraph-actions { position: sticky; bottom: -22px; margin: 20px -2px -2px; padding: 12px 0 0; background: var(--vscode-editorWidget-background); }
+.word-paragraph-dialog button[type="submit"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.word-tab-rows { grid-column: 1 / -1; display: grid; gap: 12px; }
+.word-tab-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px; align-items: end; }
+.word-ruler { position: relative; height: 38px; max-width: calc(100% - 48px); margin: 12px auto -12px; flex-shrink: 0; color: var(--vscode-descriptionForeground); border-bottom: 1px solid var(--vscode-panel-border, #8885); user-select: none; touch-action: none; }
+.word-ruler-body { position: absolute; top: 14px; height: 12px; background: var(--vscode-editor-background); border-inline: 1px solid var(--vscode-panel-border, #8885); }
+.word-ruler-tick { position: absolute; top: 1px; height: 24px; font-size: 9px; border-left: 1px solid var(--vscode-panel-border, #8885); padding-left: 3px; pointer-events: none; }
+.word-ruler button { position: absolute; top: 23px; width: 18px; min-width: 18px; height: 18px; min-height: 18px; padding: 0; margin-left: -9px; line-height: 18px; border: 0; background: transparent; color: var(--vscode-focusBorder, #557add); cursor: ew-resize; }
+.word-ruler button[data-marker="firstLine"] { top: 11px; }
+.word-ruler button[data-marker^="tab:"] { top: 17px; font-size: 18px; }
+.word-ruler button:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
+@media (max-width: 520px) { .word-paragraph-dialog fieldset { grid-template-columns: 1fr; } .word-tab-row { grid-template-columns: 1fr 1fr; } }
+@media (forced-colors: active) { .word-ruler-body { border-color: CanvasText; } .word-ruler button { color: ButtonText; } }
 
-@media (forced-colors: active) {
-	#toolbar.word-toolbar, .word-toolbar-overflow { border-color: ButtonText; }
-	.word-toolbar button[aria-pressed=true] { outline: 2px solid Highlight; }
-}
-
-/* Inline review occupies view space only; it never changes DOCX pagination. */
-.has-word-review > canvas:first-child { visibility: hidden; }
-.page canvas.word-review-slice { position: absolute; left: 0; width: 100%; pointer-events: none; z-index: 0; }
-.word-review-zone { position: absolute; z-index: 4; background: #fff; padding-block: 4px 8px; cursor: default; user-select: text; font: 14px/1.55 Arial, sans-serif; color: #202124; border-left: 3px solid #ca5055; }
-.word-review-controls { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font: 12px var(--vscode-font-family); }
-.word-review-controls > span { margin-right: auto; color: #626872; }
-.word-review-controls button { color: #26313c; background: #f0f3f6; padding: 3px 9px; border: 1px solid #c9d1da; border-radius: 4px; }
-.word-review-controls button:first-of-type { color: #15683d; background: #e8f5ec; border-color: #a4d3b2; }
-.word-review-controls button:disabled { opacity: .5; }
-.word-review-deleted { background: #ffe9e9; color: #92262c; white-space: pre-wrap; overflow-wrap: anywhere; padding: 4px 8px; }
-.word-review-deleted del { text-decoration-thickness: 1px; }
-.word-review-sign { display: inline-block; width: 20px; font-weight: bold; }
-.word-review-added { background: #e1f5e7; color: #1b6037; white-space: pre-wrap; overflow-wrap: anywhere; padding: 4px 8px; }
-.word-review-insert { position: absolute; z-index: 2; pointer-events: none; background: #24b65d28; border-left: 3px solid #27944f; }
-.word-review-zone summary { cursor: pointer; font: 12px/1.6 var(--vscode-font-family); }
-.word-review-zone pre { font: 12px/1.6 var(--vscode-editor-font-family); max-height: 220px; overflow: auto; margin: 3px 0; }
-@media (forced-colors: active) { .word-review-deleted { border: 1px dashed CanvasText; } .word-review-insert { background: transparent; outline: 2px solid Highlight; } }
-.word-review-summary { display: flex; align-items: center; gap: 6px; padding: 8px 24px; background: var(--vscode-editorWidget-background); border-block: 1px solid var(--vscode-widget-border, #8883); color: var(--vscode-descriptionForeground); }
-.word-review-summary > span { margin-right: auto; }
-.word-review-summary button { padding: 4px 10px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
-
-.word-draft-zone{border-left:3px dashed #6e9cdd;background:#f1f6ff;color:#34465f;padding-block:12px;font:14px/1.5 system-ui}.word-draft-zone small,.word-draft-zone strong{display:block}.word-draft-zone small{font-size:11px;color:#566d8b}.word-draft-zone strong{font-size:17px}.word-draft-zone p{margin:4px 0 8px}.word-draft-zone button{padding:3px 10px;cursor:pointer}
-
-/* Quiet depth at rest; immediate intent and press feedback without continuous animation. */
-#toolbar.word-toolbar{border-color:color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 14%,transparent);box-shadow:0 2px 7px #17284408;background:linear-gradient(120deg,color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 9%,var(--vscode-editor-background,#fff)),color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 3%,var(--vscode-editor-background,#fff)))}
-.word-toolbar button,.word-toolbar select,.word-toolbar-overflow button,.word-toolbar-overflow select,.word-visual-menu button{transition:background-color 120ms ease,border-color 120ms ease,box-shadow 120ms ease,transform 100ms ease}
-.word-toolbar button:hover:not(:disabled),.word-toolbar select:hover:not(:disabled),.word-toolbar-overflow button:hover:not(:disabled),.word-toolbar-overflow select:hover:not(:disabled){background:color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 13%,var(--vscode-editor-background,#fff));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 14%,transparent)}
-.word-toolbar button:active:not(:disabled),.word-toolbar-overflow button:active:not(:disabled),.word-visual-menu button:active:not(:disabled){transform:scale(.94);background:color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 22%,var(--vscode-editor-background,#fff))}
-.word-toolbar button[aria-expanded=true],.word-toolbar button[aria-pressed=true]{background:color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 20%,var(--vscode-editor-background,#fff));color:var(--vscode-focusBorder,#315fa8)}
-.word-visual-menu:popover-open,.word-toolbar-overflow:popover-open{animation:word-menu-open 120ms ease-out}
-.word-control-tooltip{position:fixed;inset:auto;margin:0;max-width:min(300px,calc(100vw - 16px));padding:6px 9px;border:1px solid var(--vscode-widget-border,#ffffff22);border-radius:5px;background:var(--vscode-editorHoverWidget-background,#263246);color:var(--vscode-editorHoverWidget-foreground,#fff);box-shadow:0 3px 12px #0002;font:12px/1.4 var(--vscode-font-family,system-ui);pointer-events:none;overflow-wrap:anywhere}
-.word-control-tooltip:popover-open{animation:word-tooltip-open 100ms ease-out}
-@keyframes word-menu-open{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
-@keyframes word-tooltip-open{from{opacity:0}to{opacity:1}}
-@media(prefers-reduced-motion:reduce){.word-toolbar button,.word-toolbar select,.word-toolbar-overflow button,.word-toolbar-overflow select,.word-visual-menu button{transition:none}.word-toolbar button:active:not(:disabled),.word-toolbar-overflow button:active:not(:disabled),.word-visual-menu button:active:not(:disabled){transform:none}.word-visual-menu:popover-open,.word-toolbar-overflow:popover-open,.word-control-tooltip:popover-open{animation:none}}
-@media(forced-colors:active){#toolbar.word-toolbar{background:Canvas;border-color:ButtonText}.word-control-tooltip{background:Canvas;color:CanvasText;border-color:CanvasText}}
-
-.word-toolbar .word-save-button{color:var(--vscode-focusBorder,#315fa8);background:color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 7%,transparent)}
+/* Sangam One owns the one visible formatting toolbar above editor tabs. */
+.app-toolbar-hosted #toolbar { display: none !important; }
+.app-toolbar-hosted #filename { display: none; }
+.app-toolbar-hosted #info { border: 0; padding: 4px 18px; min-height: 20px; }
+.app-toolbar-hosted #pages { padding-top: 12px; }
+.app-toolbar-hosted #error { top: 0; }

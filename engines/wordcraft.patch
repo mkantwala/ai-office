@@ -64,10 +64,10 @@ index 0000000..c26334e
 +wasm-bindgen = "0.2"
 diff --git a/apps/ai-office-preview/src/agent.rs b/apps/ai-office-preview/src/agent.rs
 new file mode 100644
-index 0000000..bb439c3
+index 0000000..05273ce
 --- /dev/null
 +++ b/apps/ai-office-preview/src/agent.rs
-@@ -0,0 +1,577 @@
+@@ -0,0 +1,580 @@
 +//! Internal, revision-checked block editing for the AI Office agent.
 +use serde_json::{Value, json};
 +use sha2::{Digest, Sha256};
@@ -352,7 +352,7 @@ index 0000000..bb439c3
 +        let length = n.text.chars().count();
 +        let text: String = n.text.chars().skip(text_offset).take(text_limit).collect();
 +        let end = text_offset + text.chars().count();
-+        json!({"id":n.id,"kind":n.kind,"parentId":n.parent,"style":n.style,"text":text,"textLength":length,"textOffset":text_offset,"nextTextOffset":if end < length {Some(end)}else{None},"ifHash":block_hash(doc,n),"headingLevel":heading_level(n),"children":all.iter().filter(|c|c.parent==n.id).count()})
++        json!({"id":n.id,"kind":n.kind,"parentId":n.parent,"style":n.style,"text":text,"textLength":length,"textOffset":text_offset,"nextTextOffset":if end < length {Some(end)}else{None},"ifHash":block_hash(doc,n),"headingLevel":heading_level(n),"paragraph":if id.is_some(){doc.para(n.story,&n.path).map(|p|wordcraft_engine::cmd::paragraph_properties::read(doc,&p.props))}else{None},"children":all.iter().filter(|c|c.parent==n.id).count()})
 +    }).collect();
 +    json!({"blocks":results,"total":matches.len(),"nextOffset":if offset+results.len()<matches.len(){Some(offset+results.len())}else{None},"outline":outline,"summary":if outline {json!({"headings":all.iter().filter(|n|heading_level(n).is_some()).count(),"tables":all.iter().filter(|n|n.kind=="table").count(),"blocks":all.len()})}else{Value::Null}})
 +}
@@ -519,6 +519,9 @@ index 0000000..bb439c3
 +            if !super::allowed(command) || command.starts_with("edit.") || command.starts_with("caret.") || command.starts_with("select.") {
 +                return Err("Command cannot be used as a targeted agent edit; use help for supported commands".into());
 +            }
++            if command == "para.properties" && session.doc.para(node.story, &node.path).is_none() {
++                return Err("Paragraph properties require a paragraph, heading or list-item ID".into());
++            }
 +            let paragraphs = session.doc.para_paths(node.story);
 +            let paths: Vec<_> = paragraphs.iter().filter(|p| p.0.starts_with(&node.path.0)).collect();
 +            let first = paths.first().ok_or("Target has no editable paragraph")?;
@@ -647,10 +650,10 @@ index 0000000..bb439c3
 +}
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..8ce280a
+index 0000000..9e68eda
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,319 @@
+@@ -0,0 +1,353 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -739,8 +742,41 @@ index 0000000..8ce280a
 +            .iter()
 +            .map(|(id,c)| json!({"commentId":id,"parentId":c.parent,"resolved":c.resolved,"author":c.author,"text":self.session.doc.plain_text(wordcraft_doc::StoryRef::Part(c.part))}))
 +            .collect();
++        let paths =
++            if sel.is_collapsed() { vec![sel.focus.path.clone()] } else { self.session.doc.para_paths_in(&sel.ordered().0, &sel.ordered().1) };
++        let at = paths.first().unwrap_or(&sel.focus.path);
++        let paragraph = self.session.doc.para(sel.focus.story, at).map(|p| {
++            let properties = wordcraft_engine::cmd::paragraph_properties::read(&self.session.doc, &p.props);
++            let mut mixed = std::collections::BTreeSet::new();
++            for path in paths.iter().skip(1) {
++                if let Some(other) = self.session.doc.para(sel.focus.story, path) {
++                    let other = wordcraft_engine::cmd::paragraph_properties::read(&self.session.doc, &other.props);
++                    for (key, value) in properties.as_object().into_iter().flatten() {
++                        if other.get(key) != Some(value) {
++                            mixed.insert(key.clone());
++                        }
++                    }
++                }
++            }
++            let r = self.session.doc.styles.resolve_para(&p.props);
++            let ruler = self
++                .layout
++                .caret_on(&sel.focus, self.session.page_hint)
++                .and_then(|c| self.layout.pages.get(c.page))
++                .filter(|page| {
++                    sel.focus.story == wordcraft_doc::StoryRef::Body
++                        && at.0.len() == 1
++                        && !r.bidi
++                        && !r.mirror_indents
++                        && r.frame.is_none()
++                        && r.numbering.is_none()
++                        && self.session.doc.sections().get(page.section).is_some_and(|(_, s)| s.columns.count == 1)
++                })
++                .map(|page| json!({"left":page.body.x,"width":page.body.w}));
++            json!({"id":p.props.office_id,"properties":properties,"mixed":mixed,"ruler":ruler})
++        });
 +        let style = self.session.doc.para(sel.focus.story, &sel.focus.path).and_then(|p| p.props.style.as_deref()).unwrap_or("Normal");
-+        serde_json::to_string(&json!({"undoDepth":self.session.undo_depth(),"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
++        serde_json::to_string(&json!({"paragraph":paragraph,"undoDepth":self.session.undo_depth(),"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
 +    }
 +
 +    pub fn export(&self) -> Result<Vec<u8>, JsValue> {
@@ -956,6 +992,7 @@ index 0000000..8ce280a
 +            | "format.underline"
 +            | "format.font"
 +            | "format.size"
++            | "para.properties"
 +            | "para.align"
 +            | "para.style"
 +            | "para.bullets"
@@ -1427,11 +1464,31 @@ index 1bc36b0..83e77a6 100644
      if let Some(st) = p::str(v, "style") {
          let id = s.doc.styles.find(st).map(|x| x.id.clone()).ok_or_else(|| CmdError::Params(format!("no table style `{st}`")))?;
          t.props.style = Some(id);
+diff --git a/crates/engine/src/cmd/mod.rs b/crates/engine/src/cmd/mod.rs
+index 33dffa5..9bf8d07 100644
+--- a/crates/engine/src/cmd/mod.rs
++++ b/crates/engine/src/cmd/mod.rs
+@@ -30,6 +30,7 @@ pub mod options;
+ pub mod outline;
+ pub mod page;
+ pub mod para;
++pub mod paragraph_properties;
+ pub mod paste;
+ pub mod phonetic;
+ pub mod protect;
 diff --git a/crates/engine/src/cmd/para.rs b/crates/engine/src/cmd/para.rs
-index cdbe790..4ee1b20 100644
+index cdbe790..f8b1798 100644
 --- a/crates/engine/src/cmd/para.rs
 +++ b/crates/engine/src/cmd/para.rs
-@@ -418,6 +418,23 @@ fn apply_styles(s: &mut Session, v: &Value) -> CmdResult {
+@@ -12,6 +12,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Session, p};
+ 
+ pub fn specs() -> Vec<CommandSpec> {
+     vec![
++        CommandSpec::new("para.properties", "Paragraph Properties", "Home › Paragraph", super::paragraph_properties::apply).params("Typed partial paragraph properties: alignment, indents, spacing, lineSpacing, tabs, borders, shading, keepNext, keepLines, pageBreakBefore, widowControl. Distances are points; omitted properties stay unchanged."),
+         CommandSpec::new("para.alignLeft", "Align Left", "Home › Paragraph", |s, _| align(s, Align::Left)).key("Mod+L"),
+         CommandSpec::new("para.alignCenter", "Center", "Home › Paragraph", |s, _| align(s, Align::Center)).key("Mod+E"),
+         CommandSpec::new("para.alignRight", "Align Right", "Home › Paragraph", |s, _| align(s, Align::Right)).key("Mod+R"),
+@@ -418,6 +419,23 @@ fn apply_styles(s: &mut Session, v: &Value) -> CmdResult {
  
  fn apply_style(s: &mut Session, v: &Value) -> CmdResult {
      let name = p::req_str(v, "style")?;
@@ -1455,6 +1512,247 @@ index cdbe790..4ee1b20 100644
      let id = style_id(s, name)?;
      let kind = s.doc.styles.get(&id).map(|x| x.kind).unwrap_or_default();
      if kind == StyleKind::Character {
+diff --git a/crates/engine/src/cmd/paragraph_properties.rs b/crates/engine/src/cmd/paragraph_properties.rs
+new file mode 100644
+index 0000000..b354661
+--- /dev/null
++++ b/crates/engine/src/cmd/paragraph_properties.rs
+@@ -0,0 +1,235 @@
++//! Bounded paragraph-property patches shared by AI Office controls and block edits.
++use crate::{CmdError, CmdResult, Session};
++use serde_json::{Value, json};
++use wordcraft_doc::Document;
++use wordcraft_doc::props::{Align, Border, BorderStyle, Borders, LineSpacing, ParaProps, Rgb, TabAlign, TabLeader, TabStop};
++
++fn object<'a>(v: &'a Value, keys: &[&str]) -> Result<&'a serde_json::Map<String, Value>, CmdError> {
++    let m = v.as_object().filter(|m| !m.is_empty()).ok_or_else(|| CmdError::Params("Expected a non-empty property object".into()))?;
++    if let Some(k) = m.keys().find(|k| !keys.contains(&k.as_str())) {
++        return Err(CmdError::Params(format!("Unsupported paragraph property: {k}")));
++    }
++    Ok(m)
++}
++fn number(v: &Value, lo: f32, hi: f32) -> Result<f32, CmdError> {
++    v.as_f64()
++        .filter(|n| n.is_finite() && *n >= lo as f64 && *n <= hi as f64)
++        .map(|n| n as f32)
++        .ok_or_else(|| CmdError::Params(format!("Expected a number between {lo} and {hi}")))
++}
++fn color(v: &Value) -> Result<Rgb, CmdError> {
++    v.as_str()
++        .filter(|s| s.len() == 6 && s.bytes().all(|c| c.is_ascii_hexdigit()))
++        .and_then(Rgb::parse)
++        .ok_or_else(|| CmdError::Params("Color must be six hexadecimal digits".into()))
++}
++
++/// Concrete values for an exact paragraph, including inherited style properties.
++pub fn read(doc: &Document, props: &ParaProps) -> Value {
++    let r = doc.styles.resolve_para(props);
++    let side = |b: Option<Border>| {
++        b.filter(Border::is_visible).map(|b| json!({"width":b.width,"color":b.color.unwrap_or(Rgb::BLACK).hex(),"style":b.style}))
++    };
++    let borders =
++        r.borders.map(|b| json!({"top":side(b.top),"left":side(b.left),"bottom":side(b.bottom),"right":side(b.right),"between":side(b.between)}));
++    json!({"alignment":r.align.visual(r.bidi),"indents":{"left":r.indent_left,"right":r.indent_right,"firstLine":r.indent_first},
++        "spacing":{"before":r.space_before,"after":r.space_after},"lineSpacing":r.line_spacing,
++        "tabs":r.tabs,"borders":borders,"shading":r.shading.map(|c| format!("{:02X}{:02X}{:02X}",c.0,c.1,c.2)),
++        "keepNext":r.keep_next,"keepLines":r.keep_lines,"pageBreakBefore":r.page_break_before,"widowControl":r.widow_control})
++}
++
++pub fn apply(s: &mut Session, v: &Value) -> CmdResult {
++    if v.get("ifRevision").is_some_and(|r| r.as_u64() != Some(s.rev()))
++        || v.get("ifSelection").is_some_and(|sel| serde_json::to_value(&s.sel).ok().as_ref() != Some(sel))
++    {
++        return Err(CmdError::Params("Document or selection changed. Reopen Paragraph Properties.".into()));
++    }
++    object(
++        v,
++        &[
++            "ifRevision",
++            "ifSelection",
++            "alignment",
++            "indents",
++            "spacing",
++            "lineSpacing",
++            "tabs",
++            "borders",
++            "shading",
++            "keepNext",
++            "keepLines",
++            "pageBreakBefore",
++            "widowControl",
++        ],
++    )?;
++    let mut patch = ParaProps::default();
++    if let Some(a) = v.get("alignment") {
++        patch.align = Some(match a.as_str() {
++            Some("left") => Align::Left,
++            Some("right") => Align::Right,
++            Some("center") => Align::Center,
++            Some("justify") => Align::Justify,
++            Some("distribute") => Align::Distribute,
++            _ => return Err(CmdError::Params("Unsupported paragraph alignment".into())),
++        });
++    }
++    if let Some(x) = v.get("indents") {
++        object(x, &["left", "right", "firstLine"])?;
++        if let Some(n) = x.get("left") {
++            patch.indent_left = Some(number(n, -1584., 1584.)?);
++        }
++        if let Some(n) = x.get("right") {
++            patch.indent_right = Some(number(n, -1584., 1584.)?);
++        }
++        if let Some(n) = x.get("firstLine") {
++            patch.indent_first = Some(number(n, -1584., 1584.)?);
++        }
++    }
++    if let Some(x) = v.get("spacing") {
++        object(x, &["before", "after"])?;
++        if let Some(n) = x.get("before") {
++            patch.space_before = Some(number(n, 0., 1584.)?);
++            patch.space_before_auto = Some(false);
++        }
++        if let Some(n) = x.get("after") {
++            patch.space_after = Some(number(n, 0., 1584.)?);
++            patch.space_after_auto = Some(false);
++        }
++    }
++    if let Some(x) = v.get("lineSpacing") {
++        object(x, &["rule", "value"])?;
++        patch.line_spacing = Some(match x["rule"].as_str() {
++            Some("multiple") => LineSpacing::Multiple(number(&x["value"], 0.5, 10.)?),
++            Some("exactly") => LineSpacing::Exactly(number(&x["value"], 1., 1584.)?),
++            Some("atLeast") => LineSpacing::AtLeast(number(&x["value"], 1., 1584.)?),
++            _ => return Err(CmdError::Params("Line spacing rule must be multiple, exactly or atLeast".into())),
++        });
++    }
++    let mut tabs = None;
++    if let Some(x) = v.get("tabs") {
++        let list = x.as_array().filter(|a| a.len() <= 64).ok_or_else(|| CmdError::Params("tabs must contain at most 64 stops".into()))?;
++        let mut stops = Vec::new();
++        for t in list {
++            object(t, &["pos", "align", "leader"])?;
++            let pos = number(&t["pos"], 0., 1584.)?;
++            if stops.iter().any(|s: &TabStop| (s.pos - pos).abs() < 0.01) {
++                return Err(CmdError::Params("Tab positions must be distinct".into()));
++            }
++            let align = match t.get("align").and_then(Value::as_str).unwrap_or("left") {
++                "left" => TabAlign::Left,
++                "right" => TabAlign::Right,
++                "center" => TabAlign::Center,
++                "decimal" => TabAlign::Decimal,
++                "bar" => TabAlign::Bar,
++                _ => return Err(CmdError::Params("Unsupported tab alignment".into())),
++            };
++            let leader = match t.get("leader").and_then(Value::as_str).unwrap_or("none") {
++                "none" => TabLeader::None,
++                "dot" => TabLeader::Dot,
++                "hyphen" => TabLeader::Hyphen,
++                "underscore" => TabLeader::Underscore,
++                "middleDot" => TabLeader::MiddleDot,
++                _ => return Err(CmdError::Params("Unsupported tab leader".into())),
++            };
++            for key in ["align", "leader"] {
++                if t.get(key).is_some_and(|v| !v.is_string()) {
++                    return Err(CmdError::Params(format!("{key} must be a string")));
++                }
++            }
++            stops.push(TabStop { pos, align, leader });
++        }
++        stops.sort_by(|a, b| a.pos.total_cmp(&b.pos));
++        tabs = Some(stops);
++    }
++    let mut borders = Vec::new();
++    if let Some(x) = v.get("borders") {
++        object(x, &["top", "left", "bottom", "right", "between"])?;
++        for (side, b) in x.as_object().into_iter().flatten() {
++            let border = if b.is_null() {
++                Some(Border { style: BorderStyle::None, width: 0., color: None, space: 0. })
++            } else {
++                object(b, &["width", "color", "style"])?;
++                let style = match b.get("style").and_then(Value::as_str).unwrap_or("single") {
++                    "single" => BorderStyle::Single,
++                    "double" => BorderStyle::Double,
++                    "dotted" => BorderStyle::Dotted,
++                    "dashed" => BorderStyle::Dashed,
++                    _ => return Err(CmdError::Params("Unsupported border style".into())),
++                };
++                if b.get("style").is_some_and(|v| !v.is_string()) {
++                    return Err(CmdError::Params("Border style must be a string".into()));
++                }
++                Some(Border {
++                    style,
++                    width: b.get("width").map(|n| number(n, 0.25, 6.)).transpose()?.unwrap_or(0.5),
++                    color: b.get("color").map(color).transpose()?,
++                    space: 0.,
++                })
++            };
++            borders.push((side.clone(), border));
++        }
++    }
++    if let Some(x) = v.get("shading") {
++        patch.shading = Some(color(x)?);
++    }
++    for (key, slot) in [
++        ("keepNext", &mut patch.keep_next),
++        ("keepLines", &mut patch.keep_lines),
++        ("pageBreakBefore", &mut patch.page_break_before),
++        ("widowControl", &mut patch.widow_control),
++    ] {
++        if let Some(x) = v.get(key) {
++            *slot = Some(x.as_bool().ok_or_else(|| CmdError::Params(format!("{key} must be a boolean")))?);
++        }
++    }
++    let styles = s.doc.styles.clone();
++    super::para::fmt(s, &|p| {
++        let resolved = styles.resolve_para(p);
++        p.overlay(&patch);
++        if patch.align.is_some() {
++            p.align = patch.align.map(|a| a.visual(resolved.bidi));
++        }
++        p.cancel_char_indents(patch.indent_left.is_some(), patch.indent_right.is_some(), patch.indent_first.is_some());
++        if let Some(stops) = &tabs {
++            let inherited = styles.resolve_para(&ParaProps { tabs: None, ..p.clone() }).tabs;
++            let mut result: Vec<_> = inherited
++                .iter()
++                .filter(|t| !stops.iter().any(|x| (x.pos - t.pos).abs() < 0.01))
++                .map(|t| TabStop { pos: t.pos, align: TabAlign::Clear, leader: TabLeader::None })
++                .collect();
++            result.extend(stops.iter().copied());
++            p.tabs = Some(result);
++        }
++        if !borders.is_empty() {
++            let mut result = resolved.borders.unwrap_or_else(Borders::default);
++            for (side, border) in &borders {
++                let slot = match side.as_str() {
++                    "top" => &mut result.top,
++                    "left" => &mut result.left,
++                    "bottom" => &mut result.bottom,
++                    "right" => &mut result.right,
++                    "between" => &mut result.between,
++                    _ => continue,
++                };
++                let mut next = *border;
++                if let (Some(old), Some(b)) = ((*slot).filter(Border::is_visible), next.as_mut()) {
++                    let input = &v["borders"][side];
++                    if !input.is_null() {
++                        if input.get("width").is_none() {
++                            b.width = old.width;
++                        }
++                        if input.get("color").is_none() {
++                            b.color = old.color;
++                        }
++                        if input.get("style").is_none() {
++                            b.style = old.style;
++                        }
++                        b.space = old.space;
++                    }
++                }
++                *slot = next;
++            }
++            p.borders = Some(result);
++        }
++    })
++}
 diff --git a/crates/layout/src/hit.rs b/crates/layout/src/hit.rs
 index 12b75ac..979229d 100644
 --- a/crates/layout/src/hit.rs

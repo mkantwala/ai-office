@@ -24,7 +24,7 @@ await Promise.all([
 	build({ entryPoints: [join(extension, 'extension.ts')], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], outfile: join(extension, 'out/extension.js'), sourcemap: true }),
 	build({ entryPoints: [join(extension, '../ai-office-common/editor.ts')], bundle: true, platform: 'browser', outfile: join(extension, 'out/editor.js'), sourcemap: true })
 ]);
-await copyFile(join(extension, '../ai-office-common/editor.css'), join(extension, 'out/editor.css'));
+await writeFile(join(extension, 'out/editor.css'), (await readFile(join(root, 'src/vs/base/browser/ui/documentToolbar/documentToolbar.css'), 'utf8')) + '\n' + (await readFile(join(extension, '../ai-office-common/editor.css'), 'utf8')));
 await mkdir(join(extension, 'out/licenses'), { recursive: true });
 for (const [name, file] of [['pptx', '@office-kit/pptx/LICENSE'], ['pptx-preview', '@office-kit/pptx-preview/LICENSE'], ['dompurify', 'dompurify/LICENSE'], ['fflate', 'fflate/LICENSE']]) {
 	await copyFile(join(extension, '../ai-office-slides/node_modules', file), join(extension, `out/licenses/${name}.txt`));

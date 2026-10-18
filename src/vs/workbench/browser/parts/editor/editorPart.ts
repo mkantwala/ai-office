@@ -235,6 +235,18 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 		});
 	}
 
+	private toolbarHeight = 0;
+	private lastToolbarLayout?: { width: number; height: number; top: number; left: number };
+
+	registerToolbar(element: HTMLElement, height: number): IDisposable {
+		if (this.toolbarHeight) { throw new Error('An editor toolbar is already registered.'); }
+		this.toolbarHeight = height; this.options.headerHeight = height; element.style.height = `${height}px`;
+		this.setHeaderArea(element);
+		const relayout = () => { const size = this.lastToolbarLayout; if (size) { this.layout(size.width, size.height, size.top, size.left); } this._onDidChange.fire(undefined); };
+		relayout();
+		return toDisposable(() => { this.toolbarHeight = 0; this.removeHeaderArea(); relayout(); });
+	}
+
 	private top = 0;
 	private left = 0;
 	private _contentDimension!: Dimension;
@@ -1037,12 +1049,12 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	// TODO @sbatten @joao find something better to prevent editor taking over #79897
 	get minimumWidth(): number { return Math.min(this.centeredLayoutWidget.minimumWidth, this.layoutService.getMaximumEditorDimensions(this.layoutService.getContainer(getWindow(this.container))).width); }
 	get maximumWidth(): number { return this.centeredLayoutWidget.maximumWidth; }
-	get minimumHeight(): number { return Math.min(this.centeredLayoutWidget.minimumHeight, this.layoutService.getMaximumEditorDimensions(this.layoutService.getContainer(getWindow(this.container))).height); }
+	get minimumHeight(): number { return Math.min(this.centeredLayoutWidget.minimumHeight + this.toolbarHeight, this.layoutService.getMaximumEditorDimensions(this.layoutService.getContainer(getWindow(this.container))).height); }
 	get maximumHeight(): number { return this.centeredLayoutWidget.maximumHeight; }
 
 	get snap(): boolean { return this.layoutService.getPanelAlignment() === 'center'; }
 
-	override get onDidChange(): Event<IViewSize | undefined> { return Event.any(this.centeredLayoutWidget.onDidChange, this.onDidSetGridWidget.event); }
+	override get onDidChange(): Event<IViewSize | undefined> { return Event.any(this.centeredLayoutWidget.onDidChange, this.onDidSetGridWidget.event, this._onDidChange.event); }
 	readonly priority: LayoutPriority = LayoutPriority.High;
 
 	private get gridSeparatorBorder(): Color {
@@ -1427,6 +1439,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	}
 
 	override layout(width: number, height: number, top: number, left: number): void {
+		this.lastToolbarLayout = { width, height, top, left };
 		this.top = top;
 		this.left = left;
 
@@ -1469,7 +1482,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 		const contentAreaSize = super.layoutContents(width, height).contentSize;
 
 		// Layout editor container
-		this.doLayout(Dimension.lift(contentAreaSize), top, left);
+		this.doLayout(Dimension.lift(contentAreaSize), top + this.toolbarHeight, left);
 	}
 
 	private doLayout(dimension: Dimension, top = this.top, left = this.left): void {

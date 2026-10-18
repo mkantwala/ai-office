@@ -230,12 +230,12 @@ function createCopilotSetupStep(id: string, button: string, when: string, includ
 export const walkthroughs: GettingStartedWalkthroughContent = [
 	{
 		id: 'Setup',
-		title: localize('gettingStarted.setup.title', "Get started with VS Code"),
-		description: localize('gettingStarted.setup.description', "Customize your editor, learn the basics, and start coding"),
+		title: localize('gettingStarted.setup.title', "Get Started with Sangam One"),
+		description: localize('gettingStarted.setup.description', "Personalize your workspace and learn the basics"),
 		isFeatured: true,
 		icon: setupIcon,
 		when: '!isWeb',
-		walkthroughPageTitle: localize('gettingStarted.setup.walkthroughPageTitle', 'Setup VS Code'),
+		walkthroughPageTitle: localize('gettingStarted.setup.walkthroughPageTitle', 'Set Up Sangam One'),
 		next: 'Beginner',
 		content: {
 			type: 'steps',
@@ -266,8 +266,8 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 
 	{
 		id: 'SetupWeb',
-		title: localize('gettingStarted.setupWeb.title', "Get Started with VS Code for the Web"),
-		description: localize('gettingStarted.setupWeb.description', "Customize your editor, learn the basics, and start coding"),
+		title: localize('gettingStarted.setupWeb.title', "Get Started with Sangam One"),
+		description: localize('gettingStarted.setupWeb.description', "Personalize your workspace and learn the basics"),
 		isFeatured: true,
 		icon: setupIcon,
 		when: 'isWeb',

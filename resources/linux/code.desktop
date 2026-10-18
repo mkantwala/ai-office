@@ -1,16 +1,16 @@
 [Desktop Entry]
 Name=@@NAME_LONG@@
-Comment=Code Editing. Redefined.
-GenericName=Text Editor
+Comment=Write, review and create with AI.
+GenericName=Office Suite
 Exec=@@EXEC@@ %F
 Icon=@@ICON@@
 Type=Application
 StartupNotify=false
 StartupWMClass=@@DESKTOP_NAME@@
-Categories=TextEditor;Development;IDE;
+Categories=Office;WordProcessor;
 MimeType=application/x-@@NAME@@-workspace;
 Actions=new-empty-window;
-Keywords=vscode;
+Keywords=sangam;office;documents;word;pdf;
 
 [Desktop Action new-empty-window]
 Name=New Empty Window

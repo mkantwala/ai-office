@@ -88,6 +88,55 @@ test('Word: native editing, toolbar operations, undo, export and reopen', async 
 	} finally { engine.dispose(); }
 });
 
+test('Word paragraph properties preserve block identity, comments, native review and DOCX formatting', async () => {
+	const engine = await openEngine('word', 'Paragraph.docx', docx, root);
+	try {
+		const agent = engine.agent!;
+		const read = () => agent.read({ parentId: 'body' }) as { blocks: { id: string; text: string; kind: string }[] };
+		const first = read().blocks[0];
+		await engine.execute('select.text', { text: 'AI Office' });
+		await engine.execute('review.newComment', { text: 'Retain this anchor' });
+		first.text = read().blocks[0].text;
+		const patch = { indents: { left: 36, right: 12, firstLine: -18 }, spacing: { before: 6, after: 10 }, lineSpacing: { rule: 'exactly', value: 18 }, tabs: [{ pos: 144, align: 'right', leader: 'dot' }], borders: { bottom: { width: 1.5, color: '2255AA', style: 'dashed' } }, shading: 'EEF4FF', keepNext: true, keepLines: true, widowControl: false, pageBreakBefore: false };
+		agent.reviewStart!();
+		await agent.edit({ revision: engine.state().revision, operation: 'command', id: first.id, command: 'para.properties', params: patch });
+		agent.reviewFinish!();
+		const current = agent.read({ id: first.id }) as { blocks: { id: string; text: string; paragraph: typeof patch }[] };
+		assert.deepEqual({ id: current.blocks[0].id, text: current.blocks[0].text, indent: current.blocks[0].paragraph.indents, spacing: current.blocks[0].paragraph.spacing, tabs: current.blocks[0].paragraph.tabs }, { id: first.id, text: first.text, indent: patch.indents, spacing: patch.spacing, tabs: patch.tabs });
+		assert.equal(engine.state().comments?.[0].text, 'Retain this anchor');
+		const changes = agent.reviewRead!().changes; assert.ok(changes.length);
+		await agent.reviewDecide!(engine.state().revision, 'undo', changes.map(change => change.id));
+		assert.equal((agent.read({ id: first.id }) as typeof current).blocks[0].paragraph.indents.left, 0);
+		assert.equal(engine.state().comments?.[0].text, 'Retain this anchor');
+		await agent.edit({ revision: engine.state().revision, operation: 'command', id: first.id, command: 'para.properties', params: patch });
+		await agent.edit({ revision: engine.state().revision, operation: 'command', id: first.id, command: 'para.properties', params: { borders: { top: { color: 'AA5522' } } } });
+		const bytes = await engine.export(); const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+		for (const pattern of [/w:ind/, /w:spacing/, /w:tabs/, /w:leader="dot"/, /w:pBdr/, /w:shd/, /w:keepNext/, /w:keepLines/, /w:widowControl/]) { assert.match(xml, pattern); }
+		const reopened = await openEngine('word', 'Reopened.docx', bytes, root);
+		try {
+			const saved = reopened.agent!.read({ id: first.id }) as { blocks: { text: string; paragraph: { indents: object; tabs: object[]; shading: string; lineSpacing: object; keepNext: boolean; widowControl: boolean; borders: { top: object; bottom: object } } }[] };
+			assert.deepEqual({ text: saved.blocks[0].text, indents: saved.blocks[0].paragraph.indents, tabs: saved.blocks[0].paragraph.tabs, shading: saved.blocks[0].paragraph.shading, lineSpacing: saved.blocks[0].paragraph.lineSpacing, keepNext: saved.blocks[0].paragraph.keepNext, widow: saved.blocks[0].paragraph.widowControl }, { text: first.text, indents: patch.indents, tabs: patch.tabs, shading: patch.shading, lineSpacing: patch.lineSpacing, keepNext: true, widow: false });
+			assert.ok(saved.blocks[0].paragraph.borders.top && saved.blocks[0].paragraph.borders.bottom, 'Patching top border preserves bottom border');
+		} finally { reopened.dispose(); }
+		await agent.edit({ revision: engine.state().revision, operation: 'command', id: first.id, command: 'para.properties', params: { borders: { bottom: { color: '112233' }, top: null } } });
+		const borderRead = agent.read({ id: first.id }) as { blocks: { paragraph: { borders: { bottom: { width: number; color: string; style: string }; top: null } } }[] };
+		assert.deepEqual(borderRead.blocks[0].paragraph.borders, { bottom: { width: 1.5, color: '112233', style: 'dashed' }, top: null, left: null, right: null, between: null });
+		await agent.edit({ revision: engine.state().revision, operation: 'command', id: first.id, command: 'para.properties', params: { tabs: [] } });
+		assert.deepEqual((agent.read({ id: first.id }) as { blocks: { paragraph: { tabs: object[] } }[] }).blocks[0].paragraph.tabs, []);
+		await agent.edit({ revision: engine.state().revision, operation: 'insert', id: first.id, position: 'after', blocks: [{ kind: 'table', rows: [['Cell paragraph']] }] });
+		const table = read().blocks.find(block => block.kind === 'table')!;
+		await assert.rejects(agent.edit({ revision: engine.state().revision, operation: 'command', id: table.id, command: 'para.properties', params: { keepNext: true } }), /require a paragraph/);
+		const cellParagraph = (agent.read({ query: 'Cell paragraph' }) as { blocks: { id: string; kind: string }[] }).blocks.find(block => block.kind === 'paragraph')!;
+		await agent.edit({ revision: engine.state().revision, operation: 'command', id: cellParagraph.id, command: 'para.properties', params: { spacing: { after: 12 }, keepLines: true } });
+		assert.equal((agent.read({ id: cellParagraph.id }) as { blocks: { paragraph: { keepLines: boolean } }[] }).blocks[0].paragraph.keepLines, true);
+		const snapshot = engine.state(); const before = agent.reviewProjection!();
+		await engine.execute('caret.docEnd', {});
+		await assert.rejects(engine.execute('para.properties', { keepNext: false, ifRevision: snapshot.revision, ifSelection: snapshot.selection }), /selection changed/);
+		await assert.rejects(agent.edit({ revision: engine.state().revision, operation: 'batch', edits: [{ operation: 'command', id: first.id, command: 'para.properties', params: { keepNext: false } }, { operation: 'command', id: first.id, command: 'para.properties', params: { tabs: [{ pos: -1 }] } }] }));
+		assert.equal(agent.reviewProjection!(), before, 'Invalid batch restores all native formatting');
+	} finally { engine.dispose(); }
+});
+
 test('Word: internal IDs, atomic CRUD, Unicode ranges, revision guards and persistence', async () => {
 	const engine = await openEngine('word', 'Agent.docx', docx, root);
 	type Node = { id: string; kind: string; text: string; parentId: string; nextTextOffset?: number };

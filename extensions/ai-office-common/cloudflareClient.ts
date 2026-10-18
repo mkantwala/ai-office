@@ -17,7 +17,7 @@ export interface OfficeMessage {
 /** A single fixed endpoint/model. Never log credentials, document content or upstream error bodies. */
 export async function completeOfficeChat(credentials: CloudflareCredentials, messages: OfficeMessage[], tools: OfficeTool[], signal: AbortSignal, request: typeof fetch = fetch, required = false): Promise<OfficeMessage> {
 	if (!/^[a-f0-9]{32}$/i.test(credentials.accountId) || !credentials.token.trim()) {
-		throw new Error('Configure Cloudflare in AI Office before sending a message.');
+		throw new Error('Configure Cloudflare in Sangam One before sending a message.');
 	}
 	signal.throwIfAborted();
 	if (Buffer.byteLength(JSON.stringify({ messages, tools }), 'utf8') > 120000) { throw new Error('This conversation is full. Start a new chat and continue with the relevant document section.'); }

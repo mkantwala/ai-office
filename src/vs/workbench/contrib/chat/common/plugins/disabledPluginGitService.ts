@@ -9,7 +9,7 @@ import { IPluginGitService } from './pluginGitService.js';
 /** Local agent skills remain available; Git plugin repositories cannot clone, fetch or update. */
 export class DisabledPluginGitService implements IPluginGitService {
 	declare readonly _serviceBrand: undefined;
-	private async unavailable(): Promise<never> { throw new Error(localize('git.unavailable', "Git is not available in AI Office. Use local agent skills instead.")); }
+	private async unavailable(): Promise<never> { throw new Error(localize('git.unavailable', "Git is not available in Sangam One. Use local agent skills instead.")); }
 	cloneRepository() { return this.unavailable(); }
 	pull() { return this.unavailable(); }
 	checkout() { return this.unavailable(); }

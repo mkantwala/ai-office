@@ -9,7 +9,7 @@ import { ILocalGitService } from './localGitService.js';
 /** Shared-process compatibility without loading a Git process implementation. */
 export class DisabledLocalGitService implements ILocalGitService {
 	declare readonly _serviceBrand: undefined;
-	private async unavailable(): Promise<never> { throw new Error(localize('git.unavailable', "Git is not available in AI Office.")); }
+	private async unavailable(): Promise<never> { throw new Error(localize('git.unavailable', "Git is not available in Sangam One.")); }
 	clone() { return this.unavailable(); }
 	pull() { return this.unavailable(); }
 	checkout() { return this.unavailable(); }

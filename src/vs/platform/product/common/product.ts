@@ -78,12 +78,12 @@ else {
 	if (Object.keys(product).length === 0) {
 		Object.assign(product, {
 			version: '1.104.0-dev',
-			nameShort: 'Code - OSS Dev',
-			nameLong: 'Code - OSS Dev',
-			applicationName: 'code-oss',
+			nameShort: 'Sangam One Dev',
+			nameLong: 'Sangam One Dev',
+			applicationName: 'sangam-one',
 			dataFolderName: '.vscode-oss',
 			urlProtocol: 'code-oss',
-			reportIssueUrl: 'https://github.com/microsoft/vscode/issues/new',
+			reportIssueUrl: 'https://github.com/mkantwala/ai-office/issues/new',
 			licenseName: 'MIT',
 			licenseUrl: 'https://github.com/microsoft/vscode/blob/main/LICENSE.txt',
 			serverLicenseUrl: 'https://github.com/microsoft/vscode/blob/main/LICENSE.txt',

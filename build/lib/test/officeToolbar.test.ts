@@ -18,12 +18,13 @@ suite('Office toolbar in a browser', () => {
 	let browser: Browser;
 	let address: string;
 	let script: string;
+	let appScript: string;
 	let css: string;
 	const server = createServer((request, response) => {
 		response.setHeader('Content-Type', request.url === '/editor.js' ? 'text/javascript' : request.url === '/editor.css' ? 'text/css' : 'text/html');
 		response.end(request.url === '/editor.js' ? script : request.url === '/editor.css' ? css : `<!DOCTYPE html><html><head>
 		<style>:root { --vscode-font-family: sans-serif; --vscode-foreground: #202124; --vscode-editor-foreground: #202124; --vscode-editor-background: #fff; --vscode-sideBar-background: #f8fafd; --vscode-focusBorder: #4c78ca; --vscode-editorWidget-background: #fff; }</style>
-		<link rel="stylesheet" href="/editor.css"></head><body>
+		<link rel="stylesheet" href="/editor.css"></head><body${request.url?.includes('hosted=1') ? ' class="app-toolbar-hosted"' : ''}>
 		<header id="toolbar" aria-label="Document Formatting"></header><div id="info"><span id="filename"></span><span id="hint"></span></div>
 		<div id="error" hidden></div><main id="pages"></main><textarea id="keyboard" aria-label="Document text input"></textarea>
 		<dialog id="dialog"><form method="dialog"><label id="prompt-label" for="prompt"></label><input id="prompt"><button value="cancel">Cancel</button><button id="confirm" value="ok">Apply</button></form></dialog>
@@ -39,7 +40,8 @@ suite('Office toolbar in a browser', () => {
 	before(async () => {
 		const result = await build({ absWorkingDir: root, entryPoints: ['extensions/ai-office-common/editor.ts'], bundle: true, platform: 'browser', write: false });
 		script = result.outputFiles[0].text;
-		css = await readFile(path.join(root, 'extensions/ai-office-common/editor.css'), 'utf8');
+		appScript = (await build({ absWorkingDir: root, entryPoints: ['src/vs/base/browser/ui/documentToolbar/documentToolbar.ts'], bundle: true, platform: 'browser', format: 'iife', globalName: 'AppDocumentToolbar', write: false })).outputFiles[0].text;
+		css = (await readFile(path.join(root, 'src/vs/base/browser/ui/documentToolbar/documentToolbar.css'), 'utf8')) + '\n' + (await readFile(path.join(root, 'extensions/ai-office-common/editor.css'), 'utf8'));
 		server.listen(0, '127.0.0.1');
 		await once(server, 'listening');
 		const location = server.address();
@@ -166,7 +168,8 @@ suite('Office toolbar in a browser', () => {
 				send({ type: 'state', kind: 'word', name: 'Preview.docx', pages: [[612, 792]], state: { revision: 2 } });
 				send({ type: 'agentActivity', rects: [{ page: 0, x: 72, y: 100, width: 300, height: 24 }] });
 			});
-			const shimmer = page.locator('.agent-shimmer');
+			const shimmer = page.locator('.agent-shimmer-text');
+			assert.equal(await page.locator('.agent-shimmer-border').count(), 1);
 			assert.equal(await shimmer.count(), 1);
 			assert.equal(await shimmer.evaluate(element => getComputedStyle(element).pointerEvents), 'none');
 			assert.equal(await shimmer.evaluate(element => getComputedStyle(element).animationName), 'none');
@@ -183,4 +186,66 @@ suite('Office toolbar in a browser', () => {
 			assert.equal(await page.locator('.agent-status').innerText(), '');
 		} finally { await page.close(); }
 	});
+	test('Paragraph panel patches only changed fields, guards selection and exposes accessible ruler controls', async () => {
+		const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+		try {
+			await page.goto(address); await page.getByRole('button', { name: 'More Formatting' }).waitFor();
+			const state = { revision: 4, undo: true, selection: { anchor: 1, focus: 1 }, caret: { page: 0, x: 72, y: 72, height: 12 }, paragraph: { id: 'internal-1', properties: { alignment: 'left', indents: { left: 0, right: 0, firstLine: 0 }, spacing: { before: 0, after: 8 }, lineSpacing: { rule: 'multiple', value: 1.15 }, tabs: [{ pos: 144, align: 'right', leader: 'dot' }], keepNext: false, keepLines: false, widowControl: true, pageBreakBefore: false }, mixed: [], ruler: { left: 72, width: 468 } } };
+			const update = async (value: typeof state) => page.evaluate(state => window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: { type: 'state', kind: 'word', name: 'Paragraph.docx', pages: [[612, 792]], state } })), value);
+			await update(state);
+			const properties = page.getByRole('button', { name: /Paragraph Properties ·/ });
+			if (!await properties.isVisible()) { await page.getByRole('button', { name: 'More Formatting' }).click(); }
+			await properties.click();
+			const dialog = page.getByRole('dialog', { name: 'Paragraph Properties' });
+			await dialog.getByLabel('Left Indent', { exact: true }).fill('36');
+			await dialog.getByLabel('Keep with Next', { exact: true }).check();
+			await dialog.getByRole('button', { name: 'Apply', exact: true }).click();
+			const edits = await page.evaluate(() => (window as unknown as { officeMessages: { command?: string; args?: object }[] }).officeMessages.filter(m => m.command === 'para.properties'));
+			assert.deepEqual(edits[0].args, { indents: { left: 36 }, keepNext: true, ifRevision: 4, ifSelection: state.selection });
+			const left = page.getByRole('slider', { name: 'Left Indent · Arrow Keys Adjust', exact: true }); await left.focus(); await page.keyboard.press('ArrowRight');
+			assert.equal(await page.evaluate(() => (window as unknown as { officeMessages: { command?: string; args?: { indents?: { left?: number } } }[] }).officeMessages.filter(m => m.command === 'para.properties').at(-1)?.args?.indents?.left), 1);
+			if (!await properties.isVisible()) { await page.getByRole('button', { name: 'More Formatting' }).click(); }
+			await properties.click();
+			await update({ ...state, revision: 5 });
+			assert.equal(await dialog.getByRole('button', { name: 'Apply', exact: true }).isDisabled(), true);
+			assert.match(await dialog.getByRole('alert').innerText(), /selection changed/);
+			await page.keyboard.press('Escape'); assert.equal(await dialog.isVisible(), false);
+			await page.setViewportSize({ width: 420, height: 800 });
+			await page.getByRole('button', { name: 'More Formatting' }).click(); await properties.click();
+			const bounds = await dialog.boundingBox(); assert.ok(bounds && bounds.width <= 420);
+			await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+		} finally { await page.close(); }
+	});
+
+	test('App toolbar reuses document actions while the in-tab toolbar stays hidden and stale selections are refused', async () => {
+		const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
+		try {
+			await page.goto(address + '/?hosted=1');
+			await page.waitForFunction(() => Reflect.get(window, 'officeMessages').some((message: { type: string }) => message.type === 'toolbarState'));
+			await page.addScriptTag({ content: appScript });
+			await page.evaluate(() => {
+				const snapshot = Reflect.get(window, 'officeMessages').findLast((message: { type: string }) => message.type === 'toolbarState');
+				const host = document.createElement('div'); host.className = 'sangam-document-toolbar'; host.style.display = 'flex'; const toolbar = document.createElement('header'); host.append(toolbar); document.body.prepend(host);
+				Reflect.get(window, 'AppDocumentToolbar').createDocumentToolbar(toolbar, snapshot.controls, (action: object) => window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: { type: 'toolbarAction', context: snapshot.context, action } })), () => {});
+			});
+			assert.equal(await page.locator('#toolbar').isVisible(), false);
+			assert.equal((await page.locator('.sangam-document-toolbar > header').boundingBox())?.height, 42);
+			assert.equal(await page.getByRole('toolbar', { name: 'Document formatting' }).count(), 1);
+			await page.getByRole('button', { name: 'Bold', exact: true }).click();
+			await page.getByRole('button', { name: 'Paragraph Style', exact: true }).click();
+			await page.getByRole('menuitemradio', { name: 'Heading 2' }).click();
+			const before = await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((message: { type: string }) => message.type === 'execute'));
+			assert.deepEqual(before.map((message: { command: string }) => message.command), ['format.bold', 'para.style']);
+			await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: { type: 'state', kind: 'word', name: 'Preview.docx', pages: [], state: { revision: 2, undo: true } } })));
+			await page.getByRole('button', { name: 'Italic', exact: true }).click();
+			assert.match(await page.locator('#error').innerText(), /selection changed/);
+			assert.equal(await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((message: { type: string }) => message.type === 'execute').length), before.length);
+			await page.setViewportSize({ width: 400, height: 800 });
+			const more = page.getByRole('button', { name: 'More Formatting' });
+			await page.waitForFunction(() => { const host = document.querySelector('.sangam-document-toolbar')!; const more = document.querySelector('.word-more-button')!; return more.getBoundingClientRect().right <= host.getBoundingClientRect().right; });
+			await more.click();
+			assert.equal(await page.getByRole('combobox', { name: 'Font Family' }).isVisible(), true);
+		} finally { await page.close(); }
+	});
+
 });

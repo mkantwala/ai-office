@@ -99,7 +99,7 @@ export class SlidesEngine implements Engine {
 				ppt.addSlideImage(slide, Buffer.from(args.data, 'base64'), { x: ppt.inches(1), y: ppt.inches(1), w: ppt.inches(4), h: ppt.inches(3), fit: 'contain' });
 			} else if (id === 'insert.comment') {
 				if (typeof args.text !== 'string' || !args.text.trim()) { throw new Error('Enter comment text.'); }
-				ppt.addSlideComment(slide, { author: { name: 'AI Office' }, text: args.text });
+				ppt.addSlideComment(slide, { author: { name: 'Sangam One' }, text: args.text });
 			} else {
 				if (!shape) { throw new Error('Select a text box first.'); }
 				const cell = ppt.isTableShape(shape) && args.row !== undefined && args.col !== undefined ? ppt.getTableCell(shape, num(args.row, 0, 1000), num(args.col, 0, 1000)) : undefined;

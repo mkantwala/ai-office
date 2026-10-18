@@ -474,3 +474,6 @@ import './contrib/editTelemetry/browser/editTelemetry.contribution.js';
 import './contrib/opener/browser/opener.contribution.js';
 
 //#endregion
+
+// Shared document formatting above editor tabs.
+import './contrib/documentToolbar/browser/documentToolbar.contribution.js';

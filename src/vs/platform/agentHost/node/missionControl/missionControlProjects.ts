@@ -48,7 +48,7 @@ interface IMissionControlProjectsOptions {
 }
 
 async function runGit(_args: readonly string[], _env: NodeJS.ProcessEnv, _signal: AbortSignal, _onProgress: (progress: number) => void): Promise<void> {
-	throw new Error(localize('git.unavailable', "Git is not available in AI Office. Open a document folder instead."));
+	throw new Error(localize('git.unavailable', "Git is not available in Sangam One. Open a document folder instead."));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -479,6 +479,9 @@ export interface IEditorGroupsContainer {
  */
 export interface IEditorPart extends IEditorGroupsContainer {
 
+	/** Reserve a single shared toolbar above all editor groups in this window. */
+	registerToolbar(element: HTMLElement, height: number): IDisposable;
+
 	/**
 	 * An event for when the editor part is layed out.
 	 */

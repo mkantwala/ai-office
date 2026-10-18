@@ -3,12 +3,14 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { validateParagraphProperties } from './paragraphProperties.js';
+
 interface WordBlock { id: string; kind: string; text: string; textLength: number; nextTextOffset?: number | null }
 interface WordRead { blocks?: WordBlock[]; total?: number; nextOffset?: number | null; styles?: { id: string; name: string; size: number }[] }
 type ReadWord = (args: Record<string, unknown>) => Promise<WordRead>;
 interface Edit { operation: string; id: string; command: string; params: Record<string, unknown>; start?: number; end?: number }
 
-const fields = ['paragraphStyle', 'font', 'size', 'sizeFromStyle', 'bold', 'italic', 'underline', 'alignment', 'lineSpacing'];
+const fields = ['paragraphStyle', 'font', 'size', 'sizeFromStyle', 'bold', 'italic', 'underline', 'alignment', 'lineSpacing', 'paragraph'];
 
 /** Resolve a complete formatting operation inside the document's serial queue. */
 export async function prepareWordFormatting(input: Record<string, unknown>, read: ReadWord) {
@@ -57,6 +59,11 @@ export async function prepareWordFormatting(input: Record<string, unknown>, read
 		if (typeof format.lineSpacing !== 'number' || !Number.isFinite(format.lineSpacing) || format.lineSpacing < .5 || format.lineSpacing > 10) { throw new Error('lineSpacing must be between 0.5 and 10.'); }
 		commands.push({ command: 'para.lineSpacing', params: { value: format.lineSpacing } });
 	}
+	if (format.paragraph !== undefined) {
+		validateParagraphProperties(format.paragraph);
+		if (format.alignment !== undefined && format.paragraph.alignment !== undefined || format.lineSpacing !== undefined && format.paragraph.lineSpacing !== undefined) { throw new Error('Specify alignment and line spacing only once.'); }
+		commands.push({ command: 'para.properties', params: format.paragraph as Record<string, unknown> });
+	}
 	if (!commands.length) { throw new Error('Provide at least one supported format property.'); }
 	const blocks: WordBlock[] = [];
 	if (Array.isArray(ids)) {
@@ -81,6 +88,7 @@ export async function prepareWordFormatting(input: Record<string, unknown>, read
 	const targets = new Set<string>();
 	let ranges = 0, characters = 0;
 	for (const block of blocks) {
+		if (format.paragraph !== undefined && !['paragraph', 'heading', 'listItem'].includes(block.kind)) { throw new Error('Paragraph properties require paragraph, heading or list-item IDs.'); }
 		const matches: { start: number; end: number }[] = [];
 		if (query) {
 			if (block.kind === 'table' || block.kind === 'row' || block.kind === 'cell') { throw new Error('For text matching, target paragraph IDs or use a query without structural IDs.'); }

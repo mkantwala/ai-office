@@ -3,9 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import type { ParagraphProperties } from './paragraphProperties.js';
+
 export type Kind = 'word' | 'pdf' | 'slides';
 export interface Block { id: number; text: string; rect: number[]; font?: string; size?: number; row?: number; col?: number }
 export interface State {
+	paragraph?: { id: string; properties: ParagraphProperties; mixed: string[]; ruler?: { left: number; width: number } | null };
 	undoDepth?: number;
 	agentAppliedEdits?: { id: string; operation: string; command?: string; params?: unknown }[];
 	agentCreatedBlocks?: { id: string; kind: string; parentId: string }[];

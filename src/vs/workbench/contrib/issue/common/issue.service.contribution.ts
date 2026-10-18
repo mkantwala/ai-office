@@ -12,7 +12,7 @@ class UnsupportedIssueService implements IWorkbenchIssueService {
 	declare readonly _serviceBrand: undefined;
 
 	async openReporter(): Promise<void> {
-		throw new Error(localize('issueReporter.unavailable', "The issue reporter is not available in AI Office."));
+		throw new Error(localize('issueReporter.unavailable', "The issue reporter is not available in Sangam One."));
 	}
 }
 

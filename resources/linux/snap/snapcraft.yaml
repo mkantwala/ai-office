@@ -1,10 +1,9 @@
 name: @@NAME@@
 version: '@@VERSION@@'
-summary: Code editing. Redefined.
+summary: 'Sangam One: write, review and create with AI.'
 description: |
-  Visual Studio Code is a new choice of tool that combines the
-  simplicity of a code editor with what developers need for the core
-  edit-build-debug cycle.
+  Sangam One brings Word documents, PDFs, presentations and an AI
+  document assistant into one workspace.
 
 architectures:
   - build-on: amd64

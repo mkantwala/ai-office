@@ -474,7 +474,7 @@ class SessionsSetUpWidget extends Disposable {
 		if (this._initialSetupFlow) {
 			this.onInitialSignInDialogShown();
 		}
-		this.logService.info('[sessions welcome] Skipping GitHub sign-in; AI Office opens the window without it');
+		this.logService.info('[sessions welcome] Skipping GitHub sign-in; Sangam One opens the window without it');
 		return true;
 	}
 

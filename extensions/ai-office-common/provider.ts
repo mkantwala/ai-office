@@ -152,7 +152,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 		await Promise.all([...doc.panels].map(panel => panel.webview.postMessage({ type: 'review', review: { ...data, changes } })));
 		await captureVersion(doc, data.changes.length ? 'Agent Edits' : 'Review Completed');
 		try { await vscode.commands.executeCommand('aiOffice.registerDocumentReview', request, data); }
-		catch { void vscode.window.showErrorMessage?.('Document changes were applied, but change review could not open. Reload AI Office before continuing.'); }
+		catch { void vscode.window.showErrorMessage?.('Document changes were applied, but change review could not open. Reload Sangam One before continuing.'); }
 	};
 	const agentEdits = new Map<Kind, (doc: Document, input: DocumentToolInput, token: vscode.CancellationToken) => Promise<unknown>>();
 	const reviewEdits = new Map<Kind, (doc: Document, before: State) => void>();
@@ -165,6 +165,18 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 		return resource?.scheme === 'ai-office-review' ? documents.get(resource.query) : undefined;
 	};
 	for (const kind of kinds) {
+		const toolbarPanels = new Map<string, { doc: Document; panel: vscode.WebviewPanel }>();
+		context.subscriptions.push(vscode.commands.registerCommand(`_aiOffice.${kind}.requestToolbar`, async (uri: vscode.Uri) => {
+			const target = [...toolbarPanels.values()].find(({ doc, panel }) => doc.uri.toString() === uri.toString() && panel.active);
+			if (target) { await target.panel.webview.postMessage({ type: 'publishToolbar' }); }
+		}), vscode.commands.registerCommand(`_aiOffice.${kind}.toolbarAction`, async (uri: vscode.Uri, panelId: string, instance: string, context: string, action: object) => {
+			const target = toolbarPanels.get(panelId);
+			if (!target || target.doc.uri.toString() !== uri.toString() || target.doc.instance !== instance || !target.panel.active) { return false; }
+			return target.doc.enqueue(async () => {
+				if (!target.panel.active || target.doc.instance !== instance) { return false; }
+				return target.panel.webview.postMessage({ type: 'toolbarAction', context, action });
+			});
+		}));
 		const changed = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<Document>>();
 		context.subscriptions.push(changed);
 		const recordEdit = (doc: Document, before: State, label: string, request?: string): void => {
@@ -282,18 +294,25 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				} catch (error) { doc.dispose(); throw error; }
 			},
 			async resolveCustomEditor(doc, panel) {
+				const panelId = randomUUID();
+				let appToolbar = false;
+				try { appToolbar = await vscode.commands.executeCommand('_sangamOne.documentToolbar.supported') === true; } catch { /* Standalone extension hosts retain their local toolbar. */ }
+				if (appToolbar) { toolbarPanels.set(panelId, { doc, panel }); }
 				doc.panels.add(panel);
 				if (panel.active) { lastActive.set(kind, doc); }
-				panel.onDidChangeViewState(() => { if (panel.active) { lastActive.set(kind, doc); } });
+				panel.onDidChangeViewState(() => { if (panel.active) { lastActive.set(kind, doc); if (appToolbar) { void panel.webview.postMessage({ type: 'publishToolbar' }); } } });
 				const output = vscode.Uri.joinPath(context.extensionUri, 'out');
 				panel.webview.options = { enableScripts: true, localResourceRoots: [output] };
 				const nonce = randomBytes(24).toString('hex');
 				const resource = (name: string) => panel.webview.asWebviewUri(vscode.Uri.joinPath(output, name));
-				panel.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src data: blob:;"><link rel="stylesheet" href="${resource('editor.css')}"></head><body><header id="toolbar" aria-label="Document formatting"></header><div id="info"><span id="filename"></span><span id="hint"></span></div><div id="error" role="alert" hidden></div><main id="pages"></main><textarea id="keyboard" aria-label="Document text input" spellcheck="false"></textarea><dialog id="dialog"><form method="dialog"><label id="prompt-label" for="prompt"></label><input id="prompt"><div><button value="cancel">Cancel</button><button id="confirm" value="ok">Apply</button></div></form></dialog><script nonce="${nonce}" src="${resource('editor.js')}"></script></body></html>`;
+				panel.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src data: blob:;"><link rel="stylesheet" href="${resource('editor.css')}"></head><body class="${appToolbar ? 'app-toolbar-hosted' : ''}"><header id="toolbar" aria-label="Document formatting"></header><div id="info"><span id="filename"></span><span id="hint"></span></div><div id="error" role="alert" hidden></div><main id="pages"></main><textarea id="keyboard" aria-label="Document text input" spellcheck="false"></textarea><dialog id="dialog"><form method="dialog"><label id="prompt-label" for="prompt"></label><input id="prompt"><div><button value="cancel">Cancel</button><button id="confirm" value="ok">Apply</button></div></form></dialog><script nonce="${nonce}" src="${resource('editor.js')}"></script></body></html>`;
 				const listener = panel.webview.onDidReceiveMessage(message => {
 					doc.serial = doc.serial.then(async () => {
 						try {
 							switch (message.type) {
+								case 'toolbarState':
+									if (appToolbar && panel.active) { await vscode.commands.executeCommand('_sangamOne.documentToolbar.update', doc.uri, { kind, panel: panelId, instance: doc.instance, context: message.context, controls: message.controls, paragraphStyle: message.paragraphStyle }); }
+									break;
 								case 'ready': await doc.broadcast(); break;
 								case 'render': {
 									const result = await doc.client.request('render', { page: message.page, scale: message.scale, ...(kind === 'word' ? { frame: message.request, base: message.base } : {}) });
@@ -330,11 +349,11 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 					doc.serial = doc.serial.then(async () => {
 						const bytes = await read(doc.uri);
 						if (hash(bytes) === doc.baseHash) { return; }
-						if (doc.dirty) { await panel.webview.postMessage({ type: 'error', error: 'This file changed outside AI Office. Save As to keep your edits before reopening it.' }); return; }
+						if (doc.dirty) { await panel.webview.postMessage({ type: 'error', error: 'This file changed outside Sangam One. Save As to keep your edits before reopening it.' }); return; }
 						await doc.load(bytes); doc.baseHash = hash(bytes); await doc.broadcast();
 					}).catch(error => { void panel.webview.postMessage({ type: 'error', error: String(error) }); });
 				});
-				panel.onDidDispose(() => { doc.panels.delete(panel); listener.dispose(); reload.dispose(); watcher.dispose(); });
+				panel.onDidDispose(() => { toolbarPanels.delete(panelId); doc.panels.delete(panel); listener.dispose(); reload.dispose(); watcher.dispose(); });
 			},
 			async saveCustomDocument(doc) {
 				return doc.enqueue(async () => {
@@ -378,14 +397,14 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				const document = focused ?? (reviewed?.kind === kind ? reviewed : undefined) ?? lastActive.get(kind);
 				if (document) { return document; }
 				if (candidates.length === 1) { return candidates[0]; }
-				if (!candidates.length) { throw new Error(`No ${kind} document is open in AI Office. Open the file first.`); }
+				if (!candidates.length) { throw new Error(`No ${kind} document is open in Sangam One. Open the file first.`); }
 				throw new Error(`No active ${kind} document. Open: ${list(candidates)}. Pass the file name to edit.`);
 			}
 			const uri = /^[a-z][a-z0-9+.-]+:/i.test(target) ? vscode.Uri.parse(target) : undefined;
 			if (uri) {
 				const document = documents.get(uri.toString()) ?? candidates.find(candidate => candidate.uri.fsPath === uri.fsPath);
 				if (document) { return document; }
-				throw new Error(`"${target}" is not open in AI Office. Open: ${list(candidates)}.`);
+				throw new Error(`"${target}" is not open in Sangam One. Open: ${list(candidates)}.`);
 			}
 			const needle = target.replace(/\\/g, '/').toLowerCase();
 			const byName = candidates.filter(candidate => basename(candidate.uri.path).toLowerCase() === basename(needle));
@@ -411,7 +430,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			return result && { ...result, name: basename(doc.uri.path), uri: doc.uri.toString() };
 		}));
 	}
-	// One tool serves every AI Office kind: the model names the command and,
+	// One tool serves every Sangam One kind: the model names the command and,
 	// optionally, the file. Without a file it edits the document the user is
 	// looking at, so agents never ask the user for a path. The word/pdf
 	// extension owns the tool and dispatches to the slides command when needed.
@@ -431,7 +450,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				if (typeof input.command !== 'string' || !input.command) { throw new Error('A command id is required, e.g. content.replace.'); }
 				const file = typeof input.file === 'string' && input.file.trim() ? input.file.trim() : undefined;
 				const kind = kindOfTarget(file);
-				if (!kind) { throw new Error('Open the document to edit in AI Office first, or pass its file name (DOCX, PDF or PPTX).'); }
+				if (!kind) { throw new Error('Open the document to edit in Sangam One first, or pass its file name (DOCX, PDF or PPTX).'); }
 					const result = await withAgentToolRequest(options.toolInvocationToken, async () => vscode.commands.executeCommand<View & { name: string; uri: string } | undefined>('aiOffice.' + kind + '.execute', file, input.command, input.params ?? {}, token));
 				return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result ?? {}))]);
 			}

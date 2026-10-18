@@ -17,6 +17,7 @@ import { IDisposable, toDisposable } from '../../base/common/lifecycle.js';
 
 export interface IPartOptions {
 	readonly hasTitle?: boolean;
+	headerHeight?: number;
 	readonly borderWidth?: () => number;
 }
 
@@ -111,7 +112,7 @@ export abstract class Part<MementoType extends object = object> extends Componen
 			throw new Error('Header already exists');
 		}
 
-		if (!this.parent || !this.titleArea) {
+		if (!this.parent) {
 			return;
 		}
 
@@ -243,7 +244,7 @@ class PartLayout {
 		// Header Size: Width (Fill), Height (Variable)
 		let headerSize: Dimension;
 		if (this.headerVisible) {
-			const headerHeight = this.layoutService.isFloatingPanelsEnabled() ? PartLayout.AREA_HEIGHT_MODERN_UI : PartLayout.HEADER_HEIGHT;
+			const headerHeight = this.options.headerHeight ?? (this.layoutService.isFloatingPanelsEnabled() ? PartLayout.AREA_HEIGHT_MODERN_UI : PartLayout.HEADER_HEIGHT);
 			headerSize = new Dimension(width, Math.min(height, headerHeight));
 		} else {
 			headerSize = Dimension.None;

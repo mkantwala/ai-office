@@ -1,6 +1,6 @@
 {
 	"name": "ai-office-pdf",
-	"displayName": "AI Office Documents",
+	"displayName": "Sangam One Documents",
 	"description": "Open PDF and Word documents with Rust engines.",
 	"version": "0.1.0",
 	"publisher": "vscode",
@@ -24,7 +24,7 @@
 		"customEditors": [
 			{
 				"viewType": "aiOffice.pdf",
-				"displayName": "AI Office PDF",
+				"displayName": "Sangam One PDF",
 				"selector": [
 					{
 						"filenamePattern": "*.pdf"
@@ -34,7 +34,7 @@
 			},
 			{
 				"viewType": "aiOffice.word",
-				"displayName": "AI Office Word",
+				"displayName": "Sangam One Word",
 				"selector": [
 					{
 						"filenamePattern": "*.docx"
@@ -200,6 +200,309 @@
 									"type": "number",
 									"minimum": 0.5,
 									"maximum": 10
+								},
+								"paragraph": {
+									"type": "object",
+									"properties": {
+										"alignment": {
+											"type": "string",
+											"enum": [
+												"left",
+												"center",
+												"right",
+												"justify",
+												"distribute"
+											]
+										},
+										"indents": {
+											"type": "object",
+											"properties": {
+												"left": {
+													"type": "number",
+													"minimum": -1584,
+													"maximum": 1584
+												},
+												"right": {
+													"type": "number",
+													"minimum": -1584,
+													"maximum": 1584
+												},
+												"firstLine": {
+													"type": "number",
+													"minimum": -1584,
+													"maximum": 1584
+												}
+											},
+											"additionalProperties": false,
+											"minProperties": 1
+										},
+										"spacing": {
+											"type": "object",
+											"properties": {
+												"before": {
+													"type": "number",
+													"minimum": 0,
+													"maximum": 1584
+												},
+												"after": {
+													"type": "number",
+													"minimum": 0,
+													"maximum": 1584
+												}
+											},
+											"additionalProperties": false,
+											"minProperties": 1
+										},
+										"lineSpacing": {
+											"type": "object",
+											"properties": {
+												"rule": {
+													"type": "string",
+													"enum": [
+														"multiple",
+														"exactly",
+														"atLeast"
+													]
+												},
+												"value": {
+													"type": "number",
+													"minimum": 0.5,
+													"maximum": 1584
+												}
+											},
+											"additionalProperties": false,
+											"minProperties": 1,
+											"required": [
+												"rule",
+												"value"
+											]
+										},
+										"tabs": {
+											"type": "array",
+											"maxItems": 64,
+											"items": {
+												"type": "object",
+												"properties": {
+													"pos": {
+														"type": "number",
+														"minimum": 0,
+														"maximum": 1584
+													},
+													"align": {
+														"type": "string",
+														"enum": [
+															"left",
+															"center",
+															"right",
+															"decimal",
+															"bar"
+														]
+													},
+													"leader": {
+														"type": "string",
+														"enum": [
+															"none",
+															"dot",
+															"hyphen",
+															"underscore",
+															"middleDot"
+														]
+													}
+												},
+												"additionalProperties": false,
+												"minProperties": 1,
+												"required": [
+													"pos"
+												]
+											}
+										},
+										"borders": {
+											"type": "object",
+											"properties": {
+												"top": {
+													"anyOf": [
+														{
+															"type": "null"
+														},
+														{
+															"type": "object",
+															"properties": {
+																"width": {
+																	"type": "number",
+																	"minimum": 0.25,
+																	"maximum": 6
+																},
+																"color": {
+																	"type": "string",
+																	"pattern": "^[a-fA-F0-9]{6}$"
+																},
+																"style": {
+																	"type": "string",
+																	"enum": [
+																		"single",
+																		"double",
+																		"dotted",
+																		"dashed"
+																	]
+																}
+															},
+															"additionalProperties": false,
+															"minProperties": 1
+														}
+													]
+												},
+												"left": {
+													"anyOf": [
+														{
+															"type": "null"
+														},
+														{
+															"type": "object",
+															"properties": {
+																"width": {
+																	"type": "number",
+																	"minimum": 0.25,
+																	"maximum": 6
+																},
+																"color": {
+																	"type": "string",
+																	"pattern": "^[a-fA-F0-9]{6}$"
+																},
+																"style": {
+																	"type": "string",
+																	"enum": [
+																		"single",
+																		"double",
+																		"dotted",
+																		"dashed"
+																	]
+																}
+															},
+															"additionalProperties": false,
+															"minProperties": 1
+														}
+													]
+												},
+												"bottom": {
+													"anyOf": [
+														{
+															"type": "null"
+														},
+														{
+															"type": "object",
+															"properties": {
+																"width": {
+																	"type": "number",
+																	"minimum": 0.25,
+																	"maximum": 6
+																},
+																"color": {
+																	"type": "string",
+																	"pattern": "^[a-fA-F0-9]{6}$"
+																},
+																"style": {
+																	"type": "string",
+																	"enum": [
+																		"single",
+																		"double",
+																		"dotted",
+																		"dashed"
+																	]
+																}
+															},
+															"additionalProperties": false,
+															"minProperties": 1
+														}
+													]
+												},
+												"right": {
+													"anyOf": [
+														{
+															"type": "null"
+														},
+														{
+															"type": "object",
+															"properties": {
+																"width": {
+																	"type": "number",
+																	"minimum": 0.25,
+																	"maximum": 6
+																},
+																"color": {
+																	"type": "string",
+																	"pattern": "^[a-fA-F0-9]{6}$"
+																},
+																"style": {
+																	"type": "string",
+																	"enum": [
+																		"single",
+																		"double",
+																		"dotted",
+																		"dashed"
+																	]
+																}
+															},
+															"additionalProperties": false,
+															"minProperties": 1
+														}
+													]
+												},
+												"between": {
+													"anyOf": [
+														{
+															"type": "null"
+														},
+														{
+															"type": "object",
+															"properties": {
+																"width": {
+																	"type": "number",
+																	"minimum": 0.25,
+																	"maximum": 6
+																},
+																"color": {
+																	"type": "string",
+																	"pattern": "^[a-fA-F0-9]{6}$"
+																},
+																"style": {
+																	"type": "string",
+																	"enum": [
+																		"single",
+																		"double",
+																		"dotted",
+																		"dashed"
+																	]
+																}
+															},
+															"additionalProperties": false,
+															"minProperties": 1
+														}
+													]
+												}
+											},
+											"additionalProperties": false,
+											"minProperties": 1
+										},
+										"shading": {
+											"type": "string",
+											"pattern": "^[a-fA-F0-9]{6}$"
+										},
+										"keepNext": {
+											"type": "boolean"
+										},
+										"keepLines": {
+											"type": "boolean"
+										},
+										"pageBreakBefore": {
+											"type": "boolean"
+										},
+										"widowControl": {
+											"type": "boolean"
+										}
+									},
+									"additionalProperties": false,
+									"minProperties": 1,
+									"description": "Partial properties of paragraph/heading/list-item blocks. Distances in points; omitted properties stay unchanged. Tabs replace stops; border sides patch independently; null removes a side. Shading is an explicit RGB fill."
 								}
 							},
 							"additionalProperties": false
@@ -531,11 +834,11 @@
 			},
 			{
 				"name": "aiOfficeEdit",
-				"displayName": "Edit AI Office document",
+				"displayName": "Edit Sangam One document",
 				"toolReferenceName": "aiOffice",
 				"canBeReferencedInPrompt": true,
-				"modelDescription": "Read or edit an open AI Office document (Word DOCX, PDF, PowerPoint PPTX) with one document command, such as content.find, content.replace, content.delete or content.append. Content is addressed by text, never by id. Without a file the command applies to the document the user is looking at and the result reports the file name, URI and the new document state. Use the ai-office-docs skill for the full command list.",
-				"userDescription": "Edit the open AI Office document.",
+				"modelDescription": "Read or edit an open Sangam One document (Word DOCX, PDF, PowerPoint PPTX) with one document command, such as content.find, content.replace, content.delete or content.append. Content is addressed by text, never by id. Without a file the command applies to the document the user is looking at and the result reports the file name, URI and the new document state. Use the ai-office-docs skill for the full command list.",
+				"userDescription": "Edit the open Sangam One document.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -818,7 +1121,7 @@
 			{
 				"id": "aiOffice.wordAgent",
 				"name": "office",
-				"fullName": "AI Office",
+				"fullName": "Sangam One",
 				"description": "Write and edit Word documents with GLM-4.7-Flash on Cloudflare.",
 				"isDefault": true,
 				"modes": [
@@ -831,18 +1134,18 @@
 		"languageModelChatProviders": [
 			{
 				"vendor": "ai-office-cloudflare",
-				"displayName": "Cloudflare \u00b7 AI Office",
+				"displayName": "Cloudflare \u00b7 Sangam One",
 				"managementCommand": "aiOffice.cloudflare.configure"
 			}
 		],
 		"commands": [
 			{
 				"command": "aiOffice.cloudflare.configure",
-				"title": "AI Office: Configure Cloudflare"
+				"title": "Sangam One: Configure Cloudflare"
 			},
 			{
 				"command": "aiOffice.cloudflare.clearCredentials",
-				"title": "AI Office: Remove Stored Cloudflare Credentials"
+				"title": "Sangam One: Remove Stored Cloudflare Credentials"
 			}
 		]
 	},
@@ -850,5 +1153,6 @@
 		"defaultChatParticipant",
 		"chatParticipantPrivate",
 		"chatProvider"
-	]
+	],
+	"icon": "media/sangam-one.png"
 }

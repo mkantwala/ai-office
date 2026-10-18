@@ -23,9 +23,9 @@ class OfficeTaskService implements ITaskService {
 	readonly supportsMultipleTaskExecutions = false;
 	readonly hasTaskSystemInfo = false;
 
-	configureAction(): Action { return new Action('workbench.action.tasks.configureTaskRunner', localize('tasks.unavailable', "Tasks are not available in AI Office."), undefined, false); }
-	async run(): Promise<never> { throw new Error(localize('tasks.unavailable', "Tasks are not available in AI Office.")); }
-	async terminate(): Promise<never> { throw new Error(localize('tasks.unavailable', "Tasks are not available in AI Office.")); }
+	configureAction(): Action { return new Action('workbench.action.tasks.configureTaskRunner', localize('tasks.unavailable', "Tasks are not available in Sangam One."), undefined, false); }
+	async run(): Promise<never> { throw new Error(localize('tasks.unavailable', "Tasks are not available in Sangam One.")); }
+	async terminate(): Promise<never> { throw new Error(localize('tasks.unavailable', "Tasks are not available in Sangam One.")); }
 	inTerminal(): boolean { return false; }
 	async getActiveTasks(): Promise<Task[]> { return []; }
 	async getBusyTasks(): Promise<Task[]> { return []; }

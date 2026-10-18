@@ -7,6 +7,8 @@ import DOMPurify from '../ai-office-slides/node_modules/dompurify/dist/purify.es
 import type { Kind, State, Block } from './types.js';
 import { arrangeWordToolbar } from './wordToolbar.js';
 import { renderAgentActivity } from './agentOverlay.js';
+import type { DocumentToolbarAction, DocumentToolbarControl } from '../../src/vs/base/browser/ui/documentToolbar/documentToolbar.js';
+import { WordParagraph } from './wordParagraph.js';
 import { WordReview } from './wordReview.js';
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const api = acquireVsCodeApi();
@@ -25,9 +27,26 @@ function showReviewSummary() {
 	}
 }
 const toolbar = el('toolbar');
+const appToolbar = document.body.classList.contains('app-toolbar-hosted');
+let toolbarControls: Record<string, HTMLButtonElement | HTMLSelectElement> = {};
+let toolbarContext = '';
+function publishToolbar() {
+	if (!appToolbar || !initialized) { return; }
+	toolbarContext = JSON.stringify([state.revision, state.selection, selected?.id]);
+	const controls: DocumentToolbarControl[] = Object.entries(toolbarControls).map(([key, control]) => ({ key, type: control instanceof HTMLSelectElement ? 'select' : 'button', label: control.getAttribute('aria-label') || control.title || control.textContent || key, ...(control instanceof HTMLButtonElement ? { text: control.textContent || '' } : {}), disabled: control.disabled, ...(control.hasAttribute('aria-pressed') ? { pressed: control.getAttribute('aria-pressed') === 'true' } : {}), ...(control instanceof HTMLSelectElement ? { options: Array.from(control.options).map(option => ({ value: option.value, label: option.textContent || '' })) } : {}) }));
+	send('toolbarState', { controls, context: toolbarContext, paragraphStyle: state.paragraphStyle });
+}
+function toolbarAction(action: DocumentToolbarAction, context: string) {
+	if (context !== toolbarContext) { publishToolbar(); message('The document selection changed. Choose the formatting action again.'); return; }
+	if (action.control === 'table' && kind === 'word' && Number.isInteger(action.rows) && Number.isInteger(action.cols) && action.rows! >= 1 && action.rows! <= 20 && action.cols! >= 1 && action.cols! <= 10) { execute('insert.table', { rows: action.rows, cols: action.cols, borders: true }); return; }
+	const control = toolbarControls[action.control]; if (!control || control.disabled) { return; }
+	if (control instanceof HTMLSelectElement) { if (!Array.from(control.options).some(option => option.value === action.value && option.value)) { return; } control.value = action.value!; control.dispatchEvent(new Event('change')); }
+	else { control.click(); }
+}
 const comments = document.createElement('details');
 comments.className = 'comments'; pages.before(comments);
 const keyboard = el('keyboard') as HTMLTextAreaElement;
+let wordParagraph: WordParagraph | undefined;
 let kind: Kind;
 let state: State = { revision: -1 };
 let dimensions: number[][] = [];
@@ -79,7 +98,7 @@ function typeWordText(text: string) {
 	wordText += text;
 	if (!wordTextTimer) { wordTextTimer = setTimeout(flushWordInput, 0); }
 }
-window.addEventListener('pagehide', () => { flushWordInput(); clearTimeout(wordRefineTimer); disposeToolbar?.(); clearAgent(); }, { once: true });
+window.addEventListener('pagehide', () => { flushWordInput(); clearTimeout(wordRefineTimer); disposeToolbar?.(); wordParagraph?.dispose(); clearAgent(); }, { once: true });
 window.addEventListener('blur', flushWordInput);
 function send(type: string, data: Record<string, unknown> = {}) { if (type !== 'render' && type !== 'ready') { flushWordInput(); } api.postMessage({ type, ...data }); }
 function execute(command: string, args: Record<string, unknown> = {}) {
@@ -128,7 +147,7 @@ function format(property: string, value: unknown) {
 function buildToolbar() {
 	disposeToolbar?.();
 	toolbar.replaceChildren();
-	button('Text', 'Insert text', () => { if (kind === 'word') { keyboard.focus(); return; } void (async () => { const text = await ask('New text'); if (!text) { return; } execute(kind === 'pdf' ? 'page_add_text' : 'insert.text', { page: currentPage + 1, text, ...(kind === 'pdf' ? { at: [50, 50], width: 300 } : {}) }); })(); });
+	const text = button('Text', 'Insert text', () => { if (kind === 'word') { keyboard.focus(); return; } void (async () => { const text = await ask('New text'); if (!text) { return; } execute(kind === 'pdf' ? 'page_add_text' : 'insert.text', { page: currentPage + 1, text, ...(kind === 'pdf' ? { at: [50, 50], width: 300 } : {}) }); })(); });
 	const style = menu('Normal text', [['Normal', 'Normal text'], ...(kind === 'word' ? [['Title', 'Title'], ['Subtitle', 'Subtitle']] as [string, string][] : []), ['Heading1', 'Heading 1'], ['Heading2', 'Heading 2'], ['Heading3', 'Heading 3']], style => execute('para.style', { style }), kind !== 'word');
 	style.id = 'paragraph-style';
 	const font = menu('Font', (kind === 'pdf' ? [['helvetica', 'Sans'], ['times', 'Serif'], ['courier', 'Mono']] : [['Arial', 'Arial'], ['Times New Roman', 'Times New Roman'], ['Courier New', 'Courier New']]) as [string, string][], font => format('font', font));
@@ -182,10 +201,18 @@ function buildToolbar() {
 	const redo = button('Redo', 'Redo (Ctrl+Shift+Z)', () => { closeText(); send('redo'); }); redo.id = 'redo';
 	const save = button('Save', 'Save (Ctrl+S)', () => { flushText(); send('save'); });
 	const versions = kind === 'word' ? button('History', 'Document Version History', () => send('versions')) : undefined;
+	let properties: HTMLButtonElement | undefined;
 	if (kind === 'word') {
-		disposeToolbar = arrangeWordToolbar(toolbar, { undo, redo, save, versions, style, font, size, emphasis, align, list, spacing, table, image, link, comment },
-			(rows, cols) => execute('insert.table', { rows, cols, borders: true }), () => keyboard.focus({ preventScroll: true }));
+		document.body.classList.add('word-document');
+		wordParagraph = new WordParagraph(pages, (patch, snapshot) => {
+			execute('para.properties', { ...patch, ifRevision: snapshot.revision, ifSelection: snapshot.selection });
+		}, () => keyboard.focus({ preventScroll: true }));
+		properties = button('Paragraph', 'Paragraph Properties · Indents, Spacing, Borders and Pagination', () => wordParagraph?.open());
+		if (!appToolbar) { disposeToolbar = arrangeWordToolbar(toolbar, { undo, redo, save, versions, properties, style, font, size, emphasis, align, list, spacing, table, image, link, comment },
+			(rows, cols) => execute('insert.table', { rows, cols, borders: true }), () => keyboard.focus({ preventScroll: true })); }
 	}
+	toolbarControls = { text, style, font, size, bold: emphasis[0], italic: emphasis[1], underline: emphasis[2], align, list, spacing, table, image, link, comment, undo, redo, save, ...(properties ? { properties } : {}), ...(versions ? { versions } : {}) };
+	if (appToolbar) { toolbar.hidden = true; }
 }
 function point(event: PointerEvent, page: HTMLElement) {
 	const bounds = page.getBoundingClientRect(); const index = Number(page.dataset.page);
@@ -265,7 +292,7 @@ function overlay() {
 				input.style.fontSize = ((block.size || 12) * (pages.children[currentPage] as HTMLElement).clientWidth / dimensions[currentPage][0]) + 'px';
 				input.addEventListener('input', () => { pendingText = true; flushText(); });
 				input.addEventListener('keydown', event => { if (event.key === 'Escape') { closeText(); } if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { closeText(); } });
-				activeEditor = input; input.focus();
+				activeEditor = input; input.focus(); publishToolbar();
 			});
 		}
 	}
@@ -301,7 +328,7 @@ keyboard.addEventListener('paste', event => { event.preventDefault(); const text
 document.addEventListener('copy', event => { if (document.activeElement === keyboard && state.selectedText) { event.preventDefault(); event.clipboardData?.setData('text/plain', state.selectedText); } });
 document.addEventListener('cut', event => { if (document.activeElement === keyboard && state.selectedText) { event.preventDefault(); event.clipboardData?.setData('text/plain', state.selectedText); execute('text.delete'); } });
 document.addEventListener('keydown', event => {
-	if ((el('dialog') as HTMLDialogElement).open || composing) { return; }
+	if (document.querySelector('dialog[open]') || (event.target instanceof HTMLElement && event.target.closest('.word-ruler')) || composing) { return; }
 	const mod = event.ctrlKey || event.metaKey;
 	if (mod && event.key.toLowerCase() === 's') { event.preventDefault(); flushText(); send('save'); return; }
 	if (mod && event.key.toLowerCase() === 'z') { event.preventDefault(); closeText(); send(event.shiftKey ? 'redo' : 'undo'); return; }
@@ -318,6 +345,8 @@ document.addEventListener('keydown', event => {
 });
 window.addEventListener('message', event => {
 	if (event.origin !== location.origin) { return; } const data = event.data;
+	if (data.type === 'publishToolbar') { publishToolbar(); return; }
+	if (data.type === 'toolbarAction') { toolbarAction(data.action, data.context); return; }
 	if (data.type === 'agentActivity') { agentRects = Array.isArray(data.rects) ? data.rects : []; agentOverlay(); return; }
 	if (data.type === 'draft') { wordReview.updateDrafts(data.sections); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
 	if (data.type === 'review') { wordReview.update(data.review); showReviewSummary(); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
@@ -342,8 +371,8 @@ window.addEventListener('message', event => {
 		(el('undo') as HTMLButtonElement).disabled = !state.undo; (el('redo') as HTMLButtonElement).disabled = !state.redo;
 		if (repaginated || !pages.children.length) { closeText(); makePages(); }
 		if (changed) { rendered.clear(); renderNext(); }
-		if (kind === 'word') { wordReview.layout(dimensions); }
-		overlay(); agentOverlay();
+		if (kind === 'word') { wordReview.layout(dimensions); wordParagraph?.update(state, dimensions); }
+		overlay(); agentOverlay(); publishToolbar();
 	} else if (data.type === 'rendered') {
 		renderBusy = false;
 		const request = pendingRender.get(data.request); pendingRender.delete(data.request);
