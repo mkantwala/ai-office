@@ -46,3 +46,5 @@ Word agent edits support atomic batches with Unicode character ranges and explic
 Common Word formatting uses `office_document_format`: literal queries resolve matching blocks and Unicode ranges internally, apply all properties atomically, and return verified scope counts. `sizeFromStyle` copies the actual document style size. Invalid text-update/formatting combinations are rejected; repeated identical errors stop early with an honest result.
 
 Word request checkpoints use the standard chat **Restore Checkpoint**, **Start Over**, and **Redo** controls and confirmation settings. Custom-document history follows the same request boundaries as the native chat timeline; no separate restore button is added to agent responses.
+
+Word edits also register native chat change-review entries. The existing diff editor and Keep/Undo controls operate on readable text and formatting projections, with decisions applied to private engine snapshots at paragraph/table, file, or all-file scope. Structural changes involving shared document resources are reviewed together. Review decisions reject stale versions and conflicting manual edits; pending review snapshots are session-local.

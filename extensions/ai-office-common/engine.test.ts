@@ -205,6 +205,79 @@ test('Word formatting tool resolves every literal match, pagination, Unicode ran
 	} finally { engine.dispose(); }
 });
 
+test('Word review keeps one paragraph and undoes another without replacing the document', async () => {
+	const engine = await openEngine('word', 'review.docx', docx, root);
+	try {
+		const agent = engine.agent!;
+		const original = agent.read({ limit: 20 }) as { blocks: { id: string; text: string }[] };
+		const [first, second] = original.blocks;
+		agent.reviewStart!();
+		await agent.edit({ operation: 'batch', revision: engine.state().revision, edits: [
+			{ operation: 'update', id: first.id, text: 'First proposal' },
+			{ operation: 'update', id: second.id, text: 'Second proposal' }
+		] });
+		agent.reviewFinish!();
+		const changes = agent.reviewRead!().changes;
+		assert.equal(changes.length, 2);
+		assert.ok(changes.every(change => !change.before.includes(first.id) && !change.after.includes(second.id)), 'Private block identities are absent from the readable diff');
+		const kept = changes.find(change => change.after.includes('First proposal'))!;
+		const rejected = changes.find(change => change.after.includes('Second proposal'))!;
+		agent.reviewDecide!(engine.state().revision, 'keep', [kept.id]);
+		assert.equal(agent.reviewRead!().changes.length, 1);
+		const revision = engine.state().revision;
+		assert.throws(() => agent.reviewDecide!(revision - 1, 'undo', [rejected.id]), /Document changed/);
+		agent.reviewDecide!(revision, 'undo', [rejected.id]);
+		assert.equal(agent.reviewRead!().changes.length, 0);
+		assert.deepEqual((agent.read({ limit: 20 }) as typeof original).blocks.map(block => block.text), ['First proposal', second.text]);
+		await engine.execute('edit.undo', {});
+		assert.deepEqual((agent.read({ limit: 20 }) as typeof original).blocks.map(block => block.text), ['First proposal', 'Second proposal'], 'Review Undo participates in normal document history');
+	} finally { engine.dispose(); }
+});
+
+test('Word review exposes formatting changes and rejects conflicting manual edits atomically', async () => {
+	const engine = await openEngine('word', 'review-format.docx', docx, root);
+	try {
+		const agent = engine.agent!;
+		const blocks = (agent.read({ limit: 20 }) as { blocks: { id: string }[] }).blocks;
+		agent.reviewStart!();
+		await agent.edit({ operation: 'command', revision: engine.state().revision, id: blocks[0].id, command: 'format.bold', params: { value: true } });
+		agent.reviewFinish!();
+		const change = agent.reviewRead!().changes[0];
+		assert.notEqual(change.before, change.after);
+		assert.match(change.after, /bold: true/);
+		await agent.edit({ operation: 'update', revision: engine.state().revision, id: blocks[0].id, text: 'My later manual content' });
+		const revision = engine.state().revision;
+		assert.throws(() => agent.reviewDecide!(revision, 'undo', [change.id]), /overwrite your edits/);
+		assert.equal(engine.state().revision, revision);
+		agent.reviewDecide!(revision, 'keep', [change.id]);
+		assert.equal((agent.read({ id: blocks[0].id }) as { blocks: { text: string }[] }).blocks[0].text, 'My later manual content');
+		assert.equal(agent.reviewRead!().changes.length, 0);
+	} finally { engine.dispose(); }
+});
+
+test('Word file review restores inserted and deleted blocks while preserving unrelated user edits', async () => {
+	const engine = await openEngine('word', 'review-structure.docx', docx, root);
+	try {
+		const agent = engine.agent!;
+		const original = agent.read({ limit: 20 }) as { blocks: { id: string; text: string }[] };
+		agent.reviewStart!();
+		await agent.edit({ revision: engine.state().revision, operation: 'batch', edits: [
+			{ operation: 'insert', id: original.blocks[0].id, blocks: [{ kind: 'paragraph', text: 'Agent insertion' }] },
+			{ operation: 'delete', id: original.blocks[1].id }
+		] });
+		agent.reviewFinish!();
+		const pending = agent.reviewRead!().changes;
+		assert.equal(pending.length, 2);
+		await agent.edit({ revision: engine.state().revision, operation: 'update', id: original.blocks[0].id, text: 'Unrelated manual content' });
+		agent.reviewDecide!(engine.state().revision, 'undo', pending.map(change => change.id));
+		assert.deepEqual((agent.read({ limit: 20 }) as typeof original).blocks.map(block => block.text), ['Unrelated manual content', original.blocks[1].text]);
+		assert.equal(agent.reviewRead!().changes.length, 0);
+		const reopened = await openEngine('word', 'review-structure.docx', await engine.export(), root);
+		try { assert.deepEqual((reopened.agent!.read({ limit: 20 }) as typeof original).blocks.map(block => block.text), ['Unrelated manual content', original.blocks[1].text]); }
+		finally { reopened.dispose(); }
+	} finally { engine.dispose(); }
+});
+
 test('Word visual styles and visible table borders survive save and reopen', async () => {
 	const engine = await openEngine('word', 'table.docx', docx, root);
 	try {

@@ -11,6 +11,13 @@ export async function withAgentRequest<T>(id: string, run: () => Promise<T>): Pr
 	try { return await run(); } finally { current = undefined; }
 }
 
+/** This built-in fork supplies the verified request identity in its opaque tool token. Never take it from model arguments. */
+export function withAgentToolRequest<T>(token: unknown, run: () => Promise<T>): Promise<T> {
+	const id = (token as { requestId?: string } | undefined)?.requestId;
+	if (!id || id === current) { return run(); }
+	return withAgentRequest(id, run);
+}
+
 export class DocumentHistory {
 	cursor = 0;
 	end = 0;

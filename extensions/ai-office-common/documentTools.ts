@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { validateDocumentEdits } from './wordFormatting.js';
+import { withAgentToolRequest } from './agentRequest.js';
 
 export interface DocumentToolInput {
 	uri?: string;
@@ -26,7 +27,7 @@ export function registerDocumentTools(context: vscode.ExtensionContext, backend:
 				try {
 					if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
 					if (tool === 'edit') { validateDocumentEdits(options.input); }
-					const value = await backend.invoke(tool, options.input, token);
+					const value = await withAgentToolRequest(options.toolInvocationToken, () => backend.invoke(tool, options.input, token));
 					return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(value))]);
 				} catch (error) {
 					if (token.isCancellationRequested) { throw error; }

@@ -16,7 +16,7 @@ The document workbench imports all five groups. The Agents window retains commen
 
 Word is implemented in [`extensions/ai-office-pdf`](extensions/ai-office-pdf), with the shared session and save lifecycle in [`provider.ts`](extensions/ai-office-common/provider.ts), the engine adapter in [`model.ts`](extensions/ai-office-common/model.ts), and the webview in [`editor.ts`](extensions/ai-office-common/editor.ts). The patched Rust engine is recorded in [`engines/wordcraft.patch`](engines/wordcraft.patch).
 
-The editor owns a live engine session, serializes operations, exports bytes, supports undo/redo and protects saves against external file changes. `aiOffice.word.execute` currently applies a command immediately to that session. It does not stage a proposal for review. The standalone CLI opens a separate engine session; it is not the owner of an already open editor.
+The editor owns a live engine session, serializes operations, exports bytes, supports undo/redo and protects saves against external file changes. Chat-associated Word commands apply to the live session and register pending review snapshots. Native chat Keep/Undo controls now review readable text and formatting differences at paragraph/table, file, or all-file scope; shared structural resources are grouped coherently. Checkpoint restoration remains separate. The standalone CLI opens a separate engine session; it is not the owner of an already open editor.
 
 ## Document version history
 

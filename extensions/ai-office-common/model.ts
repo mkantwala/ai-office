@@ -21,6 +21,8 @@ interface WasmDocument {
 	agent_read?(args: string): string;
 	agent_edit?(args: string): string;
 	agent_rects?(id: string): string;
+	review_start?(): void; review_finish?(): void; review_read?(): string;
+	review_decide?(revision: bigint, action: string, ids: string): string;
 }
 
 /**
@@ -215,7 +217,11 @@ export async function openEngine(kind: Kind, name: string, bytes: Uint8Array, ex
 		agent: kind === 'word' && doc.agent_read && doc.agent_edit && doc.agent_rects ? {
 			read: args => JSON.parse(doc.agent_read!(JSON.stringify(args))),
 			edit: async args => JSON.parse(doc.agent_edit!(JSON.stringify(args))),
-			rects: id => JSON.parse(doc.agent_rects!(id))
+			rects: id => JSON.parse(doc.agent_rects!(id)),
+			reviewStart: () => { if (!doc.review_start) { throw new Error('Rebuild the Word engine to enable change review.'); } doc.review_start(); },
+			reviewFinish: () => doc.review_finish?.(),
+			reviewRead: () => JSON.parse(doc.review_read?.() || '{"changes":[]}'),
+			reviewDecide: (revision, action, ids) => { if (!doc.review_decide) { throw new Error('Rebuild the Word engine to enable change review.'); } return state(doc.review_decide(BigInt(revision), action, JSON.stringify(ids))); }
 		} : undefined,
 		pages: () => JSON.parse(doc.pages()), state,
 		commands: () => {

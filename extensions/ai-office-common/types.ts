@@ -22,7 +22,13 @@ export interface DocumentAgent {
 	read(args: Record<string, unknown>): unknown;
 	edit(args: Record<string, unknown>): Promise<State>;
 	rects(id: string): State['rects'];
+	reviewStart?(): void;
+	reviewFinish?(): void;
+	reviewRead?(): DocumentReviewChanges;
+	reviewDecide?(revision: number, action: 'keep' | 'undo', ids: string[]): State;
 }
+export interface DocumentReviewChanges { changes: { id: string; label: string; before: string; after: string }[] }
+export interface DocumentReview extends DocumentReviewChanges { uri: string; version: string; reviewVersion: number }
 export interface Engine {
 	agent?: DocumentAgent;
 	pages(): number[][];

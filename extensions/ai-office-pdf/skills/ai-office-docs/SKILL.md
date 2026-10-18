@@ -15,6 +15,6 @@ For content edits, read relevant blocks once with `office_document_read`. Omit U
 
 Verify requested targets and actions against successful receipts. Formatting receipts already verify their selected scope; do not reread each target afterward. Report partial work accurately. Changes are unsaved until normal Save; do not claim otherwise.
 
-For requested history changes, use `office_document_history`: inspect status, then use its fresh version for undo, redo, checkpoint or restore. Restore undoes edits since a checkpoint; Redo reapplies them. History is session-local. Do not invent unavailable checkpoints or Keep/Undo review.
+For requested history changes, use `office_document_history`: inspect status, then use its fresh version for undo, redo, checkpoint or restore. Restore undoes edits since a checkpoint; Redo reapplies them. History is session-local. Agent edits also enter native chat Keep/Undo review; leave acceptance decisions to the user. Do not claim changes were kept or saved merely because a tool succeeded.
 
 Load one detailed guide only when needed: [content.md](content.md), [commands.md](commands.md), or [identity.md](identity.md), also available through `office_document_help` with `guide`. Do not guess unsupported capabilities.

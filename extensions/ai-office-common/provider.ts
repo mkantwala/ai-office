@@ -9,9 +9,9 @@ import { basename } from 'node:path';
 import { writeFile, rename, unlink } from 'node:fs/promises';
 import { EngineClient } from './client.js';
 import { activityRegion, type ActivityRegion } from './agentActivity.js';
-import type { Kind, State, Command } from './types.js';
+import type { Kind, State, Command, DocumentReview, DocumentReviewChanges } from './types.js';
 import { registerDocumentTools, type DocumentToolInput } from './documentTools.js';
-import { activeAgentRequest, DocumentHistory } from './agentRequest.js';
+import { activeAgentRequest, DocumentHistory, withAgentToolRequest } from './agentRequest.js';
 import { prepareWordFormatting } from './wordFormatting.js';
 
 interface View { state: State; pages: number[][]; commands?: Command[] }
@@ -19,6 +19,8 @@ class Document implements vscode.CustomDocument {
 	readonly client: EngineClient;
 	readonly panels = new Set<vscode.WebviewPanel>();
 	readonly history = new DocumentHistory();
+	reviewRequest?: string;
+	reviewVersion = 0;
 	view!: View;
 	latestBytes!: Uint8Array;
 	agentActivity?: { region?: ActivityRegion; updated: number };
@@ -36,6 +38,8 @@ class Document implements vscode.CustomDocument {
 	async load(bytes: Uint8Array) {
 		this.instance = randomUUID();
 		this.history.clear();
+		this.reviewRequest = undefined;
+		this.reviewVersion++;
 		this.view = await this.client.request<View>('open', { kind: this.kind, name: basename(this.uri.path), bytes, extensionsRoot: vscode.Uri.joinPath(this.context.extensionUri, '..').fsPath, password: this.password });
 		this.latestBytes = bytes;
 		this.snapshotRevision = this.view.state.revision;
@@ -104,10 +108,28 @@ async function writeAtomic(uri: vscode.Uri, bytes: Uint8Array) {
 }
 export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[]) {
 	const documents = new Map<string, Document>();
+	const reviewData = async (doc: Document): Promise<DocumentReview> => {
+		const result = await doc.client.request<DocumentReviewChanges>('reviewRead');
+		return { uri: doc.uri.toString(), version: doc.version, reviewVersion: doc.reviewVersion, changes: result.changes || [] };
+	};
+	const publishReview = async (doc: Document, request?: string) => {
+		if (doc.kind !== 'word' || !request) { return; }
+		doc.reviewRequest = request;
+		doc.reviewVersion++;
+		const data = await reviewData(doc);
+		try { await vscode.commands.executeCommand('aiOffice.registerDocumentReview', request, data); }
+		catch { void vscode.window.showErrorMessage?.('Document changes were applied, but change review could not open. Reload AI Office before continuing.'); }
+	};
 	const agentEdits = new Map<Kind, (doc: Document, input: DocumentToolInput, token: vscode.CancellationToken) => Promise<unknown>>();
+	const reviewEdits = new Map<Kind, (doc: Document, before: State) => void>();
 	// The file an agent edits when none is named: the document whose editor is
 	// active, or the one most recently active among the open documents.
 	const lastActive = new Map<Kind, Document>();
+	const focusedReviewDocument = () => {
+		const input = vscode.window.tabGroups?.activeTabGroup?.activeTab?.input as { uri?: vscode.Uri; modified?: vscode.Uri } | undefined;
+		const resource = input?.uri || input?.modified;
+		return resource?.scheme === 'ai-office-review' ? documents.get(resource.query) : undefined;
+	};
 	for (const kind of kinds) {
 		const changed = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<Document>>();
 		context.subscriptions.push(changed);
@@ -128,13 +150,14 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				})
 			});
 		};
+		reviewEdits.set(kind, (doc, before) => recordEdit(doc, before, 'Undo agent change'));
 		const execute = async (doc: Document, command: string, args: Record<string, unknown>, notify = true, agent = false, token?: vscode.CancellationToken) => {
 			const request = agent ? activeAgentRequest() : undefined;
 			await doc.stopActivity();
 			if (agent) { checkAgentAccess(token); }
 			const beforeState = doc.view.state;
 			const before = beforeState.revision;
-			const result = await doc.client.request<View>('execute', { command, args });
+			const result = await doc.client.request<View>('execute', { command, args, review: kind === 'word' && agent && !!request });
 			if (kind !== 'word' && result.state.revision !== before) { doc.latestBytes = await doc.client.request<Uint8Array>('export'); }
 			doc.view = { ...doc.view, ...result };
 			if (result.state.revision !== before) {
@@ -142,6 +165,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				if (notify) { recordEdit(doc, beforeState, command, request); }
 			}
 			await doc.broadcast(command);
+			if (request || /(?:undo|redo)$/.test(command)) { await publishReview(doc, request || doc.reviewRequest); }
 			if (agent) { await doc.announceActivity(command, args, beforeState, result.state); }
 			return result;
 		};
@@ -161,7 +185,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			const started = Date.now();
 			try {
 				if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
-				const result = await doc.client.request<View>('agentEdit', { args: { ...input, revision: before } });
+				const result = await doc.client.request<View>('agentEdit', { args: { ...input, revision: before }, review: !!request });
 				doc.view = { ...doc.view, ...result };
 				if (result.state.revision !== before) {
 					doc.dirty = true;
@@ -172,6 +196,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 					doc.activity.rects = await doc.client.request<State['rects']>('agentRects', { blockId: targetId }).catch(() => []);
 				}
 				await doc.broadcast();
+				await publishReview(doc, request);
 				const content = await doc.client.request<Record<string, unknown>>('agentRead', { args: input.operation === 'insert' || input.operation === 'delete' ? { parentId, limit: 20 } : { id: targetId } });
 				const commandResult = JSON.stringify(result.state.agentCommandResult ?? null).length <= 8000 ? result.state.agentCommandResult : { truncated: true, guidance: 'Read the relevant document/comment blocks in pages.' };
 				return { uri: doc.uri.toString(), version: doc.version, ...content, created: result.state.agentCreatedBlocks || [], commandResult, appliedEdits: result.state.agentAppliedEdits || edits.map(edit => ({ id: edit.id, operation: edit.operation, command: edit.command, params: edit.params })), saved: false, undoable: result.state.revision !== before };
@@ -289,7 +314,8 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			if (!target) {
 				const input = vscode.window.tabGroups.activeTabGroup?.activeTab?.input as { uri?: vscode.Uri; viewType?: string } | undefined;
 				const focused = input?.viewType === 'aiOffice.' + kind && input.uri ? documents.get(input.uri.toString()) : undefined;
-				const document = focused ?? lastActive.get(kind);
+				const reviewed = focusedReviewDocument();
+				const document = focused ?? (reviewed?.kind === kind ? reviewed : undefined) ?? lastActive.get(kind);
 				if (document) { return document; }
 				if (candidates.length === 1) { return candidates[0]; }
 				if (!candidates.length) { throw new Error(`No ${kind} document is open in AI Office. Open the file first.`); }
@@ -346,7 +372,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				const file = typeof input.file === 'string' && input.file.trim() ? input.file.trim() : undefined;
 				const kind = kindOfTarget(file);
 				if (!kind) { throw new Error('Open the document to edit in AI Office first, or pass its file name (DOCX, PDF or PPTX).'); }
-				const result = await vscode.commands.executeCommand<View & { name: string; uri: string } | undefined>('aiOffice.' + kind + '.execute', file, input.command, input.params ?? {}, token);
+				const result = await withAgentToolRequest(options.toolInvocationToken, () => vscode.commands.executeCommand<View & { name: string; uri: string } | undefined>('aiOffice.' + kind + '.execute', file, input.command, input.params ?? {}, token));
 				return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result ?? {}))]);
 			}
 		}));
@@ -385,6 +411,34 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 		return { uri: doc.uri.toString(), version: doc.version, ...historyStatus(doc), completed: true };
 	};
 	if (kinds.includes('word')) {
+		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.word.reviewStatus', async (uri: string) => {
+			const doc = documents.get(uri);
+			if (!doc) { throw new Error('Open the document before reviewing its changes.'); }
+			return doc.enqueue(() => reviewData(doc));
+		}));
+		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.word.saveDocument', async (uri: string) => {
+			if (!documents.has(uri)) { throw new Error('Document is closed.'); }
+			await vscode.commands.executeCommand('workbench.action.files.save', vscode.Uri.parse(uri));
+		}));
+		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.word.reviewDecide', async (uri: string, version: string, reviewVersion: number, action: 'keep' | 'undo', ids: string[]) => {
+			const doc = documents.get(uri);
+			if (!doc || doc.kind !== 'word') { throw new Error('Open the Word document before reviewing its changes.'); }
+			return doc.enqueue(async () => {
+				if (doc.version !== version || doc.reviewVersion !== reviewVersion) { throw new Error('Document changed. Refresh the review before deciding.'); }
+				if (!Array.isArray(ids) || ids.length > 2000 || ids.some(id => typeof id !== 'string')) { throw new Error('Invalid review changes'); }
+				const before = doc.view.state;
+				const result = await doc.client.request<View>('reviewDecide', { revision: before.revision, action, ids });
+				doc.view = { ...doc.view, ...result };
+				if (result.state.revision !== before.revision) {
+					doc.dirty = true;
+					// User review is a normal undoable edit, not another agent proposal.
+					reviewEdits.get('word')!(doc, before);
+				}
+				await doc.broadcast();
+				await publishReview(doc, doc.reviewRequest);
+				return reviewData(doc);
+			});
+		}));
 		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.word.requestCheckpoints', (request: string) =>
 			[...documents.values()].filter(doc => doc.history.checkpoints.has(request)).map(doc => ({ uri: doc.uri.toString(), name: basename(doc.uri.path), checkpoint: request }))));
 		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.word.navigateChatHistory', async (requests: { requestId: string; applied: boolean }[]) => {
@@ -421,7 +475,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				if (tool === 'read' && input.operation === 'list') {
 					return { documents: wordDocuments.map(doc => ({ uri: doc.uri.toString(), name: basename(doc.uri.path), version: doc.version, active: [...doc.panels].some(panel => panel.active) })) };
 				}
-				const doc = input.uri ? documents.get(vscode.Uri.parse(input.uri).toString()) : wordDocuments.find(doc => [...doc.panels].some(panel => panel.active)) || (wordDocuments.length === 1 ? wordDocuments[0] : undefined);
+					const doc = input.uri ? documents.get(vscode.Uri.parse(input.uri).toString()) : focusedReviewDocument() || wordDocuments.find(doc => [...doc.panels].some(panel => panel.active)) || lastActive.get('word') || (wordDocuments.length === 1 ? wordDocuments[0] : undefined);
 				if (!doc || doc.kind !== 'word') { throw new Error('Open the Word document first. Use office_document_read with operation=list to identify open documents.'); }
 				if (tool === 'history') { return history(doc, input, token); }
 				const task = doc.serial.then(async () => {

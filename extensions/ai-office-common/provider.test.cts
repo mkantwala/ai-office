@@ -186,6 +186,11 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		assert.equal(tools.size, 7);
 		const initial = await invoke('read', {});
 		assert.equal(initial.blocks[0].text, 'Initial content');
+		const other = await provider.openCustomDocument(uri('/other.docx'), {});
+		vscode.window.tabGroups = { activeTabGroup: { activeTab: { input: { uri: { scheme: 'ai-office-review', query: other.uri.toString() } } } } };
+		assert.equal((await invoke('read', {})).uri, '/other.docx', 'The active review targets its source Word document even with several DOCX files open');
+		vscode.window.tabGroups = undefined;
+		other.dispose();
 		const first = withAgentRequest('test-request', () => invoke('edit', { operation: 'update', id: 'internal-id', version: initial.version, text: 'First change' }));
 		const stale = invoke('edit', { operation: 'update', id: 'internal-id', version: initial.version, text: 'Stale overwrite' });
 		assert.equal((await first).saved, false);

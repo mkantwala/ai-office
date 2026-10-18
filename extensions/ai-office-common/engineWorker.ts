@@ -23,6 +23,10 @@ parentPort?.on('message', message => {
 			} else {
 				if (!engine) { throw new Error('Document is not open.'); }
 				switch (message.method) {
+					case 'reviewRead': result = engine.agent?.reviewRead?.() || { changes: [] }; break;
+					case 'reviewDecide':
+						if (!engine.agent?.reviewDecide) { throw new Error('Word change review is unavailable.'); }
+						result = { state: engine.agent.reviewDecide(message.revision, message.action, message.ids), pages: engine.pages() }; break;
 					case 'agentRead':
 						if (!engine.agent) { throw new Error('Rebuild the Word engine to enable document tools.'); }
 						result = engine.agent.read(message.args); break;
@@ -31,8 +35,13 @@ parentPort?.on('message', message => {
 						result = engine.agent.rects(message.blockId); break;
 					case 'agentEdit':
 						if (!engine.agent) { throw new Error('Document tools are unavailable.'); }
-						result = { state: await engine.agent.edit(message.args), pages: engine.pages() }; break;
-					case 'execute': result = { state: await engine.execute(message.command, message.args), pages: engine.pages() }; break;
+						if (message.review) { engine.agent.reviewStart?.(); }
+						result = { state: await engine.agent.edit(message.args), pages: engine.pages() };
+						if (message.review) { engine.agent.reviewFinish?.(); } break;
+					case 'execute':
+						if (message.review) { engine.agent?.reviewStart?.(); }
+						result = { state: await engine.execute(message.command, message.args), pages: engine.pages() };
+						if (message.review) { engine.agent?.reviewFinish?.(); } break;
 					case 'export': result = await engine.export(); break;
 					case 'render': {
 						const raster = engine.render(message.page, message.scale);
