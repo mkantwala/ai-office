@@ -19,7 +19,7 @@ import { ILanguageFeaturesService } from '../../../../../editor/common/services/
 import { ITextModelService } from '../../../../../editor/common/services/resolverService.js';
 import { localize, localize2 } from '../../../../../nls.js';
 import { Action2, IAction2Options, MenuId, registerAction2 } from '../../../../../platform/actions/common/actions.js';
-import { CommandsRegistry } from '../../../../../platform/commands/common/commands.js';
+import { CommandsRegistry, ICommandService } from '../../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { ContextKeyExpr } from '../../../../../platform/contextkey/common/contextkey.js';
 import { InputFocusedContext } from '../../../../../platform/contextkey/common/contextkeys.js';
@@ -376,6 +376,16 @@ async function restoreSnapshotWithConfirmationByRequestId(accessor: ServicesAcce
 	const chatModel = chatService.getSession(sessionResource);
 	if (!chatModel) {
 		return false;
+	}
+
+	// Office edits live in custom-document models rather than text-model snapshots.
+	if (CommandsRegistry.getCommand('aiOffice.word.requestCheckpoints')) {
+		const commands = accessor.get(ICommandService);
+		const points = await commands.executeCommand<unknown[]>('aiOffice.word.requestCheckpoints', requestId);
+		if (points?.length) {
+			await chatService.cancelCurrentRequestForSession(sessionResource, 'restoreCheckpoint');
+			return commands.executeCommand<boolean>('aiOffice.restoreChatCheckpoint', requestId);
+		}
 	}
 
 	const session = chatModel.editingSession;

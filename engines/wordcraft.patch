@@ -62,10 +62,10 @@ index 0000000..8f0a4fe
 +wasm-bindgen = "0.2"
 diff --git a/apps/ai-office-preview/src/agent.rs b/apps/ai-office-preview/src/agent.rs
 new file mode 100644
-index 0000000..44d8891
+index 0000000..54d0198
 --- /dev/null
 +++ b/apps/ai-office-preview/src/agent.rs
-@@ -0,0 +1,360 @@
+@@ -0,0 +1,376 @@
 +//! Internal, revision-checked block editing for the AI Office agent.
 +use serde_json::{Value, json};
 +use std::collections::HashSet;
@@ -416,6 +416,22 @@ index 0000000..44d8891
 +            let last = paths.last().ok_or("Target has no editable paragraph")?;
 +            let len = session.doc.para(node.story, last).map_or(0, |p| p.text.len());
 +            session.sel = Selection { anchor: Pos::new(node.story, (*first).clone(), 0), focus: Pos::new(node.story, (*last).clone(), len) };
++            if args.get("start").is_some() || args.get("end").is_some() {
++                if first != last || !command.starts_with("format.") {
++                    return Err("Character ranges require one paragraph and a character formatting command".into());
++                }
++                let paragraph = session.doc.para(node.story, first).ok_or("Paragraph missing")?;
++                let offsets: Vec<_> = paragraph.text.char_indices().map(|(i, _)| i).chain(std::iter::once(paragraph.text.len())).collect();
++                let start = index(args, "start", 0)?;
++                let end = index(args, "end", paragraph.text.chars().count())?;
++                let (Some(&start), Some(&end)) = (offsets.get(start), offsets.get(end)) else {
++                    return Err("Invalid character range".into());
++                };
++                if start > end {
++                    return Err("Invalid character range".into());
++                }
++                session.sel = Selection { anchor: Pos::new(node.story, (*first).clone(), start), focus: Pos::new(node.story, (*last).clone(), end) };
++            }
 +            if command.starts_with("insert.") || command.starts_with("text.") {
 +                session.sel = Selection::caret(session.sel.focus.clone());
 +            }
@@ -428,10 +444,10 @@ index 0000000..44d8891
 +}
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..718bcd1
+index 0000000..da13c5b
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,265 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -516,7 +532,7 @@ index 0000000..718bcd1
 +            .map(|c| json!({"author":c.author,"text":self.session.doc.plain_text(wordcraft_doc::StoryRef::Part(c.part))}))
 +            .collect();
 +        let style = self.session.doc.para(sel.focus.story, &sel.focus.path).and_then(|p| p.props.style.as_deref()).unwrap_or("Normal");
-+        serde_json::to_string(&json!({"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
++        serde_json::to_string(&json!({"undoDepth":self.session.undo_depth(),"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
 +    }
 +
 +    pub fn export(&self) -> Result<Vec<u8>, JsValue> {
@@ -542,6 +558,23 @@ index 0000000..718bcd1
 +
 +    pub fn agent_read(&self, args: &str) -> Result<String, JsValue> {
 +        let args: Value = serde_json::from_str(args).map_err(|e| JsValue::from_str(&e.to_string()))?;
++        if args["operation"] == "styles" {
++            let query = args["query"].as_str().unwrap_or("").to_lowercase();
++            let builtin = wordcraft_doc::styles::StyleSheet::builtin();
++            let mut styles = self.session.doc.styles.styles.clone();
++            styles.extend(builtin.styles.iter().filter(|s| self.session.doc.styles.get(&s.id).is_none()).cloned());
++            let values: Vec<_> = styles
++                .iter()
++                .filter(|s| query.is_empty() || s.name.to_lowercase().contains(&query) || s.id.to_lowercase().contains(&query))
++                .take(50)
++                .map(|s| {
++                    let sheet = if self.session.doc.styles.get(&s.id).is_some() { &self.session.doc.styles } else { &builtin };
++                    let format = sheet.resolve_char(Some(&s.id), &Default::default());
++                    json!({"id":s.id,"name":s.name,"size":format.size,"font":format.font})
++                })
++                .collect();
++            return Ok(json!({"styles":values}).to_string());
++        }
 +        if args["operation"] == "selection" {
 +            let selection = &self.session.sel;
 +            let all = agent::nodes(&self.session.doc);
@@ -572,7 +605,24 @@ index 0000000..718bcd1
 +        let mut draft = Session::new(self.session.doc.clone());
 +        draft.sel = self.session.sel.clone();
 +        draft.author = self.session.author.clone();
-+        let command_result = agent::edit(&mut draft, &args).map_err(|e| JsValue::from_str(&e))?;
++        let edits = if args["operation"] == "batch" {
++            let edits = args["edits"].as_array().ok_or_else(|| JsValue::from_str("edits must be an array"))?;
++            if edits.is_empty() || edits.len() > 200 {
++                return Err(JsValue::from_str("A batch requires 1-200 edits"));
++            }
++            if edits.iter().any(|edit| edit["operation"] == "batch") {
++                return Err(JsValue::from_str("Nested batches are not supported"));
++            }
++            edits.clone()
++        } else {
++            vec![args.clone()]
++        };
++        let mut applied = Vec::new();
++        let mut command_result = Value::Null;
++        for edit in &edits {
++            command_result = agent::edit(&mut draft, edit).map_err(|e| JsValue::from_str(&e))?;
++            applied.push(json!({"id":edit["id"],"operation":edit["operation"],"command":edit["command"],"params":edit["params"]}));
++        }
 +        agent::normalize(&mut draft.doc, &self.id_prefix, &mut self.id_counter);
 +        if self.session.doc != draft.doc {
 +            self.session.close_typing();
@@ -594,6 +644,7 @@ index 0000000..718bcd1
 +        let mut result: Value = serde_json::from_str(&self.state()?).map_err(|e| JsValue::from_str(&e.to_string()))?;
 +        result["agentCreatedBlocks"] = json!(roots);
 +        result["agentCommandResult"] = command_result;
++        result["agentAppliedEdits"] = json!(applied);
 +        Ok(result.to_string())
 +    }
 +
@@ -794,10 +845,10 @@ index cdbe790..4ee1b20 100644
      let kind = s.doc.styles.get(&id).map(|x| x.kind).unwrap_or_default();
      if kind == StyleKind::Character {
 diff --git a/docs/roadmap.md b/docs/roadmap.md
-index eb3810e..cad9bb9 100644
+index eb3810e..c6b7ed3 100644
 --- a/docs/roadmap.md
 +++ b/docs/roadmap.md
-@@ -88,3 +88,13 @@ languages, screen-reader access, ecosystem decisions (VBA, add-ins, cloud), an i
+@@ -88,3 +88,15 @@ languages, screen-reader access, ecosystem decisions (VBA, add-ins, cloud), an i
  | 2026-10-10 | major | Created: milestones moved from ROADMAP.md with remaining hours; Current focus from gaps.md; M15–M16 added |
  | 2026-10-10 | trivial | M11: ink pens and eraser landed (#307) |
  | 2026-10-11 | trivial | M11: lasso, Add Pen, Ink to Shape and Ink Replay landed (#395) |
@@ -811,6 +862,8 @@ index eb3810e..cad9bb9 100644
 +AI Office integration (2026-10-16): applying a built-in paragraph style to an imported DOCX now materializes only missing style definitions and their dependencies in the same undoable command. Existing custom definitions remain intact. The integration tests cover Title/Subtitle/headings, undo, save and reopen with a sparse imported style sheet.
 +
 +The October 17 integration adds internal identities for paragraphs, tables, rows and cells; bounded reads; atomic version-checked CRUD; targeted command results; and block rectangles for agent activity feedback. IDs are preserved by undo snapshots and the host stores validated private DOCX metadata for reopen. The host's synthetic WASM tests cover Unicode ranges, stale edits, rollback and persistence. This local bridge does not change upstream parity estimates.
++
++AI Office integration (2026-10-17): revision-checked agent batches apply up to 200 operations on a private draft and commit as one undo step. Character formatting can target validated Unicode ranges. Style inspection exposes actual resolved font sizes. Integration coverage includes paginated targets, atomic rollback with existing redo history, and save/reopen.
 diff --git a/xtask/src/layers.rs b/xtask/src/layers.rs
 index a1f43d8..92e43af 100644
 --- a/xtask/src/layers.rs

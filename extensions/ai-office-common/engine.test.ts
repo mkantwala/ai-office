@@ -13,6 +13,8 @@ import { zipSync, strToU8, unzipSync, strFromU8 } from '../ai-office-slides/node
 import * as ppt from '../ai-office-slides/node_modules/@office-kit/pptx/dist/index.js';
 import { openEngine } from './model.js';
 import { WordFrame } from './wordFrame.js';
+import { activityRegion } from './agentActivity.js';
+import type { Block, State } from './types.js';
 
 const root = resolve('extensions');
 const demo = resolve('.build/office-edit-demo');
@@ -84,11 +86,13 @@ test('Word: internal IDs, atomic CRUD, Unicode ranges, revision guards and persi
 		assert.equal(original.length, 2);
 		assert.notEqual(original[0].id, original[1].id);
 		const id = original[0].id;
-		const inserted = await edit({ operation: 'insert', id, position: 'before', blocks: [
-			{ kind: 'heading', text: 'Agent proposal', style: 'Heading1' },
-			{ kind: 'paragraph', text: original[0].text },
-			{ kind: 'table', rows: [['Phase', 'Duration'], ['Planning', '1 week']] }
-		] });
+		const inserted = await edit({
+			operation: 'insert', id, position: 'before', blocks: [
+				{ kind: 'heading', text: 'Agent proposal', style: 'Heading1' },
+				{ kind: 'paragraph', text: original[0].text },
+				{ kind: 'table', rows: [['Phase', 'Duration'], ['Planning', '1 week']] }
+			]
+		});
 		assert.equal(inserted.agentCreatedBlocks?.length, 3, 'Return only created root IDs for follow-up edits');
 		assert.equal(read({ id }).blocks[0].text, original[0].text, 'Insertion must not retarget existing IDs');
 		const all = read().blocks;
@@ -137,6 +141,42 @@ test('Word: internal IDs, atomic CRUD, Unicode ranges, revision guards and persi
 			const current = external.agent!.read({}) as { blocks: Node[] };
 			assert.ok(current.blocks.every(block => !beforeDelete.some(old => old.id === block.id)), 'External edits invalidate private ID mappings');
 		} finally { external.dispose(); }
+	} finally { engine.dispose(); }
+});
+
+test('Word batches paginated targets and character formatting atomically with undo and redo', async () => {
+	const files = unzipSync(docx);
+	const paragraphs = Array.from({ length: 26 }, (_, i) => `<w:p><w:r><w:t>\u{1f680} Scope ${i} ? preserve this description</w:t></w:r></w:p>`).join('');
+	files['word/document.xml'] = strToU8(`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paragraphs}<w:sectPr/></w:body></w:document>`);
+	const engine = await openEngine('word', 'batch.docx', zipSync(files), root);
+	try {
+		type Result = { blocks: { id: string }[]; total: number; nextOffset: number | null };
+		const targets: { id: string }[] = []; let offset = 0;
+		do {
+			const page = engine.agent!.read({ query: 'Scope', offset }) as Result;
+			assert.equal(page.total, 26); targets.push(...page.blocks); offset = page.nextOffset ?? -1;
+		} while (offset >= 0);
+		const styles = engine.agent!.read({ operation: 'styles', query: 'Heading1' }) as { styles: { size: number }[] };
+		const size = styles.styles[0].size; assert.ok(size > 0);
+		const edits = targets.flatMap(({ id }) => [
+			{ operation: 'command', id, start: 0, end: 7, command: 'format.underline', params: { value: true } },
+			{ operation: 'command', id, start: 0, end: 7, command: 'format.size', params: { size } }
+		]);
+		const changed = await engine.agent!.edit({ operation: 'batch', edits, revision: engine.state().revision });
+		assert.equal(changed.agentAppliedEdits!.length, 52); assert.equal(changed.undoDepth, 1);
+		const xml = strFromU8(unzipSync(await engine.export())['word/document.xml']);
+		assert.equal((xml.match(/<w:u /g) || []).length, 26);
+		assert.equal(xml.split('Scope</w:t>').length - 1, 26);
+		assert.equal((xml.match(/preserve this description/g) || []).length, 26);
+		await engine.execute('edit.undo', {}); assert.equal(engine.state().redo, true);
+		const revision = engine.state().revision;
+		await assert.rejects(engine.agent!.edit({ operation: 'batch', revision, edits: [edits[0], { ...edits[1], id: 'missing' }] }), /no longer exists/);
+		assert.equal(engine.state().revision, revision); assert.equal(engine.state().redo, true);
+		assert.doesNotMatch(strFromU8(unzipSync(await engine.export())['word/document.xml']), /<w:u /);
+		await engine.execute('edit.redo', {});
+		assert.equal((strFromU8(unzipSync(await engine.export())['word/document.xml']).match(/<w:u /g) || []).length, 26);
+		const reopened = await openEngine('word', 'batch.docx', await engine.export(), root);
+		try { assert.equal((reopened.agent!.read({ query: 'Scope' }) as Result).total, 26); } finally { reopened.dispose(); }
 	} finally { engine.dispose(); }
 });
 
@@ -257,6 +297,64 @@ test('Slides: text and table cells, toolbar, undo, export and reopen', async () 
 	} finally { engine.dispose(); }
 });
 
+test('Agent content commands create, update and delete by text without ids', async () => {
+	const word = await openEngine('word', 'Memo.docx', docx, root);
+	try {
+		await word.execute('content.append', { text: 'Closing note' });
+		await word.execute('content.replace', { find: 'AI Office', text: 'Quarterly report' });
+		await word.execute('content.delete', { find: 'toolbar' });
+		const found = await word.execute('content.find', { find: 'Quarterly report' });
+		assert.ok((found.rects || []).length, 'Word find selects the matched text');
+		await word.execute('content.replace', { find: 'e', text: 'E', all: true });
+		await word.execute('select.all', {});
+		const text = word.state().selectedText!;
+		assert.match(text, /QuartErly rEport Editing/);
+		assert.match(text, /Closing notE/);
+		assert.doesNotMatch(text, /toolbar|e/);
+		const bytes = await word.export();
+		const reopened = await openEngine('word', 'agent.docx', bytes, root);
+		try { await reopened.execute('select.all', {}); assert.match(reopened.state().selectedText!, /Closing notE/); } finally { reopened.dispose(); }
+	} finally { word.dispose(); }
+
+	const pdf = await openEngine('pdf', 'Agent.pdf', pdfFixture(), root);
+	try {
+		await pdf.execute('content.replace', { find: 'AI Office', text: 'AI Office team' });
+		assert.equal(pdf.state().blocks![0].text, 'AI Office team editing');
+		const found = await pdf.execute('content.find', { find: 'team' });
+		assert.equal(found.matches?.length, 1);
+		await pdf.execute('content.append', { text: 'Signed copy' });
+		assert.ok(pdf.state().blocks!.some(block => block.text === 'Signed copy'), 'PDF append adds a separate paragraph');
+		await pdf.execute('content.delete', { find: 'Signed copy' });
+		assert.ok(!pdf.state().blocks!.some(block => block.text.includes('Signed copy')));
+		await pdf.execute('content.delete', { find: 'AI Office team editing' });
+		assert.equal(pdf.state().blocks!.length, 0, 'Deleting the full text removes the paragraph');
+	} finally { pdf.dispose(); }
+
+	const deck = ppt.createPresentation(); const slide = ppt.addSlide(deck, { layout: ppt.getSlideLayouts(deck)[0] });
+	ppt.addSlideTextBox(slide, { x: ppt.inches(1), y: ppt.inches(1), w: ppt.inches(8), h: ppt.inches(1), text: 'Agenda' });
+	const slides = await openEngine('slides', 'Agent.pptx', await ppt.savePresentation(deck), root);
+	try {
+		await slides.execute('content.replace', { find: 'Agenda', text: 'Agenda and notes' });
+		assert.ok(slides.state().blocks!.some(block => block.text === 'Agenda and notes'), 'Slide shapes resolve by text');
+		await slides.execute('content.append', { text: 'Questions' });
+		const initial = slides.state().blocks![0], appended = slides.state().blocks!.find(block => block.text === 'Questions')!;
+		assert.ok(appended.rect[3] > initial.rect[3], 'Appended slide text sits below the existing box');
+		await slides.execute('content.delete', { find: 'Questions' });
+		assert.ok(!slides.state().blocks!.some(block => block.text.includes('Questions')));
+	} finally { slides.dispose(); }
+});
+
+test('Agent activity regions resolve without caller supplied ids', () => {
+	assert.deepEqual(activityRegion('word', {}, { revision: 0 }, { revision: 1, rects: [{ page: 0, x: 10, y: 20, width: 30, height: 8 }] }), { page: 0, rects: [{ x: 10, y: 20, width: 30, height: 8 }] });
+	const block = (id: number, text: string, rect: number[]): Block => ({ id, text, rect });
+	assert.deepEqual(activityRegion('slides', { shape: 2 }, undefined, { revision: 1, page: 1, blocks: [block(2, 'Agenda', [10, 20, 40, 40])] }), { page: 1, rects: [{ x: 10, y: 20, width: 30, height: 20 }] });
+	const before: State = { revision: 0, page: 0, blocks: [block(1, 'Old', [0, 0, 10, 10])] };
+	const after: State = { revision: 1, page: 0, blocks: [block(1, 'Old', [0, 0, 10, 10]), block(2, 'New paragraph', [0, 20, 100, 32])] };
+	assert.deepEqual(activityRegion('pdf', { text: 'New paragraph' }, before, after), { page: 0, rects: [{ x: 0, y: 20, width: 100, height: 12 }] });
+	assert.deepEqual(activityRegion('pdf', {}, before, after), { page: 0, rects: [{ x: 0, y: 20, width: 100, height: 12 }] }, 'Added blocks are reported when args carry no target');
+	assert.equal(activityRegion('pdf', {}, before, before), undefined);
+});
+
 test('CLI runs agent scripts for all formats and rejects paths outside its root', async () => {
 	const cli = resolve('extensions/ai-office-pdf/out/cli.cjs');
 	for (const [file, command, params] of [
@@ -278,4 +376,20 @@ test('CLI runs agent scripts for all formats and rejects paths outside its root'
 	await writeFile(resolve(demo, '../office-outside.docx'), docx);
 	const denied = spawnSync(process.execPath, [cli, 'inspect', '../office-outside.docx', '--root', demo], { encoding: 'utf8' });
 	assert.notEqual(denied.status, 0); assert.match(denied.stderr, /outside --root/);
+});
+
+test('CLI content commands replace text without ids in every format', async () => {
+	const cli = resolve('extensions/ai-office-pdf/out/cli.cjs'); await mkdir(demo, { recursive: true });
+	for (const [file, text] of [['Memo.docx', 'CLI content Word'], ['Contract.pdf', 'CLI content PDF'], ['Board.pptx', 'CLI content Slides']] as const) {
+		const script = resolve(demo, 'content-changes.json'), output = resolve(demo, 'content-' + file);
+		await writeFile(script, JSON.stringify([{ command: 'content.replace', params: { find: 'AI Office', text } }]));
+		const run = spawnSync(process.execPath, [cli, 'run', resolve(demo, file), '--script', script, '--output', output, '--root', demo], { encoding: 'utf8' });
+		assert.equal(run.status, 0, run.stderr); assert.equal(JSON.parse(run.stdout).commands, 1);
+		const kind = file.endsWith('docx') ? 'word' : file.endsWith('pdf') ? 'pdf' : 'slides';
+		const reopened = await openEngine(kind, file, await readFile(output), root);
+		try {
+			if (kind === 'word') { await reopened.execute('select.all', {}); assert.match(reopened.state().selectedText!, /CLI content Word/); }
+			else { assert.match(reopened.state().blocks!.map(block => block.text).join(' '), /CLI content (PDF|Slides)/); }
+		} finally { reopened.dispose(); }
+	}
 });

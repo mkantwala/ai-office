@@ -15,6 +15,7 @@ Timeline/local history, markers, SCM/Git, multi-diff and comments belong to the 
 | Remote | Remote Explorer, status indicator, Ports view/forwarding UI, browser remote-start entry and remote tunnel-host UI | Remote filesystem, extension-host and agent transport services needed for server-hosted operation |
 | Snippets | Snippet configuration/insertion commands, tab completion, user snippets and snippet suggestions | Empty snippets API service; Monaco's low-level snippet insertion used by chat remains available |
 | Interactive | Interactive Window and REPL notebook contributions | Interactive document/history APIs required by extension-host participants |
+| GitHub sign-in | Chat title-bar Sign In pill, Copilot status-bar entry, accounts-menu sign-in item, chat-send setup flow, AI rename provider, model-picker sign-in placeholder, Add Models sign-in entry, Agents-window sign-in dialog and signed-out title-bar affordance | `defaultChatAgent` product configuration, Copilot and GitHub authentication extensions, chat entitlement/authentication services, the registered `workbench.action.chat.triggerSetup` handler (no longer wired to any user-facing entry point) |
 
 ## Extension exclusion
 

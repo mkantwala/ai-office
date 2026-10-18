@@ -26,6 +26,9 @@ button:disabled,select:disabled{opacity:.35;cursor:default}.divider{height:22px;
 .block{position:absolute;border:1px solid transparent;cursor:text;background:transparent}.block:hover{border-color:#7388dc;background:#7388dc0a}
 .block:focus-visible{outline:2px solid #5468d4}
 .block-editor{position:absolute;z-index:4;resize:none;border:1px solid #667be0;outline:2px solid #667be033;border-radius:2px;color:#171b26;background:#fff;padding:0;line-height:1.2;overflow:auto;box-shadow:0 3px 14px #0002;font-family:Arial,sans-serif}
+.agent-activity{position:absolute;pointer-events:none;z-index:3;border-radius:3px;outline:1px solid #6278ff88;background:linear-gradient(110deg,#6278ff00 25%,#6278ff30 50%,#6278ff00 75%);background-size:220% 100%;animation:agent-sweep 1.05s linear infinite}
+@keyframes agent-sweep{from{background-position:150% 0}to{background-position:-150% 0}}
+@media(prefers-reduced-motion:reduce){.agent-activity{animation:none;background:#6278ff22}}
 #keyboard{position:fixed;width:2px;height:20px;opacity:.01;resize:none;padding:0;border:0;z-index:-1}
 dialog{color:var(--vscode-editor-foreground);background:var(--vscode-editorWidget-background);border:1px solid var(--vscode-widget-border);border-radius:10px;box-shadow:0 18px 60px #0008;width:min(420px,90vw);padding:22px}
 dialog::backdrop{background:#0005}dialog label{display:block;margin-bottom:12px;font-size:13px}dialog input{display:block;width:100%;border-color:var(--vscode-input-border);margin-bottom:18px}dialog form>div{display:flex;justify-content:flex-end;gap:8px}#confirm{background:var(--vscode-button-background);color:var(--vscode-button-foreground)}

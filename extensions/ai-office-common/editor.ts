@@ -68,7 +68,7 @@ function typeWordText(text: string) {
 	wordText += text;
 	if (!wordTextTimer) { wordTextTimer = setTimeout(flushWordInput, 0); }
 }
-window.addEventListener('pagehide', () => { flushWordInput(); clearTimeout(wordRefineTimer); disposeToolbar?.(); }, { once: true });
+window.addEventListener('pagehide', () => { flushWordInput(); clearTimeout(wordRefineTimer); disposeToolbar?.(); clearAgent(); }, { once: true });
 window.addEventListener('blur', flushWordInput);
 function send(type: string, data: Record<string, unknown> = {}) { if (type !== 'render' && type !== 'ready') { flushWordInput(); } api.postMessage({ type, ...data }); }
 function execute(command: string, args: Record<string, unknown> = {}) {
@@ -253,6 +253,30 @@ function overlay() {
 		}
 	}
 }
+function defaultHint() { el('hint').textContent = kind === 'word' ? 'Click to type · Ctrl+S to save' : 'Click text to edit · Ctrl+Enter to finish · Ctrl+S to save'; }
+let agentTimer: ReturnType<typeof setTimeout> | undefined;
+function clearAgent() {
+	clearTimeout(agentTimer); agentTimer = undefined;
+	pages.querySelectorAll('.agent-activity').forEach(node => node.remove());
+}
+/**
+ * Shimmers over the region an agent is currently working on. The region comes
+ * from the extension host, which derives it from the executed command; agents
+ * never send ids or coordinates.
+ */
+function showAgent(region: { page: number; rects: { x: number; y: number; width: number; height: number }[] }, label: string) {
+	clearAgent();
+	const element = pages.children[region.page] as HTMLElement | undefined;
+	if (!element || !region.rects.length) { return; }
+	const bounds = element.getBoundingClientRect();
+	if (bounds.bottom < 80 || bounds.top > innerHeight - 40) { element.scrollIntoView({ block: 'nearest' }); }
+	for (const r of region.rects) {
+		const node = document.createElement('div'); node.className = 'agent-activity'; node.title = 'Agent: ' + label;
+		place(node, region.page, r.x, r.y, r.width, r.height);
+	}
+	el('hint').textContent = 'Agent: ' + label;
+	agentTimer = setTimeout(() => { clearAgent(); defaultHint(); }, 2000);
+}
 keyboard.addEventListener('compositionstart', () => { composing = true; });
 keyboard.addEventListener('compositionend', event => { composing = false; if (event.data) { typeWordText(event.data); } keyboard.value = ''; });
 keyboard.addEventListener('input', event => {
@@ -267,6 +291,7 @@ document.addEventListener('keydown', event => {
 	const mod = event.ctrlKey || event.metaKey;
 	if (mod && event.key.toLowerCase() === 's') { event.preventDefault(); flushText(); send('save'); return; }
 	if (mod && event.key.toLowerCase() === 'z') { event.preventDefault(); closeText(); send(event.shiftKey ? 'redo' : 'undo'); return; }
+	if (mod && event.key.toLowerCase() === 'y') { event.preventDefault(); closeText(); send('redo'); return; }
 	if (kind !== 'word' || document.activeElement !== keyboard) { return; }
 	const nav: Record<string, string> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', Home: mod ? 'docStart' : 'home', End: mod ? 'docEnd' : 'end' };
 	if (nav[event.key]) { event.preventDefault(); execute('caret.' + nav[event.key], { extend: event.shiftKey }); return; }
@@ -282,6 +307,7 @@ window.addEventListener('message', event => {
 	if (data.type === 'agentActivity') { agentRects = Array.isArray(data.rects) ? data.rects : []; agentOverlay(); return; }
 	if (data.type === 'error') { message(data.error); renderBusy = false; return; }
 	if (data.type === 'saved') { el('hint').textContent = 'Saved'; return; }
+	if (data.type === 'agent') { if (data.region) { showAgent(data.region, data.label); } return; }
 	if (data.type === 'state') {
 		kind = data.kind; const changed = state.revision !== data.state.revision;
 		const repaginated = JSON.stringify(dimensions) !== JSON.stringify(data.pages);
@@ -295,7 +321,7 @@ window.addEventListener('message', event => {
 			const style = el('paragraph-style'); style.dataset.currentStyle = state.paragraphStyle || ''; style.dispatchEvent(new Event('formatstate'));
 		}
 		el('filename').textContent = data.name;
-		el('hint').textContent = kind === 'word' ? 'Click to type · Ctrl+S to save' : 'Click text to edit · Ctrl+Enter to finish · Ctrl+S to save';
+		defaultHint();
 		(el('undo') as HTMLButtonElement).disabled = !state.undo; (el('redo') as HTMLButtonElement).disabled = !state.redo;
 		if (repaginated || !pages.children.length) { closeText(); makePages(); }
 		if (changed) { rendered.clear(); renderNext(); }

@@ -54,6 +54,15 @@ PowerPoint example (find shape IDs with `inspect`; slide numbers start at 1):
 
 PowerPoint cell operations add zero-based `row` and `col` alongside the table's shape ID. `format.text` accepts optional `range: {start,end}` with UTF-16 offsets. Word's `caret.set` uses a zero-based page and point coordinates. Use the CLI's `commands` output for engine-specific parameters.
 
+Agents can skip shape and paragraph ids entirely with the `content.*` commands: `content.find {find, occurrence?, page?}`, `content.replace {find, text, occurrence?, all?, page?}`, `content.delete {find, occurrence?, all?, page?}` and `content.append {text, page?}`. `find` matches a substring inside a block/shape/cell; the engine target (Word selection, PDF paragraph, PowerPoint shape or table cell) is resolved internally. `all: true` replaces or deletes every non-overlapping match (Word handles at most 500). The same commands are available for open documents through the `aiOffice.<kind>.execute` VS Code command, which takes `(fileNameOrUri?, commandId, params)`, and through the `aiOfficeEdit` language model tool, which chat agents use. Both resolve the file themselves: without a file argument they edit the current active file, and a bare file name or path fragment selects another open document. The result reports the `name` and `uri` of the edited file. While an agent command runs, the editor shimmers over the region it touched. See `.agents/skills/ai-office-docs/SKILL.md` for the compact agent skill.
+
+```json
+[
+  { "command": "content.replace", "params": { "find": "Q3 revenue", "text": "$4.2M" } },
+  { "command": "content.append", "params": { "text": "Signed: Finance" } }
+]
+```
+
 | Toolbar | Word | PDF | PowerPoint |
 |---|---|---|---|
 | Text | `text.insert` | `page_add_text` / `text_edit` | `insert.text` / `text.replace` |
@@ -75,6 +84,13 @@ Build both Rust engines and both extensions before running. Editing round-trip a
 node extensions/ai-office-common/test.mts
 ```
 
-The automated tests create synthetic documents in `.build/office-edit-demo`.
+The automated tests create synthetic documents in `.build/office-edit-demo`. Run them from the repository root after changing the provider or the engines:
+
+```powershell
+node extensions/node_modules/esbuild/bin/esbuild extensions/ai-office-common/provider.ts --bundle --platform=node --format=cjs --external:vscode --external:./client.js --outfile=.build/office-provider.cjs
+node --test extensions/ai-office-common/provider.test.cts
+node extensions/node_modules/esbuild/bin/esbuild extensions/ai-office-common/engine.test.ts --bundle --platform=node --format=esm --outfile=.build/office-engine.test.mjs
+node --test .build/office-engine.test.mjs
+```
 
 Word rendering sends changed pixel rows when the webview still has the matching previous frame. Typing uses a temporary raster capped at one pixel per document point; full display resolution returns after a 200 ms pause. This affects only the preview, not layout or saved files. Imported DOCX files can apply missing built-in paragraph styles through the same `para.style` command used by the CLI; existing style definitions are preserved.

@@ -6,7 +6,6 @@
 import assert from 'assert';
 import { CancellationToken, CancellationTokenSource } from '../../../../../base/common/cancellation.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
-import { isWeb } from '../../../../../base/common/platform.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import { IInlineCompletionsService } from '../../../../../editor/browser/services/inlineCompletionsService.js';
 import { ContextKeyExpression, IContextKeyService } from '../../../../../platform/contextkey/common/contextkey.js';
@@ -23,7 +22,6 @@ import { ChatQuotaResumeState, ChatStatusBarEntry, computeQuotaResumeState } fro
 import { IChatStatusItemService } from '../../browser/chatStatus/chatStatusItemService.js';
 import { ChatStatusPromo } from '../../browser/chatStatus/chatStatusPromo.js';
 import { UpdateTitleBarChatInProgressContext, UpdateTitleBarContext, UpdateTitleBarEditorVisibleContext } from '../../../update/common/update.js';
-import { CHAT_SETUP_ACTION_ID } from '../../browser/actions/chatActions.js';
 
 type Quotas = IChatEntitlementService['quotas'];
 
@@ -268,16 +266,16 @@ suite('ChatStatusBarEntry', () => {
 		assert.deepStrictEqual(fixture.promoQueries, [false, true]);
 	});
 
-	test('toggles the dashboard while preserving the sign-in command', () => {
+	test('shows the dashboard while signed in and no entry while signed out', () => {
 		const signedIn = createEntry({ entitlement: ChatEntitlement.Free, quotas: { premiumChat: available } });
 		const signedOut = createEntry({ entitlement: ChatEntitlement.Unknown });
 
 		assert.deepStrictEqual({
 			signedIn: signedIn.statusbar.current?.command,
-			signedOut: signedOut.statusbar.current?.command,
+			signedOut: signedOut.statusbar.current,
 		}, {
 			signedIn: ToggleTooltipCommand,
-			signedOut: CHAT_SETUP_ACTION_ID,
+			signedOut: undefined,
 		});
 	});
 
@@ -288,21 +286,20 @@ suite('ChatStatusBarEntry', () => {
 		assert.strictEqual(persistedState(storageService), 'blocked');
 	});
 
-	test('keeps Sign In visible in the status bar only while Update owns the title bar', () => {
+	test('shows no Copilot entry while signed out regardless of title bar ownership', () => {
 		const withoutUpdate = createEntry({ entitlement: ChatEntitlement.Unknown });
 		const withUpdate = createEntry({ entitlement: ChatEntitlement.Unknown, updateTitleBar: true });
 		const whileDebugging = createEntry({ entitlement: ChatEntitlement.Unknown, updateTitleBar: true, inDebugMode: true });
 		const whileChatInProgress = createEntry({ entitlement: ChatEntitlement.Unknown, updateTitleBar: true, updateTitleBarChatInProgress: true });
 		const inZenMode = createEntry({ entitlement: ChatEntitlement.Unknown, updateTitleBar: true, inZenMode: true });
-		const defaultStatusText = isWeb ? '$(copilot) Sign In' : '$(copilot)';
 
 		assert.deepStrictEqual({
-			text: {
-				withoutUpdate: withoutUpdate.statusbar.current?.text,
-				withUpdate: withUpdate.statusbar.current?.text,
-				whileDebugging: whileDebugging.statusbar.current?.text,
-				whileChatInProgress: whileChatInProgress.statusbar.current?.text,
-				inZenMode: inZenMode.statusbar.current?.text,
+			entry: {
+				withoutUpdate: withoutUpdate.statusbar.current,
+				withUpdate: withUpdate.statusbar.current,
+				whileDebugging: whileDebugging.statusbar.current,
+				whileChatInProgress: whileChatInProgress.statusbar.current,
+				inZenMode: inZenMode.statusbar.current,
 			},
 			visibility: {
 				withoutUpdate: withoutUpdate.updateTitleBarVisible,
@@ -312,12 +309,12 @@ suite('ChatStatusBarEntry', () => {
 				inZenMode: inZenMode.updateTitleBarVisible,
 			},
 		}, {
-			text: {
-				withoutUpdate: defaultStatusText,
-				withUpdate: '$(copilot) Sign In',
-				whileDebugging: defaultStatusText,
-				whileChatInProgress: defaultStatusText,
-				inZenMode: '$(copilot) Sign In',
+			entry: {
+				withoutUpdate: undefined,
+				withUpdate: undefined,
+				whileDebugging: undefined,
+				whileChatInProgress: undefined,
+				inZenMode: undefined,
 			},
 			visibility: {
 				withoutUpdate: false,

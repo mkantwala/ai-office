@@ -3,9 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as dom from '../../../../../base/browser/dom.js';
-import { BaseActionViewItem, IBaseActionViewItemOptions } from '../../../../../base/browser/ui/actionbar/actionViewItems.js';
-import { IAction, WorkbenchActionExecutedClassification, WorkbenchActionExecutedEvent } from '../../../../../base/common/actions.js';
+import { WorkbenchActionExecutedClassification, WorkbenchActionExecutedEvent } from '../../../../../base/common/actions.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { Event } from '../../../../../base/common/event.js';
 import { Lazy } from '../../../../../base/common/lazy.js';
@@ -18,12 +16,10 @@ import { ServicesAccessor } from '../../../../../editor/browser/editorExtensions
 import { ICodeEditorService } from '../../../../../editor/browser/services/codeEditorService.js';
 import { EditorContextKeys } from '../../../../../editor/common/editorContextKeys.js';
 import { localize, localize2 } from '../../../../../nls.js';
-import { IActionViewItemService } from '../../../../../platform/actions/browser/actionViewItemService.js';
 import { Action2, MenuId, MenuRegistry, registerAction2 } from '../../../../../platform/actions/common/actions.js';
 import { CommandsRegistry, ICommandService } from '../../../../../platform/commands/common/commands.js';
 import { ConfigurationTarget, IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { ContextKeyExpr, IContextKeyService } from '../../../../../platform/contextkey/common/contextkey.js';
-import { IsWebContext } from '../../../../../platform/contextkey/common/contextkeys.js';
 import { IDialogService } from '../../../../../platform/dialogs/common/dialogs.js';
 import { IEnvironmentService } from '../../../../../platform/environment/common/environment.js';
 import { ExtensionIdentifier } from '../../../../../platform/extensions/common/extensions.js';
@@ -35,22 +31,18 @@ import product from '../../../../../platform/product/common/product.js';
 import { GitHubPaths, IDefaultAccountService } from '../../../../../platform/defaultAccount/common/defaultAccount.js';
 import { IProductService } from '../../../../../platform/product/common/productService.js';
 import { ITelemetryService } from '../../../../../platform/telemetry/common/telemetry.js';
-import { ToggleTitleBarConfigAction } from '../../../../browser/parts/titlebar/titlebarActions.js';
-import { ACCOUNTS_SHARED_SIGN_IN_GROUP } from '../../../../common/activity.js';
 import { IWorkbenchContribution } from '../../../../common/contributions.js';
 import { IViewDescriptorService, ViewContainerLocation } from '../../../../common/views.js';
-import { ChatEntitlement, ChatEntitlementContext, ChatEntitlementContextKeys, ChatEntitlementRequests, ChatEntitlementService, IChatEntitlementService, isProUser } from '../../../../services/chat/common/chatEntitlementService.js';
+import { ChatEntitlement, ChatEntitlementContext, ChatEntitlementRequests, ChatEntitlementService, IChatEntitlementService, isProUser } from '../../../../services/chat/common/chatEntitlementService.js';
 import { EnablementState, IWorkbenchExtensionEnablementService } from '../../../../services/extensionManagement/common/extensionManagement.js';
 import { ExtensionUrlHandlerOverrideRegistry, IExtensionUrlHandlerOverride } from '../../../../services/extensions/browser/extensionUrlHandler.js';
 import { IExtensionService } from '../../../../services/extensions/common/extensions.js';
 import { CONTEXT_DEFAULT_ACCOUNT_STATE, DefaultAccountStatus } from '../../../../services/accounts/browser/defaultAccount.js';
 import { IHostService } from '../../../../services/host/browser/host.js';
 import { IWorkbenchLayoutService, Parts } from '../../../../services/layout/browser/layoutService.js';
-import { InEditorZenModeContext } from '../../../../common/contextkeys.js';
 import { ILifecycleService } from '../../../../services/lifecycle/common/lifecycle.js';
 import { IPreferencesService } from '../../../../services/preferences/common/preferences.js';
 import { IExtension, IExtensionsWorkbenchService } from '../../../extensions/common/extensions.js';
-import { UpdateTitleBarEditorVisibleContext } from '../../../update/common/update.js';
 import { ChatContextKeys } from '../../common/actions/chatContextKeys.js';
 import { IChatSessionsService } from '../../common/chatSessionsService.js';
 import { ChatAIDisabledSettingId, ChatAgentLocation, ChatConfiguration, ChatModeKind } from '../../common/constants.js';
@@ -61,7 +53,7 @@ import { chatViewsWelcomeRegistry } from '../viewsWelcome/chatViewsWelcome.js';
 import { buildUpgradeUrlWithRedirect, ChatSetupAnonymous, ChatSetupSource, ChatSetupStrategy, IChatSetupCommandOptions, IChatSetupResult, refreshTokens } from './chatSetup.js';
 import { ChatSetupController } from './chatSetupController.js';
 import { GrowthSessionController, registerGrowthSession } from './chatSetupGrowthSession.js';
-import { AICodeActionsHelper, AINewSymbolNamesProvider, ChatCodeActionsProvider, SetupAgent } from './chatSetupProviders.js';
+import { AICodeActionsHelper, ChatCodeActionsProvider, SetupAgent } from './chatSetupProviders.js';
 import { ChatSetup } from './chatSetupRunner.js';
 
 const defaultChat = {
@@ -81,7 +73,6 @@ export class ChatSetupContribution extends Disposable implements IWorkbenchContr
 	static readonly ID = 'workbench.contrib.chatSetup';
 
 	constructor(
-		@IActionViewItemService actionViewItemService: IActionViewItemService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@IChatEntitlementService chatEntitlementService: ChatEntitlementService,
 		@ILogService private readonly logService: ILogService,
@@ -106,7 +97,6 @@ export class ChatSetupContribution extends Disposable implements IWorkbenchContr
 		this.registerSetupAgents(context, controller);
 		this.registerGrowthSession(chatEntitlementService);
 		this.registerActions(context, requests, controller);
-		this.registerSignInTitleBarEntry(actionViewItemService);
 		this.registerUrlLinkHandler();
 		this.checkExtensionInstallation(context);
 	}
@@ -115,7 +105,6 @@ export class ChatSetupContribution extends Disposable implements IWorkbenchContr
 		const defaultAgentDisposables = markAsSingleton(new MutableDisposable()); // prevents flicker on window reload
 		const vscodeAgentDisposables = markAsSingleton(new MutableDisposable());
 
-		const renameProviderDisposables = markAsSingleton(new MutableDisposable());
 		const codeActionsProviderDisposables = markAsSingleton(new MutableDisposable());
 
 		const updateRegistration = () => {
@@ -165,17 +154,6 @@ export class ChatSetupContribution extends Disposable implements IWorkbenchContr
 
 				if (context.state.completed) {
 					vscodeAgentDisposables.clear(); // we need to do this to prevent showing duplicate agent/tool entries in the list
-				}
-			}
-
-			// Rename Provider
-			{
-				if (!context.state.completed && !context.state.hidden && !context.state.disabledInWorkspace) {
-					if (!renameProviderDisposables.value) {
-						renameProviderDisposables.value = AINewSymbolNamesProvider.registerProvider(this.instantiationService, context, controller);
-					}
-				} else {
-					renameProviderDisposables.clear();
 				}
 			}
 
@@ -378,12 +356,6 @@ export class ChatSetupContribution extends Disposable implements IWorkbenchContr
 				super({
 					id: 'workbench.action.chat.triggerSetupFromAccounts',
 					title: localize2('triggerChatSetupFromAccounts', "Sign in to use GitHub Copilot..."),
-					menu: {
-						id: MenuId.AccountsContext,
-						group: ACCOUNTS_SHARED_SIGN_IN_GROUP,
-						// Keep Copilot sign-in available after prior setup and alongside non-Copilot models.
-						when: ChatSetupFromAccountsWhen,
-					}
 				});
 			}
 
@@ -406,21 +378,6 @@ export class ChatSetupContribution extends Disposable implements IWorkbenchContr
 					id: ChatSetupSignInTitleBarAction.ID,
 					title: localize('signInIndicatorTitleBarAction', 'Sign In'),
 					f1: false,
-					menu: [{
-						id: MenuId.TitleBarAdjacentCenter,
-						order: 0,
-						when: ContextKeyExpr.and(
-							IsWebContext.negate(),
-							ChatContextKeys.Entitlement.signedOut,
-							CONTEXT_DEFAULT_ACCOUNT_STATE.notEqualsTo(DefaultAccountStatus.Available), // hide only when signed in (a default GitHub account is present); still shown while signed out or before the account state resolves, incl. untrusted workspaces — no auth prompt
-							ChatEntitlementContextKeys.hasByokModels.negate(),
-							ChatContextKeys.Setup.hidden.negate(),
-							ChatContextKeys.Setup.disabledInWorkspace.negate(),
-							ContextKeyExpr.equals(`config.${ChatConfiguration.TitleBarSignInEnabled}`, true),
-							UpdateTitleBarEditorVisibleContext.negate(),
-							InEditorZenModeContext.negate(),
-						),
-					}]
 				});
 			}
 
@@ -431,23 +388,6 @@ export class ChatSetupContribution extends Disposable implements IWorkbenchContr
 				telemetryService.publicLog2<WorkbenchActionExecutedEvent, WorkbenchActionExecutedClassification>('workbenchActionExecuted', { id: CHAT_SETUP_ACTION_ID, from: 'titlebar' });
 
 				return commandService.executeCommand(CHAT_SETUP_ACTION_ID, undefined, { telemetrySource: ChatSetupSource.TitleBar });
-			}
-		}
-
-		class ToggleSignInTitleBarAction extends ToggleTitleBarConfigAction {
-			constructor() {
-				super(
-					ChatConfiguration.TitleBarSignInEnabled,
-					localize('toggle.chatSignIn', 'Copilot Sign In'),
-					localize('toggle.chatSignInDescription', "Toggle visibility of the Copilot Sign In button in title bar"),
-					3,
-					ContextKeyExpr.and(
-						IsWebContext.negate(),
-						ChatContextKeys.Entitlement.signedOut,
-						ChatContextKeys.Setup.hidden.negate(),
-						ChatContextKeys.Setup.disabledInWorkspace.negate(),
-					)
-				);
 			}
 		}
 
@@ -574,7 +514,6 @@ export class ChatSetupContribution extends Disposable implements IWorkbenchContr
 		registerAction2(ChatSetupTriggerForceSignInDialogAction);
 		registerAction2(ChatSetupFromAccountsAction);
 		registerAction2(ChatSetupSignInTitleBarAction);
-		registerAction2(ToggleSignInTitleBarAction);
 		registerAction2(ChatSetupTriggerAnonymousWithoutDialogAction);
 		registerAction2(ChatSetupTriggerSupportAnonymousAction);
 		registerAction2(UpgradePlanAction);
@@ -664,14 +603,6 @@ export class ChatSetupContribution extends Disposable implements IWorkbenchContr
 			when: internalGenerateCodeContext
 		});
 
-	}
-
-	private registerSignInTitleBarEntry(actionViewItemService: IActionViewItemService): void {
-		this._register(actionViewItemService.register(
-			MenuId.TitleBarAdjacentCenter,
-			SIGN_IN_TITLE_BAR_ACTION_ID,
-			(action, options) => new SignInTitleBarEntry(action, options)
-		));
 	}
 
 	private registerUrlLinkHandler(): void {
@@ -913,45 +844,3 @@ export class ChatTeardownContribution extends Disposable implements IWorkbenchCo
 }
 
 //#endregion
-
-/**
- * Custom action view item that renders a "Sign In" button
- * in the title bar with prominent button styling.
- */
-class SignInTitleBarEntry extends BaseActionViewItem {
-
-	private label: HTMLElement | undefined;
-
-	constructor(
-		action: IAction,
-		options: IBaseActionViewItemOptions,
-	) {
-		super(undefined, action, options);
-	}
-
-	public override render(container: HTMLElement) {
-		super.render(container);
-
-		container.setAttribute('role', 'button');
-		container.setAttribute('aria-label', this.action.label);
-
-		const content = dom.append(container, dom.$('.update-indicator.prominent'));
-		this.label = dom.append(content, dom.$('.indicator-label'));
-		this.label.textContent = this.action.label;
-	}
-
-	protected override updateLabel(): void {
-		if (this.label) {
-			this.label.textContent = this.action.label;
-		}
-		if (this.element) {
-			this.element.setAttribute('aria-label', this.action.label);
-		}
-	}
-
-	protected override updateEnabled(): void {
-		if (this.element) {
-			this.element.classList.toggle('disabled', !this.action.enabled);
-		}
-	}
-}

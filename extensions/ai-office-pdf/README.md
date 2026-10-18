@@ -6,7 +6,7 @@ Click in Word to position the caret; drag to select text. In PDF, click a paragr
 
 Word supports heading styles, font, size, bold, italic, underline, alignment, bullets, numbering, spacing, tables, images, links and comments. PDF supports text insertion, paragraph text/font/size/emphasis/alignment/spacing, images, links and comments. PDF lists, heading styles and tables are disabled. PDF formatting applies to the paragraph; scanned pages need OCR before their text can be edited. This initial surface does not add OCR or a full office ribbon.
 
-All toolbar document operations are available through the [shared CLI](../ai-office-common/README.md). The CLI reads and writes files; the registered `aiOffice.word.execute` and `aiOffice.pdf.execute` VS Code commands operate on open documents using `(uriString, commandId, params)` and participate in the same undo/save flow. A CLI edit to a file with unsaved in-app changes requires resolving the resulting conflict.
+All toolbar document operations are available through the [shared CLI](../ai-office-common/README.md). The CLI reads and writes files; the registered `aiOffice.word.execute` and `aiOffice.pdf.execute` VS Code commands operate on open documents using `(fileNameOrUri, commandId, params)` and participate in the same undo/save flow, and the `aiOfficeEdit` language model tool exposes the same commands to chat agents (it is contributed by this extension and dispatches to any AI Office kind). Without a file argument both edit the active document, and a bare file name targets another open document. A CLI edit to a file with unsaved in-app changes requires resolving the resulting conflict.
 
 Build from the VS Code repository using Node 24:
 

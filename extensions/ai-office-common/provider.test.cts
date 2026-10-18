@@ -6,10 +6,11 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 const path = require('node:path');
+const { withAgentRequest } = require('./agentRequest.ts');
 
 test('custom editor saves, backs up, undoes and rejects external conflicts without poisoning its queue', async () => {
 	const files = new Map([['/memo.docx', Buffer.from('original document bytes')]]);
-	const commands = new Map(); const edits = []; let provider;
+	const commands = new Map(); const tools = new Map(); const edits = []; let provider;
 	let exports = 0;
 	const uri = value => ({ scheme: 'file', path: value, fsPath: value, toString: () => value });
 	const nativeFiles = {
@@ -18,11 +19,19 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 		unlink: async name => files.delete(name)
 	};
 	const vscode = {
-		lm: { registerTool: () => ({ dispose() {} }) },
 		Uri: { parse: uri, joinPath: (base, ...parts) => uri(path.posix.resolve(base.path, ...parts)) },
 		EventEmitter: class { event = () => { }; fire(value) { edits.push(value); } dispose() { } },
-		window: { registerCustomEditorProvider: (_id, value) => { provider = value; return { dispose() { } }; } },
-		commands: { registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() { } }; } },
+		LanguageModelTextPart: class { constructor(value) { this.value = value; } },
+		LanguageModelToolResult: class { constructor(content) { this.content = content; } },
+		window: {
+			registerCustomEditorProvider: (_id, value) => { provider = value; return { dispose() { } }; },
+			tabGroups: { activeTabGroup: undefined }
+		},
+		lm: { registerTool: (id, tool) => { tools.set(id, tool); return { dispose() { } }; } },
+		commands: {
+			registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() { } }; },
+			executeCommand: (id, ...args) => commands.get(id)(...args)
+		},
 		workspace: {
 			fs: {
 				stat: async value => ({ size: files.get(value.path).length }),
@@ -45,18 +54,22 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 				this.revision++;
 			}
 			if (method === 'export') { exports++; return Buffer.from(this.text); }
-			return { pages: [[612, 792]], state: { revision: this.revision }, commands: [] };
+			return { pages: [[612, 792]], state: { revision: this.revision, ...(args.command === 'select.text' ? { rects: [{ page: 0, x: 1, y: 2, width: 30, height: 8 }] } : {}) }, commands: [] };
 		}
 		dispose() { }
 	}
 	const originalLoad = Module._load;
 	try {
-		Module._load = (id, ...args) => id === 'vscode' ? vscode : id === './client.js' ? { EngineClient } : id === 'node:fs/promises' ? nativeFiles : originalLoad(id, ...args);
+		Module._load = (id, ...args) => id === 'vscode' ? vscode : id === './client.js' ? { EngineClient } : id === './agentRequest.js' ? require('./agentRequest.ts') : id === 'node:fs/promises' ? nativeFiles : originalLoad(id, ...args);
 		require('../../.build/office-provider.cjs').registerEditors({ extensionUri: uri('/extension'), subscriptions: [] }, ['word']);
 	} finally { Module._load = originalLoad; }
 	const doc = await provider.openCustomDocument(uri('/memo.docx'), {});
 	const execute = commands.get('aiOffice.word.execute');
 	await assert.rejects(execute('/memo.docx', 'bad'), /Unsupported/);
+	const messages = [];
+	doc.panels.add({ webview: { postMessage: async message => { messages.push(message); } } });
+	await execute('/memo.docx', 'select.text', { text: 'first' });
+	assert.ok(messages.some(message => message.type === 'agent' && message.label === 'select.text' && message.region?.rects?.length === 1), 'Agent commands report the touched region to the editor');
 	await execute('/memo.docx', 'text.insert', { text: 'first edit' });
 	await execute('/memo.docx', 'text.insert', { text: 'second edit' });
 	await edits.at(-1).undo();
@@ -75,44 +88,70 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 	assert.equal(Buffer.from(files.get('/copy.docx')).toString(), 'second edit');
 	await provider.revertCustomDocument(doc);
 	assert.equal(Buffer.from(doc.latestBytes).toString(), 'external agent changed it');
+
+	// Agents never carry document ids or workspace paths: with no target the
+	// command edits the document whose editor is active, a bare file name
+	// selects an open document and the result names the file that was edited.
+	vscode.window.tabGroups = { activeTabGroup: { activeTab: { input: { viewType: 'aiOffice.word', uri: uri('/memo.docx') } } } };
+	const active = await execute(undefined, 'text.insert', { text: 'via the active document' });
+	assert.equal(active.name, 'memo.docx');
+	assert.equal(active.uri, '/memo.docx');
+	const named = await execute('memo.docx', 'text.insert', { text: 'via a file name' });
+	assert.equal(named.name, 'memo.docx');
+	await assert.rejects(execute('missing.docx', 'text.insert', { text: 'x' }), /No open word document matches "missing\.docx"/);
+
+	// The chat tool uses the same resolution and reports the file it edited.
+	const tool = tools.get('aiOfficeEdit');
+	const toolResult = await tool.invoke({ input: { command: 'text.insert', params: { text: 'via the chat tool' } } }, {});
+	assert.ok(toolResult.content[0].value.includes('"name":"memo.docx"'), 'The tool result reports the resolved file name');
+
 	await backup.delete(); doc.dispose();
-	await assert.rejects(execute('/memo.docx', 'text.insert', { text: 'closed' }), /Open the document/);
+	await assert.rejects(execute('/memo.docx', 'text.insert', { text: 'closed' }), /No open word document matches/);
 });
 
 test('Word tools serialize edits, reject stale versions, clear activity, and respect cancellation and trust', async () => {
-	const tools = new Map(); const edits = []; const messages = [];
+	const tools = new Map(); const edits = []; const messages = []; const commands = new Map();
 	let provider;
 	const uri = value => ({ scheme: 'file', path: value, fsPath: value, toString: () => value });
 	const vscode = {
 		Uri: { parse: uri, joinPath: (base, ...parts) => uri(path.posix.resolve(base.path, ...parts)) },
-		EventEmitter: class { event = () => {}; fire(value) { edits.push(value); } dispose() {} },
+		EventEmitter: class { event = () => { }; fire(value) { edits.push(value); } dispose() { } },
 		CancellationError: class extends Error { constructor() { super('Cancelled'); } },
 		LanguageModelTextPart: class { constructor(value) { this.value = value; } },
 		LanguageModelToolResult: class { constructor(content) { this.content = content; } },
-		lm: { registerTool: (name, value) => { tools.set(name, value); return { dispose() {} }; } },
-		window: { registerCustomEditorProvider: (_id, value) => { provider = value; return { dispose() {} }; } },
-		commands: { registerCommand: () => ({ dispose() {} }) },
+		lm: { registerTool: (name, value) => { tools.set(name, value); return { dispose() { } }; } },
+		window: { registerCustomEditorProvider: (_id, value) => { provider = value; return { dispose() { } }; } },
+		commands: {
+			registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() { } }; }, executeCommand: async (id, ...args) => {
+				if (id === '_aiOffice.documentHistory') {
+					if (args[1] === 'undo') { await edits[doc.history.cursor - 1].undo(); } else { await edits[doc.history.cursor].redo(); }
+					return true;
+				}
+				return commands.get(id)(...args);
+			}
+		},
 		workspace: { isTrusted: true, fs: { stat: async () => ({ size: 32 }), readFile: async () => Buffer.from('Initial content') } }
 	};
 	class EngineClient {
-		text = 'Initial content'; revision = 0; past = [];
+		text = 'Initial content'; revision = 0; past = []; future = [];
 		async request(method, args) {
 			if (method === 'agentRead') { return { blocks: [{ id: 'internal-id', parentId: 'body', text: this.text }] }; }
 			if (method === 'agentRects') { return [{ page: 0, x: 72, y: 72, width: 120, height: 20 }]; }
 			if (method === 'agentEdit') {
 				assert.equal(args.args.revision, this.revision);
 				if (args.args.text === 'fail') { throw new Error('Invalid edit'); }
-				this.past.push(this.text); this.text = args.args.text; this.revision++;
+				this.past.push(this.text); this.future = []; this.text = args.args.text; this.revision++;
 			}
-			if (method === 'execute' && args.command === 'edit.undo') { this.text = this.past.pop(); this.revision++; }
+			if (method === 'execute' && args.command === 'edit.undo') { this.future.push(this.text); this.text = this.past.pop(); this.revision++; }
+			if (method === 'execute' && args.command === 'edit.redo') { this.past.push(this.text); this.text = this.future.pop(); this.revision++; }
 			if (method === 'export') { return Buffer.from(this.text); }
-			return { pages: [[612, 792]], state: { revision: this.revision }, commands: [{ id: 'format.bold', label: 'Bold', params: { value: 'boolean' } }] };
+			return { pages: [[612, 792]], state: { revision: this.revision, undo: this.past.length > 0, redo: this.future.length > 0, undoDepth: this.past.length }, commands: [{ id: 'format.bold', label: 'Bold', params: { value: 'boolean' } }] };
 		}
-		dispose() {}
+		dispose() { }
 	}
 	const originalLoad = Module._load;
 	try {
-		Module._load = (id, ...args) => id === 'vscode' ? vscode : id === './client.js' ? { EngineClient } : originalLoad(id, ...args);
+		Module._load = (id, ...args) => id === 'vscode' ? vscode : id === './client.js' ? { EngineClient } : id === './agentRequest.js' ? require('./agentRequest.ts') : originalLoad(id, ...args);
 		delete require.cache[require.resolve('../../.build/office-provider.cjs')];
 		require('../../.build/office-provider.cjs').registerEditors({ extensionUri: uri('/extension'), subscriptions: [] }, ['word']);
 	} finally { Module._load = originalLoad; }
@@ -121,12 +160,13 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 	const invoke = async (name, input, cancellation = token) => JSON.parse((await tools.get('office_document_' + name).invoke({ input }, cancellation)).content[0].value);
 	try {
 		doc.panels.add({ active: true, webview: { postMessage: async message => { messages.push(message); } } });
-		assert.equal(tools.size, 4);
+		assert.equal(tools.size, 6);
 		const initial = await invoke('read', {});
 		assert.equal(initial.blocks[0].text, 'Initial content');
-		const first = invoke('edit', { operation: 'update', id: 'internal-id', version: initial.version, text: 'First change' });
+		const first = withAgentRequest('test-request', () => invoke('edit', { operation: 'update', id: 'internal-id', version: initial.version, text: 'First change' }));
 		const stale = invoke('edit', { operation: 'update', id: 'internal-id', version: initial.version, text: 'Stale overwrite' });
 		assert.equal((await first).saved, false);
+		assert.equal((await invoke('history', { operation: 'status' })).checkpoints[0].id, 'test-request');
 		assert.match((await stale).error, /Document changed/);
 		assert.equal(edits.length, 1);
 		assert.equal(Buffer.from(doc.latestBytes).toString(), 'Initial content', 'Agent edits also defer DOCX serialization');
@@ -135,6 +175,11 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		assert.ok(messages.some(message => message.type === 'agentActivity' && message.rects.length));
 		assert.deepEqual(messages.at(-1), { type: 'agentActivity', rects: [] });
 		await edits[0].undo();
+		assert.equal((await invoke('history', { operation: 'status' })).redo, true);
+		await edits[0].redo();
+		assert.equal((await invoke('read', {})).blocks[0].text, 'First change');
+		const status = await invoke('history', { operation: 'status' });
+		await invoke('history', { operation: 'restore', checkpoint: 'test-request', version: status.version });
 		assert.equal((await invoke('read', {})).blocks[0].text, 'Initial content');
 		assert.equal(Buffer.from(await doc.enqueue(() => doc.snapshot())).toString(), 'Initial content');
 		let current = await invoke('read', {});

@@ -17,6 +17,8 @@ import { ITextResourceConfigurationChangeEvent, ITextResourceConfigurationServic
 import { IResourceEditorInput } from '../../../../platform/editor/common/editor.js';
 import { FileOperation, IFileService } from '../../../../platform/files/common/files.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
+import { IUndoRedoService } from '../../../../platform/undoRedo/common/undoRedo.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { IStorageService } from '../../../../platform/storage/common/storage.js';
 import { IUriIdentityService } from '../../../../platform/uriIdentity/common/uriIdentity.js';
@@ -33,6 +35,16 @@ import { IExtensionService } from '../../../services/extensions/common/extension
 import { ContributedCustomEditors } from '../common/contributedCustomEditors.js';
 import { CustomEditorDiffInput, CustomEditorSideBySideDiffInput } from './customEditorDiffInput.js';
 import { CustomEditorInput } from './customEditorInput.js';
+
+// Document tools and webview buttons address the document explicitly, even when chat has focus.
+CommandsRegistry.registerCommand('_aiOffice.documentHistory', async (accessor, resource: string, action: string) => {
+	const service = accessor.get(IUndoRedoService);
+	const uri = URI.parse(resource);
+	if (action !== 'undo' && action !== 'redo') { throw new Error('Unknown document history action'); }
+	if (action === 'undo' ? !service.canUndo(uri) : !service.canRedo(uri)) { return false; }
+	if (action === 'undo') { await service.undo(uri); } else { await service.redo(uri); }
+	return true;
+});
 
 interface CustomEditorDiffInputInfo {
 	readonly viewType: string;

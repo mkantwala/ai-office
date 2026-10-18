@@ -11,8 +11,10 @@
 | Review | `review.newComment`, `review.comments` | Add comments through targeted commands. Comments can also be inspected through their document story. These commands do not implement acceptance/rejection of agent changes. |
 | Caret (editor only) | `caret.set`, `caret.left`, `caret.right`, `caret.up`, `caret.down`, `caret.home`, `caret.end`, `caret.docStart`, `caret.docEnd` | The UI uses these. Agent tools use IDs and ranges instead; targeted command rejects them. |
 | Selection (editor only) | `select.all`, `select.range`, `select.word`, `select.text`, `select.collapse` | Read `operation:selection` for user context. Targeted command rejects these to avoid losing the target. |
-| History (editor only) | `edit.undo`, `edit.redo` | Normal editor Undo/Redo handles complete agent operations. These commands are excluded from targeted edits because they cannot be scoped to a block. |
+| History (editor only) | `edit.undo`, `edit.redo` | Normal editor Undo/Redo handles complete agent operations. These commands are excluded from targeted edits because they cannot be scoped to a block. Use the separate `office_document_history` tool for status, undo, redo or restoring a request checkpoint. |
 
 Table-border color/thickness, row/column insertion/deletion, standalone image resizing, file creation, automatic save, and Keep/Undo review are not exposed by these tools. Do not promise those capabilities. Protection and native Track Changes disable agent block mutation. Discover missing capabilities rather than attempting raw XML or filesystem workarounds.
 
 All ordinary document toolbar commands remain available in the editor. The tool's smaller surface intentionally provides deterministic targeting and bounded output. Large image payloads can exceed the tool input limit; do not inline oversized base64 data into model context.
+
+The shared document adapter also exposes `content.find`, `content.replace`, `content.delete`, and `content.append` through the CLI and the `aiOfficeEdit` tool. They locate content by text and support Word, PDF and PowerPoint. The Word tools described above use internal block identities and revision checks for edits to the live document.
