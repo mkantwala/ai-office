@@ -6,6 +6,7 @@
 import DOMPurify from '../ai-office-slides/node_modules/dompurify/dist/purify.es.mjs';
 import type { Kind, State, Block } from './types.js';
 import { arrangeWordToolbar } from './wordToolbar.js';
+import { renderAgentActivity } from './agentOverlay.js';
 import { WordReview } from './wordReview.js';
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const api = acquireVsCodeApi();
@@ -46,19 +47,16 @@ let lastPointer: { page: number; x: number; y: number } | undefined;
 let initialized = false;
 let disposeToolbar: (() => void) | undefined;
 let agentRects: NonNullable<State['rects']> = [];
+let legacyAgentRects: NonNullable<State['rects']> = [];
 const agentStatus = document.createElement('span');
 agentStatus.className = 'agent-status'; agentStatus.setAttribute('role', 'status'); agentStatus.setAttribute('aria-live', 'polite');
 el('info').append(agentStatus);
 function agentOverlay() {
-	pages.querySelectorAll('.agent-shimmer').forEach(node => node.remove());
-	for (const rect of agentRects) {
-		if (!pages.children[rect.page] || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)) { continue; }
-		const node = document.createElement('div'); node.className = 'agent-shimmer'; node.setAttribute('aria-hidden', 'true');
-		place(node, rect.page, rect.x, rect.y, rect.width, rect.height);
-	}
-	agentStatus.textContent = agentRects.length ? 'Agent is working on this content' : '';
-	pages.setAttribute('aria-busy', String(agentRects.length > 0));
+	const active = renderAgentActivity(pages, agentRects.length ? agentRects : legacyAgentRects, place);
+	agentStatus.textContent = active ? 'Agent is working on this content' : '';
+	pages.setAttribute('aria-busy', String(active));
 }
+
 let wordText = '';
 let wordTextTimer: ReturnType<typeof setTimeout> | undefined;
 let wordTypingUntil = 0;
@@ -274,7 +272,7 @@ function defaultHint() { el('hint').textContent = kind === 'word' ? 'Click to ty
 let agentTimer: ReturnType<typeof setTimeout> | undefined;
 function clearAgent() {
 	clearTimeout(agentTimer); agentTimer = undefined;
-	pages.querySelectorAll('.agent-activity').forEach(node => node.remove());
+	legacyAgentRects = []; agentOverlay();
 }
 /**
  * Shimmers over the region an agent is currently working on. The region comes
@@ -287,10 +285,7 @@ function showAgent(region: { page: number; rects: { x: number; y: number; width:
 	if (!element || !region.rects.length) { return; }
 	const bounds = element.getBoundingClientRect();
 	if (bounds.bottom < 80 || bounds.top > innerHeight - 40) { element.scrollIntoView({ block: 'nearest' }); }
-	for (const r of region.rects) {
-		const node = document.createElement('div'); node.className = 'agent-activity'; node.title = 'Agent: ' + label;
-		place(node, region.page, r.x, r.y, r.width, r.height);
-	}
+	legacyAgentRects = region.rects.map(rect => ({ ...rect, page: region.page })); agentOverlay();
 	el('hint').textContent = 'Agent: ' + label;
 	agentTimer = setTimeout(() => { clearAgent(); defaultHint(); }, 2000);
 }
