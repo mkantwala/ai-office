@@ -12,6 +12,7 @@ import { deflateSync } from 'node:zlib';
 import { zipSync, strToU8, unzipSync, strFromU8 } from '../ai-office-slides/node_modules/fflate/esm/index.mjs';
 import * as ppt from '../ai-office-slides/node_modules/@office-kit/pptx/dist/index.js';
 import { openEngine } from './model.js';
+import { prepareWordFormatting, validateDocumentEdits } from './wordFormatting.js';
 import { WordFrame } from './wordFrame.js';
 import { activityRegion } from './agentActivity.js';
 import type { Block, State } from './types.js';
@@ -177,6 +178,30 @@ test('Word batches paginated targets and character formatting atomically with un
 		assert.equal((strFromU8(unzipSync(await engine.export())['word/document.xml']).match(/<w:u /g) || []).length, 26);
 		const reopened = await openEngine('word', 'batch.docx', await engine.export(), root);
 		try { assert.equal((reopened.agent!.read({ query: 'Scope' }) as Result).total, 26); } finally { reopened.dispose(); }
+	} finally { engine.dispose(); }
+});
+
+test('Word formatting tool resolves every literal match, pagination, Unicode ranges and style sizes in one batch', async () => {
+	const files = unzipSync(docx);
+	const paragraphs = Array.from({ length: 26 }, (_, i) => `<w:p><w:r><w:t>${i ? 'milestone [a] with description' : String.fromCodePoint(0x1f9ed) + ' Milestone [A] ' + 'x'.repeat(9000) + ' Milestone [A]'}</w:t></w:r></w:p>`).join('');
+	files['word/document.xml'] = strToU8(`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${paragraphs}<w:sectPr/></w:body></w:document>`);
+	const engine = await openEngine('word', 'format.docx', zipSync(files), root);
+	try {
+		const read = async (args: Record<string, unknown>) => engine.agent!.read(args) as Awaited<ReturnType<Parameters<typeof prepareWordFormatting>[1]>>;
+		const plan = await prepareWordFormatting({ query: 'Milestone [A]', format: { underline: true, sizeFromStyle: 'Heading 1' } }, read);
+		assert.equal(plan.matchedBlocks, 26); assert.equal(plan.matchedRanges, 27); assert.equal(plan.edits.length, 54);
+		const style = await read({ operation: 'styles', query: 'Heading1' });
+		assert.ok(plan.edits.filter(edit => edit.command === 'format.size').every(edit => edit.params.size === style.styles![0].size));
+		const result = await engine.agent!.edit({ operation: 'batch', edits: plan.edits, revision: engine.state().revision });
+		assert.equal(result.undoDepth, 1);
+		const xml = strFromU8(unzipSync(await engine.export())['word/document.xml']);
+		assert.equal((xml.match(/<w:u /g) || []).length, 27);
+		await engine.execute('edit.undo', {}); assert.equal(engine.state().redo, true);
+		const first = await prepareWordFormatting({ query: 'Milestone [A]', scope: 'first', format: { bold: true } }, read);
+		assert.equal(first.edits.length, 1); assert.equal(first.matchedRanges, 1);
+		assert.throws(() => validateDocumentEdits({ operation: 'update', id: 'opaque', text: 'unchanged', command: 'format.underline' }), /does not accept command/);
+		await assert.rejects(prepareWordFormatting({ query: 'Milestone [A]', format: { unknown: true } }, read), /Unsupported format property/);
+		assert.equal(engine.state().redo, true, 'Preparation errors never change document history');
 	} finally { engine.dispose(); }
 });
 

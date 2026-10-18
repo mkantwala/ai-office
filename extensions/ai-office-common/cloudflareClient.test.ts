@@ -85,3 +85,21 @@ test('Agent reconciles discovered scope against successful actions before claimi
 	});
 	assert.match(result, /1 of 2/); assert.doesNotMatch(result, /Changed everything/);
 });
+
+
+test('Agent recognizes verified formatting scopes and does not demand unrelated matches', async () => {
+	let rounds = 0;
+	const available: OfficeTool[] = [...tools, { type: 'function', function: { name: 'office_document_read', description: 'Read', parameters: {} } }, { type: 'function', function: { name: 'office_document_format', description: 'Format', parameters: {} } }];
+	const result = await runOfficeAgent({
+		messages: [], tools: available, signal: new AbortController().signal, progress: () => { },
+		complete: async () => ++rounds === 1 ? call('office_document_read', '{"query":"arbitrary"}') : rounds === 2 ? call('office_document_format', '{"query":"arbitrary","scope":"first","format":{"bold":true}}') : { role: 'assistant', content: 'Formatted the first match.' },
+		invoke: async name => name === 'office_document_read' ? JSON.stringify({ uri: 'file:///example.docx', version: 'v0', blocks: [{ id: 'a' }, { id: 'b' }], total: 2 }) : JSON.stringify({ uri: 'file:///example.docx', version: 'v1', verifiedScope: true, scope: 'first', matchedBlocks: 1, appliedEdits: [{ id: 'a', operation: 'command', command: 'format.bold' }] })
+	});
+	assert.equal(result, 'Formatted the first match.'); assert.equal(rounds, 4);
+});
+
+test('Agent stops repeated invalid operations before spending its entire step budget', async () => {
+	let calls = 0;
+	const result = await runOfficeAgent({ messages: [], tools, signal: new AbortController().signal, progress: () => { }, complete: async () => call('office_document_edit', '{"operation":"update","command":"bad"}'), invoke: async () => { calls++; return JSON.stringify({ error: 'update does not accept command. Use office_document_format.' }); } });
+	assert.equal(calls, 3); assert.match(result, /same invalid operation/); assert.match(result, /No successful document edit/);
+});

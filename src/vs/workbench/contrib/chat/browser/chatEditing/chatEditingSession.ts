@@ -26,6 +26,7 @@ import { IModelService } from '../../../../../editor/common/services/model.js';
 import { ITextModelService } from '../../../../../editor/common/services/resolverService.js';
 import { localize } from '../../../../../nls.js';
 import { AccessibilitySignal, IAccessibilitySignalService } from '../../../../../platform/accessibilitySignal/browser/accessibilitySignalService.js';
+import { CommandsRegistry, ICommandService } from '../../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { EditorActivation } from '../../../../../platform/editor/common/editor.js';
 import { IFileService } from '../../../../../platform/files/common/files.js';
@@ -222,6 +223,7 @@ export class ChatEditingSession extends Disposable implements IChatEditingSessio
 		@IFileService private readonly _fileService: IFileService,
 		@IChatEditingExplanationModelManager private readonly _explanationModelManager: IChatEditingExplanationModelManager,
 		@ITelemetryService private readonly _telemetryService: ITelemetryService,
+		@ICommandService private readonly _commandService: ICommandService,
 	) {
 		super();
 		this._timeline = this._instantiationService.createInstance(
@@ -240,6 +242,11 @@ export class ChatEditingSession extends Disposable implements IChatEditingSessio
 
 	private _getTimelineDelegate(): IChatEditingTimelineFsDelegate {
 		return {
+			navigateCustomDocuments: async requests => {
+				if (CommandsRegistry.getCommand('aiOffice.word.navigateChatHistory')) {
+					await this._commandService.executeCommand('aiOffice.word.navigateChatHistory', requests);
+				}
+			},
 			createFile: (uri, content) => {
 				return this._bulkEditService.apply({
 					edits: [{

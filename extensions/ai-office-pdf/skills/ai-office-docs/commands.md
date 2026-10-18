@@ -1,5 +1,7 @@
 # Discover exact capabilities on demand
 
+Prefer `office_document_format` for common character and paragraph formatting. It resolves all literal matches and actual style sizes in one atomic operation. Use the native commands below for other capabilities.
+
 `office_document_help` without arguments returns categories. Pass `category` for a small related set or `command` for a single exact parameter schema from the running engine. The running registry is authoritative. This index covers all commands currently enabled by the Word bridge; availability can change with engine versions.
 
 | Category | Enabled commands | Agent usage |

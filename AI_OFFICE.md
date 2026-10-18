@@ -42,3 +42,7 @@ GitHub Copilot sign-in is not part of AI Office. Chat and agent surfaces are bac
 Validate the office engines and custom-document save/undo flow with `node extensions/ai-office-common/test.mts` after building the extensions and Rust engines. Generated files and local test documents stay under ignored build directories.
 
 Word agent edits support atomic batches with Unicode character ranges and explicit applied-operation receipts. The agent checks scope before claiming completion and can inspect actual document style sizes. Document history is addressed by file URI, so Undo/Redo works while chat has focus; request checkpoints use that same history and can be restored through chat or the history tool. Checkpoints are session-local and follow ordinary redo-branch and undo-retention limits.
+
+Common Word formatting uses `office_document_format`: literal queries resolve matching blocks and Unicode ranges internally, apply all properties atomically, and return verified scope counts. `sizeFromStyle` copies the actual document style size. Invalid text-update/formatting combinations are rejected; repeated identical errors stop early with an honest result.
+
+Word request checkpoints use the standard chat **Restore Checkpoint**, **Start Over**, and **Redo** controls and confirmation settings. Custom-document history follows the same request boundaries as the native chat timeline; no separate restore button is added to agent responses.

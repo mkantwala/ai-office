@@ -12,6 +12,7 @@ import { activityRegion, type ActivityRegion } from './agentActivity.js';
 import type { Kind, State, Command } from './types.js';
 import { registerDocumentTools, type DocumentToolInput } from './documentTools.js';
 import { activeAgentRequest, DocumentHistory } from './agentRequest.js';
+import { prepareWordFormatting } from './wordFormatting.js';
 
 interface View { state: State; pages: number[][]; commands?: Command[] }
 class Document implements vscode.CustomDocument {
@@ -376,17 +377,26 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 		return { uri: doc.uri.toString(), version: doc.version, ...historyStatus(doc), completed: true };
 	};
 	if (kinds.includes('word')) {
-		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.word.restoreCheckpoint', async (uri: string, checkpoint: string) => {
-			const doc = documents.get(uri);
-			if (!doc) { throw new Error('Reopen the document; checkpoints are available only for its current editing session.'); }
-			return history(doc, { operation: 'restore', checkpoint });
-		}));
 		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.word.requestCheckpoints', (request: string) =>
 			[...documents.values()].filter(doc => doc.history.checkpoints.has(request)).map(doc => ({ uri: doc.uri.toString(), name: basename(doc.uri.path), checkpoint: request }))));
-		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.restoreChatCheckpoint', async (request: string) => {
-			const targets = [...documents.values()].filter(doc => doc.history.checkpoints.has(request));
-			for (const doc of targets) { await history(doc, { operation: 'restore', checkpoint: request }); }
-			return targets.length > 0;
+		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.word.navigateChatHistory', async (requests: { requestId: string; applied: boolean }[]) => {
+			const plans: { doc: Document; position: number }[] = [];
+			for (const doc of documents.values()) {
+				await doc.serial;
+				const relevant = requests.filter(request => doc.history.checkpoints.has(request.requestId));
+				if (!relevant.length) { continue; }
+				const undone = relevant.filter(request => !request.applied).map(request => doc.history.checkpoints.get(request.requestId)!);
+				const position = undone.length ? Math.min(...undone) : doc.history.end;
+				if (position < doc.history.cursor && doc.history.nativeStepsTo(position) > (doc.view.state.undoDepth ?? doc.history.cursor)) {
+					throw new Error('This document checkpoint is older than the available undo history.');
+				}
+				plans.push({ doc, position });
+			}
+			for (const { doc, position } of plans) {
+				while (doc.history.cursor !== position) {
+					await history(doc, { operation: doc.history.cursor < position ? 'redo' : 'undo' });
+				}
+			}
 		}));
 	}
 	if (kinds.includes('word')) {
@@ -406,6 +416,16 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				if (tool === 'history') { return history(doc, input, token); }
 				const task = doc.serial.then(async () => {
 					if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
+					if (tool === 'format') {
+						if (input.ids !== undefined && input.version !== doc.version || input.version !== undefined && input.version !== doc.version) { throw new Error('Document changed. Read the target again before formatting IDs. Query-only formatting can resolve fresh targets without a prior read.'); }
+						const plan = await prepareWordFormatting(input, args => doc.client.request('agentRead', { args }));
+						const result = await agentEdits.get('word')!(doc, { operation: 'batch', version: doc.version, edits: plan.edits }, token) as Record<string, unknown>;
+						return {
+							uri: result.uri, version: result.version, saved: result.saved, undoable: result.undoable, appliedEdits: result.appliedEdits,
+							verifiedScope: true, matchedBlocks: plan.matchedBlocks, matchedRanges: plan.matchedRanges, scope: plan.scope, target: plan.target, commands: plan.commands,
+							guidance: 'The complete resolved formatting batch succeeded atomically. These counts verify the selected scope. Do not repeat it or reread unchanged blocks; only perform any still-missing user requirements.'
+						};
+					}
 					if (tool === 'edit') { return agentEdits.get('word')!(doc, input, token); }
 					if (tool === 'activity') {
 						if (input.operation === 'stop') { await doc.stopActivity(); }

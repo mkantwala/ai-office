@@ -103,11 +103,115 @@
 				}
 			},
 			{
+				"name": "office_document_format",
+				"toolReferenceName": "officeDocumentFormat",
+				"displayName": "Format Word Content",
+				"userDescription": "Format matching text or selected document blocks.",
+				"modelDescription": "Preferred tool for Word formatting. In ONE call, resolves literal query matches across the document, handles pagination internally, resolves style font sizes, and atomically applies all format properties to all selected targets. query + format needs no prior read or version. ids requires a fresh version. Default scope=all and target=matches for a query; default target=paragraphs for ids. Returns exact affected counts and a single undoable result. Do not use text update for formatting.",
+				"canBeReferencedInPrompt": true,
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"uri": {
+							"type": "string"
+						},
+						"query": {
+							"type": "string",
+							"maxLength": 500,
+							"description": "Literal text to format; matching is case-insensitive. Can also narrow text inside supplied ids."
+						},
+						"ids": {
+							"type": "array",
+							"minItems": 1,
+							"maxItems": 200,
+							"items": {
+								"type": "string"
+							},
+							"description": "Optional block IDs from a current read. Omit when query identifies the intended text."
+						},
+						"version": {
+							"type": "string",
+							"description": "Required with ids. Omit for query-only formatting, which resolves fresh targets internally."
+						},
+						"scope": {
+							"type": "string",
+							"enum": [
+								"all",
+								"first"
+							],
+							"description": "all formats every match; first formats the first occurrence only. Defaults to all."
+						},
+						"target": {
+							"type": "string",
+							"enum": [
+								"matches",
+								"paragraphs"
+							],
+							"description": "matches formats only matching characters; paragraphs formats whole paragraphs."
+						},
+						"format": {
+							"type": "object",
+							"minProperties": 1,
+							"properties": {
+								"bold": {
+									"type": "boolean"
+								},
+								"italic": {
+									"type": "boolean"
+								},
+								"underline": {
+									"type": "boolean"
+								},
+								"font": {
+									"type": "string"
+								},
+								"size": {
+									"type": "number",
+									"minimum": 1,
+									"maximum": 1638,
+									"description": "Font size in points. Use sizeFromStyle instead when matching a document style."
+								},
+								"sizeFromStyle": {
+									"type": "string",
+									"description": "Copy the actual font size of a named document style, without changing the paragraph style."
+								},
+								"paragraphStyle": {
+									"type": "string",
+									"description": "Apply a paragraph style. This affects the paragraph, unlike sizeFromStyle."
+								},
+								"alignment": {
+									"type": "string",
+									"enum": [
+										"left",
+										"center",
+										"right",
+										"justify",
+										"distribute",
+										"start",
+										"end"
+									]
+								},
+								"lineSpacing": {
+									"type": "number",
+									"minimum": 0.5,
+									"maximum": 10
+								}
+							},
+							"additionalProperties": false
+						}
+					},
+					"required": [
+						"format"
+					],
+					"additionalProperties": false
+				}
+			},
+			{
 				"name": "office_document_edit",
 				"toolReferenceName": "officeDocumentEdit",
 				"displayName": "Edit Word Content",
 				"userDescription": "Edit Word Content in the live Word editor.",
-				"modelDescription": "Apply atomic, undoable Word edits with a fresh version. Use operation=batch and edits=[...] for multiple targets or several actions; all succeed together or none do, and Undo/Redo handles the whole batch. Each edit has an internal block id. Character formatting commands accept Unicode start/end ranges. Read all target pages and exact command schemas first; never claim broader coverage than appliedEdits confirms.",
+				"modelDescription": "Use for content changes: insert/delete blocks, update text, or atomic batches of content edits. For formatting use office_document_format, which resolves matching targets and style sizes itself. update changes text ONLY: never attach command, params or formatting fields to update. Advanced operation=command requires an exact engine command discovered through help. Return receipts confirm completed operations.",
 				"canBeReferencedInPrompt": true,
 				"inputSchema": {
 					"type": "object",
@@ -481,6 +585,7 @@
 	},
 	"enabledApiProposals": [
 		"defaultChatParticipant",
+		"chatParticipantPrivate",
 		"chatProvider"
 	]
 }

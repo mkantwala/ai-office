@@ -2,6 +2,12 @@
 
 Read results contain `uri`, `version`, and paginated blocks with `id`, `kind`, `parentId`, `style`, a text slice, `textLength`, `textOffset`, `nextTextOffset`, and child count. `nextOffset` continues the block list. Selection reads return `content`, `selection`, and bounded `selectedText`. A selection may be backwards or span multiple blocks; never assume its start/end describe one paragraph.
 
+## Format
+
+Prefer `office_document_format` for formatting: `{query:"literal text",scope:"all",format:{underline:true,sizeFromStyle:"Heading 1"}}`. Queries are literal and case-insensitive; `scope:"first"` selects only the first occurrence. One call resolves paginated targets, Unicode ranges and actual style sizes, then commits every property atomically. No preliminary read is needed for a query. `target:"matches"` formats matching text; `target:"paragraphs"` formats containing paragraphs. Current block `ids` can narrow targets but require a fresh version.
+
+Supported properties: `bold`, `italic`, `underline` (explicit booleans), `font`, `size` (points), `sizeFromStyle`, `paragraphStyle`, `alignment`, `lineSpacing`. Use either size or sizeFromStyle. Copying size does not apply the paragraph style. Successful receipts verify scope; do not repeat formatting or reread unchanged targets. Unsupported or oversized plans fail before editing.
+
 ## Create
 
 Use `operation: insert`, an existing paragraph/table `id`, `position: before|after`, and a `blocks` array. New IDs are assigned by the application. Existing IDs survive insertion. To insert inside a cell, target one of its paragraphs.
@@ -20,7 +26,7 @@ Default reads return small snippets. Use `query` for text search or `parentId:"b
 
 Use `operation: update`, a paragraph/heading/list-item ID, and `text`. Without offsets this replaces the paragraph's text. Supply `start` and `end` for a smaller replacement. Offsets count Unicode code points, not UTF-16 code units or bytes; start is inclusive and end exclusive. An empty range inserts text. An empty replacement deletes that range. Preserve inline objects and formatting by targeting only the intended text range; whole-paragraph replacement also replaces its inline contents.
 
-Use `operation: command` for formatting, images, links or comments. Fetch the exact schema from help, then provide `command` and `params`. Character formatting accepts optional Unicode `start`/`end` offsets to target a substring. Without them, formatting/review commands target the block's paragraph range; insert/text commands run at the end of that range. Current commands cannot target an arbitrary subset of cells as one noncontiguous selection.
+Text updates accept no formatting fields. Prefer `office_document_format` for supported formatting. Use `operation: command` for other formatting, images, links or comments. Fetch the exact schema from help, then provide `command` and `params`. Character formatting accepts optional Unicode `start`/`end` offsets to target a substring. Without them, formatting/review commands target the block's paragraph range; insert/text commands run at the end of that range. Current commands cannot target an arbitrary subset of cells as one noncontiguous selection.
 
 ## Delete
 

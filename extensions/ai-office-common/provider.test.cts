@@ -160,7 +160,7 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 	const invoke = async (name, input, cancellation = token) => JSON.parse((await tools.get('office_document_' + name).invoke({ input }, cancellation)).content[0].value);
 	try {
 		doc.panels.add({ active: true, webview: { postMessage: async message => { messages.push(message); } } });
-		assert.equal(tools.size, 6);
+		assert.equal(tools.size, 7);
 		const initial = await invoke('read', {});
 		assert.equal(initial.blocks[0].text, 'Initial content');
 		const first = withAgentRequest('test-request', () => invoke('edit', { operation: 'update', id: 'internal-id', version: initial.version, text: 'First change' }));
@@ -182,6 +182,23 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		await invoke('history', { operation: 'restore', checkpoint: 'test-request', version: status.version });
 		assert.equal((await invoke('read', {})).blocks[0].text, 'Initial content');
 		assert.equal(Buffer.from(await doc.enqueue(() => doc.snapshot())).toString(), 'Initial content');
+		const navigate = commands.get('aiOffice.word.navigateChatHistory');
+		await navigate([{ requestId: 'test-request', applied: true }]);
+		assert.equal((await invoke('read', {})).blocks[0].text, 'First change');
+		await withAgentRequest('second-request', async () => {
+			let state = await invoke('read', {});
+			await invoke('edit', { operation: 'update', id: 'internal-id', version: state.version, text: 'Second change' });
+			state = await invoke('read', {});
+			await invoke('edit', { operation: 'update', id: 'internal-id', version: state.version, text: 'Third change' });
+		});
+		await navigate([{ requestId: 'test-request', applied: true }, { requestId: 'second-request', applied: false }]);
+		assert.equal((await invoke('read', {})).blocks[0].text, 'First change', 'Checkpoint restores every operation in the selected request');
+		await navigate([{ requestId: 'test-request', applied: true }, { requestId: 'second-request', applied: true }]);
+		assert.equal((await invoke('read', {})).blocks[0].text, 'Third change', 'Default timeline Redo reapplies all operations');
+		await navigate([{ requestId: 'test-request', applied: false }, { requestId: 'second-request', applied: false }]);
+		assert.equal((await invoke('read', {})).blocks[0].text, 'Initial content', 'Start Over restores all requests');
+		await navigate([{ requestId: 'unrelated-session', applied: false }]);
+		assert.equal((await invoke('read', {})).blocks[0].text, 'Initial content');
 		let current = await invoke('read', {});
 		const failure = await invoke('edit', { operation: 'update', id: 'internal-id', version: current.version, text: 'fail' });
 		assert.match(failure.error, /Invalid edit/);
