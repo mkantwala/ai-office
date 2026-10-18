@@ -18,11 +18,13 @@ export function wordMenus(select: HTMLSelectElement, table: HTMLButtonElement, i
 		button.dataset.wordMenu = 'true'; button.setAttribute('aria-haspopup', 'dialog'); button.setAttribute('aria-expanded', 'false'); button.setAttribute('aria-controls', id);
 		const menu = document.createElement('div'); menu.id = id; menu.className = 'word-visual-menu'; menu.popover = 'manual';
 		menu.setAttribute('role', 'dialog'); menu.setAttribute('aria-label', label); document.body.append(menu); menus.push(menu);
-		const close = (restore = false) => { if (menu.matches(':popover-open')) { menu.hidePopover(); } button.setAttribute('aria-expanded', 'false'); if (restore) { button.focus(); } };
+		const close = (restore = false) => { if (menu.matches(':popover-open')) { menu.hidePopover(); } button.setAttribute('aria-expanded', 'false'); if (restore) { const overflow = button.closest<HTMLElement>('.word-toolbar-overflow'); (overflow && !overflow.matches(':popover-open') ? document.querySelector<HTMLElement>('.word-more-button') : button)?.focus(); } };
 		button.addEventListener('click', () => {
 			if (menu.matches(':popover-open')) { close(true); return; }
 			for (const other of menus) { if (other.matches(':popover-open')) { other.hidePopover(); } }
-			const rect = button.getBoundingClientRect(); menu.showPopover(); button.setAttribute('aria-expanded', 'true');
+			const rect = button.getBoundingClientRect();
+			const overflow = button.closest<HTMLElement>('.word-toolbar-overflow'); if (overflow?.matches(':popover-open')) { overflow.hidePopover(); }
+			menu.showPopover(); button.setAttribute('aria-expanded', 'true');
 			menu.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - menu.offsetWidth - 8))}px`;
 			menu.style.top = `${Math.max(8, Math.min(rect.bottom + 6, innerHeight - menu.offsetHeight - 8))}px`;
 			menu.querySelector<HTMLElement>('[tabindex="0"], button')?.focus({ preventScroll: true });

@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { wordMenus } from './wordMenus.js';
+import { wordToolbarFeedback } from './wordToolbarFeedback.js';
 
 interface WordToolbarControls {
 	undo: HTMLButtonElement;
@@ -77,6 +78,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	document.body.classList.add('word-document');
 	toolbar.setAttribute('role', 'toolbar');
 	toolbar.setAttribute('aria-orientation', 'horizontal');
+	toolbar.setAttribute('aria-label', 'Document formatting');
 	const row = document.createElement('div');
 	row.className = 'word-toolbar-row';
 	const group = (label: string, children: HTMLElement[]) => {
@@ -101,10 +103,11 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	controls.size.title = 'Font Size';
 	controls.size.setAttribute('aria-label', 'Font Size');
 	for (const [index, label] of ['Bold', 'Italic', 'Underline'].entries()) {
-		controls.emphasis[index].title = label;
+		controls.emphasis[index].title = `${label} (${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+'}${['B', 'I', 'U'][index]})`;
 		controls.emphasis[index].setAttribute('aria-label', label);
 		controls.emphasis[index].classList.add('word-emphasis-button');
 	}
+	controls.save.classList.add('word-save-button');
 	const history = group('Document', [iconButton(controls.undo, 'undo'), iconButton(controls.redo, 'redo'), iconButton(controls.save, 'save'), ...(controls.versions ? [controls.versions] : [])]);
 	const menus = wordMenus(controls.style, controls.table, insertTable, focusDocument);
 	const style = group('Styles', [menus.style]);
@@ -161,7 +164,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	}, listen);
 	row.addEventListener('keydown', event => {
 		if (!(event.target instanceof HTMLButtonElement) || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { return; }
-		const items = [...row.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled)')];
+		const items = [...row.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled)')].filter(item => item.getClientRects().length > 0);
 		const index = items.indexOf(event.target);
 		const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length;
 		event.preventDefault(); items[next]?.focus();
@@ -180,11 +183,13 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 			else { focused.focus({ preventScroll: true }); }
 		}
 	};
-	const observer = new ResizeObserver(layout);
+	let width = row.clientWidth;
+	const observer = new ResizeObserver(() => { if (row.clientWidth !== width) { width = row.clientWidth; layout(); } });
 	observer.observe(row);
 	layout();
+	const disposeFeedback = wordToolbarFeedback();
 	return () => {
-		observer.disconnect(); events.abort(); menus.dispose(); overflow.remove();
+		observer.disconnect(); events.abort(); disposeFeedback(); menus.dispose(); overflow.remove();
 		toolbar.classList.remove('word-toolbar'); document.body.classList.remove('word-document');
 	};
 }

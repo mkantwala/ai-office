@@ -647,10 +647,10 @@ index 0000000..bb439c3
 +}
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..8d863f4
+index 0000000..8ce280a
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,316 @@
+@@ -0,0 +1,319 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -722,7 +722,10 @@ index 0000000..8d863f4
 +
 +    pub fn state(&self) -> Result<String, JsValue> {
 +        let sel = &self.session.sel;
-+        let caret = self.layout.caret_on(&sel.focus, self.session.page_hint).map(|c| json!({"page":c.page,"x":c.x,"y":c.top,"height":c.height}));
++        let caret = self
++            .layout
++            .caret_on(&sel.focus, self.session.page_hint)
++            .map(|c| json!({"page":c.page,"x":c.x,"y":c.top,"height":c.height,"width":c.width}));
 +        let rects: Vec<_> = self
 +            .layout
 +            .selection_rects(&self.session.doc, &sel.anchor, &sel.focus, self.session.page_hint)
@@ -1452,6 +1455,31 @@ index cdbe790..4ee1b20 100644
      let id = style_id(s, name)?;
      let kind = s.doc.styles.get(&id).map(|x| x.kind).unwrap_or_default();
      if kind == StyleKind::Character {
+diff --git a/crates/layout/src/hit.rs b/crates/layout/src/hit.rs
+index 12b75ac..979229d 100644
+--- a/crates/layout/src/hit.rs
++++ b/crates/layout/src/hit.rs
+@@ -408,8 +408,18 @@ impl DocLayout {
+             // In the lines' own frame (turned text turns it onto the page).
+             let top = l.top - first.top;
+             // Caret spans the text height (ascent + descent), not the full line spacing.
+-            let (asc, desc) = para.caret_metrics(li);
+-            let base = top + (l.baseline - l.top);
++            let cluster = para.clusters.partition_point(|cluster| cluster.end <= pos.off);
++            let style = para
++                .clusters
++                .get(cluster)
++                .or_else(|| para.clusters.last())
++                .and_then(|cluster| para.styles.get(usize::from(cluster.style)))
++                .or_else(|| para.styles.first());
++            let (asc, desc, shift) = style.map(|style| (style.ascent, style.descent, style.shift)).unwrap_or_else(|| {
++                let (asc, desc) = para.caret_metrics(li);
++                (asc, desc, 0.0)
++            });
++            let base = top + (l.baseline - l.top) - shift;
+             let ctop = (base - asc).max(top);
+             let r = crate::turn_rect(*turn, *x, *y, Rect::new(cx, ctop, 0.0, (base + desc - ctop).max(4.0)));
+             return Some(Caret { page: pi, x: r.x, top: r.y, height: r.h, width: r.w });
 diff --git a/docs/roadmap.md b/docs/roadmap.md
 index eb3810e..c6b7ed3 100644
 --- a/docs/roadmap.md

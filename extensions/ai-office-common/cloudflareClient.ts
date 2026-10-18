@@ -155,7 +155,7 @@ export async function runOfficeAgent(options: {
 				try {
 					const value = JSON.parse(result);
 					if (['office_document_edit', 'office_document_format', 'office_document_draft', 'office_document_comments'].includes(call.function.name) && typeof value.version === 'string' && (['office_document_edit', 'office_document_format'].includes(call.function.name) || Array.isArray(value.appliedEdits)) && !value.error) {
-						compact = JSON.stringify({ completed: true, uri: value.uri, version: value.version, undoable: value.undoable, saved: value.saved, appliedEdits: value.appliedEdits, ...(JSON.stringify(value.created || []).length <= 8000 ? { created: value.created } : {}), commandResult: value.commandResult, filledSectionId: value.filledSectionId, draft: value.draft ? { pending: value.draft.pending } : undefined, contentTruncated: true, guidance: 'The edit completed. Read a smaller page or text chunk to inspect it. Do not repeat the completed edit.' });
+						compact = JSON.stringify({ completed: true, warnings: value.warnings, uri: value.uri, version: value.version, undoable: value.undoable, saved: value.saved, appliedEdits: value.appliedEdits, ...(JSON.stringify(value.created || []).length <= 8000 ? { created: value.created } : {}), commandResult: value.commandResult, filledSectionId: value.filledSectionId, draft: value.draft ? { pending: value.draft.pending } : undefined, contentTruncated: true, guidance: 'The edit completed. Read a smaller page or text chunk to inspect it. Do not repeat the completed edit.' });
 					}
 				} catch { /* Non-JSON results use the ordinary context limit error. */ }
 				result = compact || JSON.stringify({ error: 'Result exceeds the context budget. Request a smaller page, text chunk, guide or exact command.' });

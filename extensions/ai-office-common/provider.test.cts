@@ -156,14 +156,15 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		workspace: { isTrusted: true, fs: { stat: async () => ({ size: 32 }), readFile: async () => Buffer.from('Initial content') } }
 	};
 	class EngineClient {
-		text = 'Initial content'; revision = 0; past = []; future = [];
+		text = 'Initial content'; revision = 0; past = []; future = []; failNextRead = false;
 		async request(method, args) {
-			if (method === 'agentRead') { return { blocks: [{ id: 'internal-id', parentId: 'body', text: this.text }] }; }
+			if (method === 'agentRead') { if (this.failNextRead) { this.failNextRead = false; throw new Error('Preview read failed'); } return { blocks: [{ id: 'internal-id', parentId: 'body', text: this.text }] }; }
 			if (method === 'agentRects') { return [{ page: 0, x: 72, y: 72, width: 120, height: 20 }]; }
 			if (method === 'agentEdit') {
 				assert.equal(args.args.revision, this.revision);
 				if (args.args.text === 'fail') { throw new Error('Invalid edit'); }
 				this.past.push(this.text); this.future = []; this.text = args.args.text; this.revision++;
+				this.failNextRead = this.text === 'Applied despite preview failure';
 			}
 			if (method === 'execute' && args.command === 'edit.undo') { this.future.push(this.text); this.text = this.past.pop(); this.revision++; }
 			if (method === 'execute' && args.command === 'edit.redo') { this.past.push(this.text); this.text = this.future.pop(); this.revision++; }
@@ -276,6 +277,12 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		assert.equal((await invoke('draft', { operation: 'discard' })).pending, 0);
 		assert.match((await invoke('comments', { operation: 'resolve', version: current.version, commentId: 0 })).error, /explicit boolean/);
 		assert.match((await invoke('comments', { operation: 'reply', version: current.version, commentId: -1, text: 'No' })).error, /commentId/);
+		const applied = await invoke('edit', { operation: 'update', id: 'internal-id', version: current.version, text: 'Applied despite preview failure' });
+		assert.equal(applied.completed, true); assert.equal(applied.error, undefined); assert.match(applied.warnings[0], /Content was applied/);
+		assert.equal((await invoke('read', {})).blocks[0].text, 'Applied despite preview failure');
+		await invoke('history', { operation: 'undo', version: applied.version });
+		assert.equal((await invoke('read', {})).blocks[0].text, 'Initial content');
+
 
 	} finally { doc.dispose(); }
 });

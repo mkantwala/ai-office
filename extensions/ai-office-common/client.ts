@@ -25,7 +25,11 @@ export class EngineClient {
 			const id = ++this.nextId;
 			const timer = setTimeout(() => { this.fail(new Error('Document engine timed out. Reopen the tab.')); void this.worker.terminate(); }, 120000);
 			this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
-			this.worker.postMessage({ id, method, ...args });
+			try { this.worker.postMessage({ id, method, ...args }); }
+			catch (error) {
+				clearTimeout(timer); this.pending.delete(id);
+				reject(error instanceof Error ? error : new Error('Document request could not be sent.'));
+			}
 		});
 	}
 	private fail(error: Error) { this.stopped = error; for (const item of this.pending.values()) { clearTimeout(item.timer); item.reject(error); } this.pending.clear(); }

@@ -12,9 +12,12 @@ export class WordReview {
 	private drafts: DraftViewSection[] = [];
 	private readonly zones = new Map<number, Zone[]>();
 	private busy = false;
+	private layoutKey = '';
+	private firstPage?: Element;
+	private draftKey = '';
 	constructor(private readonly pages: HTMLElement, private readonly decide: (data: DocumentReview, action: 'keep' | 'undo', ids: string[]) => void, private readonly onLayout: () => void, private readonly discardDraft: (id: string) => void) { }
-	updateDrafts(sections: DraftViewSection[]) { this.drafts = sections; }
-	update(data: DocumentReview) { this.data = data; this.busy = false; }
+	updateDrafts(sections: DraftViewSection[]) { this.drafts = sections; this.draftKey = JSON.stringify(sections); }
+	update(data: DocumentReview) { this.data = data; if (this.busy) { this.layoutKey = ''; } this.busy = false; }
 	get count() { return this.data?.changes.length || 0; }
 	decideAll(action: 'keep' | 'undo') { if (this.data && !this.busy) { this.decide(this.data, action, this.data.changes.map(change => change.id)); } }
 	toView(page: number, y: number) { return y + (this.zones.get(page) || []).filter(zone => zone.at <= y).reduce((sum, zone) => sum + zone.height, 0); }
@@ -45,6 +48,9 @@ export class WordReview {
 	}
 	/** Rebuild only after state/resize; raster updates reuse the measured view zones. */
 	layout(dimensions: number[][]) {
+		const key = JSON.stringify([this.data?.version, this.data?.reviewVersion, this.draftKey, dimensions, this.pages.children.length, (this.pages.firstElementChild as HTMLElement | null)?.clientWidth]);
+		if (this.layoutKey === key && this.firstPage === this.pages.firstElementChild) { return; }
+		this.layoutKey = key; this.firstPage = this.pages.firstElementChild ?? undefined;
 		this.zones.clear();
 		for (const [page, element] of Array.from(this.pages.children).entries()) {
 			const node = element as HTMLElement;

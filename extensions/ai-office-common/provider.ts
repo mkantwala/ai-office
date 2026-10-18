@@ -234,15 +234,19 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 					// Some text commands merge/remove the target; the edit still succeeded.
 					doc.activity.rects = await doc.client.request<State['rects']>('agentRects', { blockId: targetId }).catch(() => []);
 				}
-				await doc.broadcast();
-				await publishReview(doc, request);
-				const content = await doc.client.request<Record<string, unknown>>('agentRead', { args: input.operation === 'comment' ? { operation: 'comments' } : ['insert', 'delete', 'replaceBlocks'].includes(String(input.operation)) ? { parentId, limit: 20 } : { id: targetId } });
+				// The native mutation is committed. Optional UI/read failures must not invite a duplicate edit.
+				const warnings: string[] = [];
+				try { await doc.broadcast(); } catch { warnings.push('Content was applied, but the editor display could not refresh. Reopen the view before continuing.'); }
+				try { await publishReview(doc, request); } catch { warnings.push('Content was applied, but change review could not refresh. Do not repeat this edit.'); }
+				let content: Record<string, unknown> = {};
+				try { content = await doc.client.request<Record<string, unknown>>('agentRead', { args: input.operation === 'comment' ? { operation: 'comments' } : ['insert', 'delete', 'replaceBlocks'].includes(String(input.operation)) ? { parentId, limit: 20 } : { id: targetId } }); }
+				catch { warnings.push('Content was applied; its preview could not be read. Request a small read to inspect it, without repeating the edit.'); }
 				const commandResult = JSON.stringify(result.state.agentCommandResult ?? null).length <= 8000 ? result.state.agentCommandResult : { truncated: true, guidance: 'Read the relevant document/comment blocks in pages.' };
-				return { uri: doc.uri.toString(), version: doc.version, rebased, ...content, created: result.state.agentCreatedBlocks || [], commandResult, appliedEdits: result.state.agentAppliedEdits || edits.map(edit => ({ id: edit.id, operation: edit.operation, command: edit.command, params: edit.params })), saved: false, undoable: result.state.revision !== before };
+				return { uri: doc.uri.toString(), version: doc.version, completed: true, ...(warnings.length ? { warnings } : {}), rebased, ...content, created: result.state.agentCreatedBlocks || [], commandResult, appliedEdits: result.state.agentAppliedEdits || edits.map(edit => ({ id: edit.id, operation: edit.operation, command: edit.command, params: edit.params })), saved: false, undoable: result.state.revision !== before };
 			} finally {
 				// Give fast operations enough time to paint, without delaying the engine itself.
 				await new Promise(resolve => setTimeout(resolve, Math.max(0, 400 - (Date.now() - started))));
-				await doc.stopActivity();
+				await doc.stopActivity().catch(() => { /* Cleanup cannot turn a committed edit into a failure. */ });
 			}
 		});
 		const provider: vscode.CustomEditorProvider<Document> = {
@@ -306,7 +310,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 								case 'undo': void vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri.toString(), 'undo').then(undefined, error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
 								case 'redo': void vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri.toString(), 'redo').then(undefined, error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
 								case 'save':
-									void vscode.commands.executeCommand('workbench.action.files.save').then(() => panel.webview.postMessage({ type: 'saved', pendingSections: doc.drafts.status().pending }), error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
+									void vscode.commands.executeCommand('workbench.action.files.save').then(() => panel.webview.postMessage(doc.dirty ? { type: 'error', error: 'The document was not saved. Your edits remain open; retry Save or use Save As.' } : { type: 'saved', pendingSections: doc.drafts.status().pending }), error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
 								case 'image': {
 									const files = await vscode.window.showOpenDialog({ canSelectMany: false, filters: { Images: ['png', 'jpg', 'jpeg', 'gif', 'webp'] } });
 									if (!files?.[0]) { break; }

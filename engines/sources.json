@@ -3,7 +3,7 @@
     "repository": "https://github.com/storytold/wordcraft.git",
     "revision": "159b84f54c74e9e82fb3109b758ae7dd6f4e3ab0",
     "patch": "wordcraft.patch",
-    "sha256": "0780ecefb6458640f970185c44368485bd82e065b0eaf3f7798dacd66d7742de"
+    "sha256": "88380fbda9c68e7655816d7b1a1d4196ec6b16bbffa7b0ff7db21f6f348c39fa"
   },
   "pdfcraft": {
     "repository": "https://github.com/storytold/pdfcraft.git",

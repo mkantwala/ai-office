@@ -102,6 +102,7 @@ function closeText() { flushText(); activeEditor?.remove(); activeEditor = undef
 async function ask(label: string, initial = ''): Promise<string | undefined> {
 	const dialog = el('dialog') as HTMLDialogElement;
 	const input = el('prompt') as HTMLInputElement;
+	if (dialog.open) { input.focus(); return undefined; }
 	el('prompt-label').textContent = label; input.value = initial; dialog.returnValue = 'cancel';
 	dialog.showModal(); input.focus(); input.select();
 	return new Promise(resolve => dialog.addEventListener('close', () => resolve(dialog.returnValue === 'ok' ? input.value : undefined), { once: true }));
@@ -115,7 +116,7 @@ function menu(label: string, items: [string, string][], action: (value: string) 
 	const select = document.createElement('select'); select.title = label; select.setAttribute('aria-label', label); select.disabled = disabled;
 	const placeholder = document.createElement('option'); placeholder.textContent = label; placeholder.value = ''; select.append(placeholder);
 	for (const [value, text] of items) { const option = document.createElement('option'); option.value = value; option.textContent = text; select.append(option); }
-	select.addEventListener('change', () => { action(select.value); select.value = ''; if (kind === 'word') { keyboard.focus({ preventScroll: true }); } });
+	select.addEventListener('change', () => { if (!select.value) { return; } action(select.value); select.value = ''; if (kind === 'word') { keyboard.focus({ preventScroll: true }); } });
 	toolbar.append(select); return select;
 }
 function needsBox() { if (kind !== 'word' && !selected) { message('Click a text box or paragraph first.'); return true; } return false; }
@@ -237,7 +238,7 @@ function renderNext() {
 	send('render', { request, page, scale: draft ? Math.min(scale, 1) : scale, ...(kind === 'word' && canvas && canvas.width > 1 ? { base: Number(canvas.dataset.frame) } : {}) });
 }
 function place(node: HTMLElement, page: number, x: number, y: number, w: number, h: number) {
-	const element = pages.children[page] as HTMLElement; if (!element) { return; }
+	const element = pages.children[page] as HTMLElement; if (!element || !dimensions[page]?.[0] || ![x, y, w, h].every(Number.isFinite)) { return; }
 	const scale = element.clientWidth / dimensions[page][0];
 	node.style.left = x * scale + 'px'; node.style.top = (kind === 'word' ? wordReview.toView(page, y * scale) : y * scale) + 'px';
 	node.style.width = w ? w * scale + 'px' : '2px'; node.style.height = h * scale + 'px'; element.append(node);
@@ -248,7 +249,8 @@ function overlay() {
 	if (kind === 'word') {
 		for (const r of state.rects || []) { const node = document.createElement('div'); node.className = 'selection'; place(node, r.page, r.x, r.y, r.width, r.height); }
 		if (state.caret && !(state.rects?.length)) {
-			const c = state.caret; const node = document.createElement('div'); node.className = 'caret'; place(node, c.page, c.x, c.y, 0, c.height);
+			const c = state.caret; const node = document.createElement('div'); node.className = 'caret'; place(node, c.page, c.x, c.y, c.width || 0, c.height || 0);
+			if (c.width && !c.height) { node.style.height = '1.5px'; } else { node.style.width = '1.5px'; }
 			if (revealWordCaret) { node.scrollIntoView({ block: 'nearest', inline: 'nearest' }); revealWordCaret = false; }
 			const box = node.getBoundingClientRect(); keyboard.style.left = box.x + 'px'; keyboard.style.top = box.y + 'px';
 		}
@@ -327,7 +329,8 @@ window.addEventListener('message', event => {
 		const repaginated = JSON.stringify(dimensions) !== JSON.stringify(data.pages);
 		state = data.state; dimensions = data.pages;
 		revealWordCaret = kind === 'word' && (data.command?.startsWith('text.') || data.command === 'insert.table');
-		comments.replaceChildren(); comments.hidden = !state.comments?.length;
+		const commentsOpen = comments.open;
+		comments.replaceChildren(); comments.open = commentsOpen; comments.hidden = !state.comments?.length;
 		const summary = document.createElement('summary'); summary.textContent = `Comments (${state.comments?.length || 0})`; comments.append(summary);
 		for (const comment of state.comments || []) { const p = document.createElement('p'); p.textContent = (comment.resolved ? 'Resolved · ' : '') + (comment.author || 'Comment') + ': ' + comment.text; if (typeof comment.parentId === 'number') { p.style.marginInlineStart = '24px'; } comments.append(p); }
 		if (!initialized) { initialized = true; buildToolbar(); }

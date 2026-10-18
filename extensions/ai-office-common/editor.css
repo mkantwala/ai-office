@@ -295,3 +295,19 @@ dialog::backdrop{background:#0005}dialog label{display:block;margin-bottom:12px;
 .word-review-summary button { padding: 4px 10px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
 
 .word-draft-zone{border-left:3px dashed #6e9cdd;background:#f1f6ff;color:#34465f;padding-block:12px;font:14px/1.5 system-ui}.word-draft-zone small,.word-draft-zone strong{display:block}.word-draft-zone small{font-size:11px;color:#566d8b}.word-draft-zone strong{font-size:17px}.word-draft-zone p{margin:4px 0 8px}.word-draft-zone button{padding:3px 10px;cursor:pointer}
+
+/* Quiet depth at rest; immediate intent and press feedback without continuous animation. */
+#toolbar.word-toolbar{border-color:color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 14%,transparent);box-shadow:0 2px 7px #17284408;background:linear-gradient(120deg,color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 9%,var(--vscode-editor-background,#fff)),color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 3%,var(--vscode-editor-background,#fff)))}
+.word-toolbar button,.word-toolbar select,.word-toolbar-overflow button,.word-toolbar-overflow select,.word-visual-menu button{transition:background-color 120ms ease,border-color 120ms ease,box-shadow 120ms ease,transform 100ms ease}
+.word-toolbar button:hover:not(:disabled),.word-toolbar select:hover:not(:disabled),.word-toolbar-overflow button:hover:not(:disabled),.word-toolbar-overflow select:hover:not(:disabled){background:color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 13%,var(--vscode-editor-background,#fff));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 14%,transparent)}
+.word-toolbar button:active:not(:disabled),.word-toolbar-overflow button:active:not(:disabled),.word-visual-menu button:active:not(:disabled){transform:scale(.94);background:color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 22%,var(--vscode-editor-background,#fff))}
+.word-toolbar button[aria-expanded=true],.word-toolbar button[aria-pressed=true]{background:color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 20%,var(--vscode-editor-background,#fff));color:var(--vscode-focusBorder,#315fa8)}
+.word-visual-menu:popover-open,.word-toolbar-overflow:popover-open{animation:word-menu-open 120ms ease-out}
+.word-control-tooltip{position:fixed;inset:auto;margin:0;max-width:min(300px,calc(100vw - 16px));padding:6px 9px;border:1px solid var(--vscode-widget-border,#ffffff22);border-radius:5px;background:var(--vscode-editorHoverWidget-background,#263246);color:var(--vscode-editorHoverWidget-foreground,#fff);box-shadow:0 3px 12px #0002;font:12px/1.4 var(--vscode-font-family,system-ui);pointer-events:none;overflow-wrap:anywhere}
+.word-control-tooltip:popover-open{animation:word-tooltip-open 100ms ease-out}
+@keyframes word-menu-open{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
+@keyframes word-tooltip-open{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.word-toolbar button,.word-toolbar select,.word-toolbar-overflow button,.word-toolbar-overflow select,.word-visual-menu button{transition:none}.word-toolbar button:active:not(:disabled),.word-toolbar-overflow button:active:not(:disabled),.word-visual-menu button:active:not(:disabled){transform:none}.word-visual-menu:popover-open,.word-toolbar-overflow:popover-open,.word-control-tooltip:popover-open{animation:none}}
+@media(forced-colors:active){#toolbar.word-toolbar{background:Canvas;border-color:ButtonText}.word-control-tooltip{background:Canvas;color:CanvasText;border-color:CanvasText}}
+
+.word-toolbar .word-save-button{color:var(--vscode-focusBorder,#315fa8);background:color-mix(in srgb,var(--vscode-focusBorder,#6487cc) 7%,transparent)}

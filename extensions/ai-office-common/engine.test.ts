@@ -49,6 +49,19 @@ function pdfFixture() {
 	return Buffer.from(value);
 }
 
+test('Word caret follows the active font rather than line spacing or a neighboring large run', async () => {
+	const engine = await openEngine('word', 'Caret.docx', docx, root);
+	try {
+		await engine.execute('select.text', { text: 'AI Office' }); await engine.execute('format.size', { size: 12 });
+		await engine.execute('caret.docStart', {}); const normal = engine.state().caret!;
+		await engine.execute('para.lineSpacing', { value: 3 }); const spaced = engine.state().caret!;
+		assert.ok(normal.height > 8 && normal.height < 24); assert.ok(Math.abs(normal.height - spaced.height) < .1, 'Leading must not enlarge the caret');
+		await engine.execute('select.text', { text: 'editing' }); await engine.execute('format.size', { size: 48 });
+		await engine.execute('caret.docStart', {}); assert.ok(Math.abs(engine.state().caret!.height - normal.height) < .1, 'Neighboring large text must not enlarge a small-text caret');
+		await engine.execute('select.text', { text: 'editing' }); const large = engine.state().caret!; assert.ok(large.height > normal.height * 2);
+	} finally { engine.dispose(); }
+});
+
 test('Word: native editing, toolbar operations, undo, export and reopen', async () => {
 	await mkdir(demo, { recursive: true }); await writeFile(resolve(demo, 'Memo.docx'), docx);
 	const engine = await openEngine('word', 'Memo.docx', docx, root);
