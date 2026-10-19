@@ -846,6 +846,47 @@ test('Word comment text update and reopening can commit atomically with one Undo
 	} finally { engine.dispose(); }
 });
 
+test('Word table previews match native resize and move plans without creating edits', async () => {
+	const engine = await openEngine('word', 'Table gestures.docx', docx, root);
+	try {
+		await engine.execute('caret.docEnd', {}); await engine.execute('text.newParagraph', {});
+		await engine.execute('insert.table', { rows: 3, cols: 3, borders: true });
+		const geometry = () => engine.render(0, .5).tables![0];
+		let table = geometry();
+		const from = { page: 0, x: table.cols[1], y: (table.rows[0].top + table.rows[0].bottom) / 2, reach: 3 };
+		const before = engine.state();
+		const preview = engine.tablePreview!({ ...from, command: 'table.resizeDrag', revision: before.revision, toX: from.x + 20, toY: from.y });
+		assert.equal(preview.kind, 'column'); assert.deepEqual(engine.state(), before, 'Preview must not alter selection, revision or history');
+		await engine.execute('table.resizeDrag', { ...from, toX: from.x + 20, toY: from.y });
+		assert.ok(Math.abs(geometry().cols[1] - preview.rects[0].x) < .1);
+		assert.equal(engine.state().undoDepth, before.undoDepth! + 1);
+		await engine.execute('edit.undo', {}); assert.deepEqual(geometry().cols, table.cols);
+		assert.throws(() => engine.tablePreview!({ ...from, revision: before.revision, command: 'table.resizeDrag', toX: from.x, toY: from.y }), /changed/);
+		table = geometry(); const move = { page: 0, x: table.cols[0] - 6, y: table.rows[0].top - 6, reach: 3 };
+		const moved = engine.tablePreview!({ ...move, command: 'table.moveDrag', revision: engine.state().revision, toX: move.x + 18, toY: move.y + 24 });
+		await engine.execute('table.moveDrag', { ...move, toX: move.x + 18, toY: move.y + 24 });
+		assert.ok(Math.abs(geometry().cols[0] - moved.rects[0].x) < .1); assert.ok(Math.abs(geometry().rows[0].top - moved.rects[0].y) < .1);
+		await engine.execute('edit.undo', {});
+		table = geometry(); const row = table.rows[0];
+		const rowArgs = { page: 0, x: (table.cols[0] + table.cols[1]) / 2, y: row.bottom, toX: (table.cols[0] + table.cols[1]) / 2, toY: row.bottom + 18, reach: 3 };
+		const rowPreview = engine.tablePreview!({ ...rowArgs, command: 'table.resizeDrag', revision: engine.state().revision });
+		await engine.execute('table.resizeDrag', rowArgs); assert.ok(Math.abs(geometry().rows[0].bottom - rowPreview.rects[0].y) < .1);
+		await engine.execute('edit.undo', {});
+		table = geometry(); const corner = { page: 0, x: table.cols.at(-1)! + 4, y: table.rows.at(-1)!.bottom + 4, reach: 3 };
+		const cornerArgs = { ...corner, toX: corner.x + 20, toY: corner.y + 30 };
+		const cornerPreview = engine.tablePreview!({ ...cornerArgs, command: 'table.resizeDrag', revision: engine.state().revision });
+		await engine.execute('table.resizeDrag', cornerArgs); table = geometry();
+		assert.ok(Math.abs(table.cols.at(-1)! - table.cols[0] - cornerPreview.rects[0].width) < .1);
+		await engine.execute('edit.undo', {});
+		await engine.execute('caret.set', { page: 0, x: table.cols[0] + 10, y: table.rows[0].top + 5 });
+		for (const [command, args] of [['table.rowHeight', { height: 30 }], ['table.autofit', { mode: 'fixed' }], ['table.distributeColumns', {}], ['table.distributeRows', {}], ['table.repeatHeader', { value: true }], ['table.borders', { kind: 'outside', width: 1, color: '286FB5' }], ['table.selectRow', {}], ['table.merge', {}]] as [string, Record<string, unknown>][]) { await engine.execute(command, args); }
+		table = geometry(); assert.ok(!table.rows[0].edges!.includes(1), 'Merged cells must not expose a draggable internal border');
+		await engine.execute('table.split', { columns: 3 });
+		const saved = await engine.export(); const reopened = await openEngine('word', 'Saved gestures.docx', saved, root);
+		try { const savedTable = reopened.render(0, .5).tables![0]; assert.equal(savedTable.rows.length, 3); assert.equal(savedTable.cols.length, 4); } finally { reopened.dispose(); }
+	} finally { engine.dispose(); }
+});
+
 test('Word table context commands preserve block identities, native undo and DOCX properties', async () => {
 	const engine = await openEngine('word', 'Context table.docx', docx, root);
 	try {

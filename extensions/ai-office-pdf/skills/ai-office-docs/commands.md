@@ -28,10 +28,13 @@ Use `office_document_help` with the exact command to load its parameters. Run ta
 - Insert: `table.insertRowAbove`, `table.insertRowBelow`, `table.insertColumnLeft`, `table.insertColumnRight`.
 - Delete: `table.deleteRow`, `table.deleteColumn`, `table.deleteTable`. Confirm the requested scope from the user's instruction.
 - Move: `table.moveAxis` with `axis:row|column`, `forward:true|false` moves one position. Merged cells must be unmerged first; edge moves are refused without mutation.
-- Size: `table.columnWidth` with `width` in points (72 points = 1 inch).
+- Size: `table.columnWidth` with `width` in points (72 points = 1 inch); `table.rowHeight` with `height` and `rule:atLeast|exact`.
+- Layout: `table.autofit` with `mode:contents|window|fixed`; `table.distributeColumns`, `table.distributeRows`; `table.repeatHeader` with explicit `value:true|false`.
+- Cells: `table.merge` uses the current cell selection; `table.split` accepts `columns` (default 2). Do not merge without a deliberate cell selection.
+- Borders: `table.borders` with `kind:all|outside|inside|none|top|bottom|left|right`, optional `width` in points and six-digit `color`.
 - Sort: `table.sort` with zero-based `column`, `descending` and optional `header`. Supply `header:true` to protect a header row when it is not marked as repeating in DOCX.
 - Cell formatting: `table.cellAlign` with `value:topLeft|topCenter|topRight|centerLeft|center|centerRight|bottomLeft|bottomCenter|bottomRight`; `table.shading` with six-digit `color` or `null` to clear.
-- Selection: `table.selectRow`, `table.selectColumn`, `table.selectTable` are interactive commands. For agent edits, address the paragraph in the intended cell directly.
-- Pointer gestures: `table.resizeDrag`, `table.moveDrag` accept zero-based `page` and page-point `x,y,toX,toY`. These support editor handles; prefer semantic commands for agents, rather than guessing coordinates.
+- Selection: `table.selectCell`, `table.selectRow`, `table.selectColumn`, `table.selectTable` are interactive commands. For agent edits, address the paragraph in the intended cell directly.
+- Pointer gestures: `table.selectAt`, `table.insertAt`, `table.fitColumn` use `page,x,y,reach`; `table.resizeDrag`, `table.moveDrag` accept zero-based `page` and page-point `x,y,toX,toY`. These support editor handles; prefer semantic commands for agents, rather than guessing coordinates.
 
 Table handles and context menus only expose geometry for rendered pages. They do not create an HTML copy of the table or bypass native review/history.

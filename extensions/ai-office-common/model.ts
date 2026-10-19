@@ -14,6 +14,7 @@ import type { Engine, Kind, State, Command } from './types.js';
 interface WasmDocument {
 	pages(): string; state(): string; commands(): string; execute(id: string, args: string): string;
 	tables?(page: number): string;
+	table_preview?(args: string): string;
 	export(): Uint8Array; render(page: number, scale: number): Uint8Array;
 	image?(page: number, name: string, bytes: Uint8Array): string;
 	width: number; height: number; free(): void;
@@ -191,6 +192,7 @@ function withContentCommands(kind: Kind, base: Engine): Engine {
 		},
 		export: () => base.export(),
 		render: (page, scale) => base.render(page, scale),
+		tablePreview: base.tablePreview,
 		dispose: () => base.dispose()
 	};
 }
@@ -216,6 +218,7 @@ export async function openEngine(kind: Kind, name: string, bytes: Uint8Array, ex
 		return value;
 	};
 	const engine: Engine = {
+		tablePreview: doc.table_preview ? args => JSON.parse(doc.table_preview!(JSON.stringify(args))) : undefined,
 		agent: kind === 'word' && doc.agent_read && doc.agent_edit && doc.agent_rects ? {
 			read: args => JSON.parse(doc.agent_read!(JSON.stringify(args))),
 			edit: async args => JSON.parse(doc.agent_edit!(JSON.stringify(args))),

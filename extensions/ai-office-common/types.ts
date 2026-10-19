@@ -7,9 +7,10 @@ import type { ParagraphProperties } from './paragraphProperties.js';
 
 export type Kind = 'word' | 'pdf' | 'slides';
 export interface Block { id: number; text: string; rect: number[]; font?: string; size?: number; row?: number; col?: number }
-export interface TableGeometry { cols: number[]; rows: { row: number; top: number; bottom: number }[]; endsHere: boolean }
+export interface TableGeometry { cols: number[]; rows: { row: number; top: number; bottom: number; edges?: number[] }[]; endsHere: boolean; movable?: boolean }
+export interface TablePreview { kind: 'column' | 'row' | 'corner' | 'move'; rects: { x: number; y: number; width: number; height: number }[] }
 export interface State {
-	formatting?: { font: string | null; size: number | null };
+	formatting?: { font: string | null; size: number | null; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean };
 	paragraph?: { id: string; properties: ParagraphProperties; mixed: string[]; ruler?: { left: number; width: number } | null };
 	undoDepth?: number;
 	agentAppliedEdits?: { id: string; operation: string; command?: string; params?: unknown }[];
@@ -46,6 +47,7 @@ export interface DocumentReviewChange {
 export interface DocumentReviewChanges { changes: DocumentReviewChange[] }
 export interface DocumentReview extends DocumentReviewChanges { uri: string; version: string; reviewVersion: number }
 export interface Engine {
+	tablePreview?(args: Record<string, unknown>): TablePreview;
 	agent?: DocumentAgent;
 	pages(): number[][];
 	state(): State;

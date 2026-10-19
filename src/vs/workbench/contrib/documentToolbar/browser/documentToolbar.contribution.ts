@@ -48,7 +48,7 @@ class DocumentToolbarContribution extends Disposable implements IWorkbenchContri
 			const shape = JSON.stringify([value.kind, value.controls.map(({ key, type, label, text, options }) => ({ key, type, label, text, options }))]);
 			if (shape !== this.shape) {
 				this.controls?.dispose(); this.toolbar.replaceChildren(); this.shape = shape;
-				this.controls = createDocumentToolbar(this.toolbar, value.controls, action => this.dispatch(action), () => this.editors.activeEditorPane?.focus());
+				this.controls = createDocumentToolbar(this.toolbar, value.controls, action => this.dispatch(action), () => { const input = this.activeInput(); if (input?.viewType === 'aiOffice.word') { this.focusWord(input, this.target?.instance); } else { this.editors.activeEditorPane?.focus(); } });
 			}
 			this.controls?.update(value.controls, value.paragraphStyle);
 			this.host.setAttribute('aria-busy', 'false');
@@ -82,11 +82,26 @@ class DocumentToolbarContribution extends Disposable implements IWorkbenchContri
 		void this.commands.executeCommand(`_aiOffice.${input.viewType.slice('aiOffice.'.length)}.requestToolbar`, input.resource).catch(() => { /* The document extension publishes its controls when ready. */ });
 	}
 
+	private focusWord(input: CustomEditorInput, instance?: string) {
+		input.webview.focus({ immediate: true });
+		void input.webview.postMessage({ type: 'focusDocument', instance });
+	}
+
 	private dispatch(action: DocumentToolbarAction) {
 		const target = this.interaction || this.target; this.interaction = undefined;
 		if (!target || target.context !== this.target?.context || this.activeInput()?.resource.toString() !== target.uri || this.activeInput()?.viewType !== `aiOffice.${target.kind}`) { return; }
+		if (target.kind === 'word') {
+			const input = this.activeInput();
+			if (!input || target.instance !== this.target?.instance || target.panel !== this.target?.panel) { return; }
+			// The view validates the instance and selection again; mutations continue
+			// through its extension-owned command queue and native history.
+			void input.webview.postMessage({ type: 'toolbarAction', context: target.context, instance: target.instance, action }).then(sent => {
+				if (sent && input === this.activeInput()) { this.focusWord(input, target.instance); }
+			}, error => this.notifications.error(error));
+			return;
+		}
 		void this.commands.executeCommand<boolean>(`_aiOffice.${target.kind}.toolbarAction`, URI.parse(target.uri), target.panel, target.instance, target.context, action).then(applied => {
-			if (applied && this.activeInput()?.resource.toString() === target.uri) { this.editors.activeEditorPane?.focus(); }
+			if (applied && target.kind !== 'word' && this.activeInput()?.resource.toString() === target.uri) { this.editors.activeEditorPane?.focus(); }
 		}, error => this.notifications.error(error));
 	}
 }

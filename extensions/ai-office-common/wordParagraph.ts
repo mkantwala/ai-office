@@ -197,7 +197,7 @@ export class WordParagraph {
 		if (this.ruler.hasPointerCapture(event.pointerId)) { this.ruler.releasePointerCapture(event.pointerId); }
 		if (g.tab !== undefined) { const tabs = structuredClone(g.start.paragraph!.properties.tabs || []); if (g.remove) { tabs.splice(g.tab, 1); } else { tabs[g.tab].pos = g.value; } if (!tabs.some((t, i) => tabs.some((other, j) => j !== i && Math.abs(t.pos - other.pos) < .01))) { this.apply({ tabs }, g.start); } }
 		else if (g.property) { this.apply({ indents: { [g.property]: g.value } }, g.start); }
-		this.key = ''; this.layout();
+		this.key = ''; this.layout(); this.focusDocument();
 	}
 	private rulerKey(event: KeyboardEvent) {
 		const marker = (event.target as HTMLElement).closest<HTMLElement>('[data-marker]'); if (!marker || !this.state.paragraph) { return; }

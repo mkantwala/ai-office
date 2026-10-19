@@ -87,18 +87,26 @@ dialog::backdrop{background:#0005}dialog label{display:block;margin-bottom:12px;
 .app-toolbar-hosted #error { top: 0; }
 
 /* Table chrome follows the reference proportions; content colors remain exact DOCX fills. */
+/* Controls sit on document paper, independent of the surrounding workbench theme. */
+.page.word { --word-table-control-background: #fff; --word-table-control-foreground: #526377; --word-table-control-border: #cbd5e1; --word-table-accent: #286fb5; }
 .word-table-handles { pointer-events: none; }
-.word-table-handles button { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; width: 20px; min-width: 0; height: 20px; min-height: 0; padding: 0; z-index: 8; pointer-events: auto; color: var(--vscode-descriptionForeground); background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: var(--vscode-cornerRadius-small, 4px); font: 12px/1 system-ui; transition: background 120ms, border-color 120ms; }
-.word-table-handles button[data-handle="row"] { width: 12px; height: 28px; border-radius: 8px; }
-.word-table-handles button[data-handle="column"] { width: 28px; height: 10px; border-radius: 6px; font-size: 0; }
-.word-table-handles button[data-handle="options"] { width: 28px; height: 28px; border-radius: var(--vscode-cornerRadius-large, 8px); font-size: 16px; }
-.word-table-handles button[data-handle="move"] { background: transparent; border-color: transparent; }
-.word-table-handles button:hover { background: var(--vscode-toolbar-hoverBackground); border-color: var(--vscode-descriptionForeground); color: var(--vscode-editor-foreground); }
-.word-table-handles button:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.word-table-handles button { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; width: 20px; min-width: 0; height: 20px; min-height: 0; padding: 0; margin: 0; z-index: 8; pointer-events: auto; color: var(--word-table-control-foreground); background: var(--word-table-control-background); border: 1px solid var(--word-table-control-border); border-radius: 4px; box-shadow: 0 1px 2px #16324f12; transition: color 120ms, border-color 120ms, background 120ms; }
+.word-table-handles button[data-handle="resize"] { width: 14px; height: 14px; border-radius: 2px; }
+.word-table-handles button:hover { background: #edf5fd; border-color: var(--word-table-accent); color: var(--word-table-accent); }
+.word-table-handles button:focus-visible { outline: 2px solid var(--word-table-accent); outline-offset: 2px; }
 .word-table-handles button[data-command="table.moveDrag"] { cursor: grab; }
 .word-table-handles button[data-command="table.resizeDrag"] { cursor: nwse-resize; }
-.word-table-handles svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; }
-.word-table-context { margin: 0; padding: 8px; width: min(292px, calc(100vw - 16px)); max-height: min(760px, calc(100vh - 16px)); overflow: auto; scrollbar-width: thin; scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; box-sizing: border-box; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 16px; background: var(--vscode-menu-background, var(--vscode-editorWidget-background)); color: var(--vscode-menu-foreground, var(--vscode-editor-foreground)); box-shadow: 0 8px 24px var(--vscode-widget-shadow); font: 14px/1.4 var(--vscode-font-family, system-ui); }
+.word-table-handles svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.word-table-handles button:is([data-handle="row"], [data-handle="column"], [data-handle="options"]) svg { stroke-width: 2.5; }
+.word-table-guide { position: absolute; inset: 0; pointer-events: none; z-index: 12; }
+.word-table-preview { position: absolute; min-width: 1px; min-height: 1px; box-sizing: border-box; border: 1px dashed var(--word-table-accent); }
+.word-table-guide[data-kind="column"] .word-table-preview { border-width: 0 0 0 1px; }
+.word-table-guide[data-kind="row"] .word-table-preview { border-width: 1px 0 0; }
+.word-table-guide[data-kind="move"] .word-table-preview { background: #fff9; box-shadow: 0 3px 12px #16324f1a; }
+.word-table-preview canvas { opacity: .55; }
+@media (prefers-reduced-motion: reduce) { .word-table-handles button { transition: none; } }
+@media (forced-colors: active) { .word-table-handles button { color: ButtonText; background: ButtonFace; border-color: ButtonText; } .word-table-preview { border-color: Highlight; } }
+.word-table-context { margin: 0; padding: 8px; width: min(292px, calc(100vw - 16px)); max-height: min(760px, calc(100vh - 16px)); overflow: auto; scrollbar-width: thin; scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; box-sizing: border-box; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 6px; background: var(--vscode-menu-background, var(--vscode-editorWidget-background)); color: var(--vscode-menu-foreground, var(--vscode-editor-foreground)); box-shadow: 0 8px 24px var(--vscode-widget-shadow); font: 13px/1.4 var(--vscode-font-family, system-ui); }
 .word-table-context button, .word-table-context summary { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 36px; padding: 8px 12px; margin: 0; border: 0; border-radius: var(--vscode-cornerRadius-small, 4px); background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; transition: background 120ms; }
 .word-table-context button > svg { flex: 0 0 16px; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; color: var(--vscode-descriptionForeground); }
 .word-table-context button:hover, .word-table-context summary:hover { background: var(--vscode-menu-selectionBackground); color: var(--vscode-menu-selectionForeground); }
@@ -116,3 +124,6 @@ dialog::backdrop{background:#0005}dialog label{display:block;margin-bottom:12px;
 .word-table-palette .no-fill::after { content: ''; position: absolute; left: 11px; top: -1px; width: 2px; height: 26px; background: var(--vscode-errorForeground); transform: rotate(45deg); }
 @media (prefers-reduced-motion: reduce) { .word-table-context button, .word-table-context summary, .word-table-handles button { transition: none; } }
 @media (forced-colors: active) { .word-table-handles button, .word-table-context, .word-table-palette button { border-color: ButtonText; } }
+
+.word-table-context:popover-open { animation: word-menu-open 180ms cubic-bezier(.2,.8,.2,1); transform-origin: top left; }
+@media (prefers-reduced-motion: reduce) { .word-table-context:popover-open { animation: none; } }

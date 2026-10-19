@@ -55,6 +55,7 @@ suite('Office toolbar in a browser', () => {
 	});
 	test('Word typing keeps display resolution without a blurry draft or delayed refinement', async () => {
 		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 2 });
+		page.setDefaultTimeout(10000);
 		try {
 			await page.goto(address);
 			await page.getByRole('button', { name: 'More Formatting' }).waitFor();
@@ -86,6 +87,7 @@ suite('Office toolbar in a browser', () => {
 
 	test('Word keeps one row at narrow widths and restores controls when expanded', async () => {
 		const page = await browser.newPage();
+		page.setDefaultTimeout(10000);
 		try {
 			await page.goto(address);
 			await page.getByRole('button', { name: 'More Formatting' }).waitFor();
@@ -106,12 +108,13 @@ suite('Office toolbar in a browser', () => {
 	});
 	test('Overflow retains formatting, insertion and keyboard behavior', async () => {
 		const page = await browser.newPage({ viewport: { width: 360, height: 800 } });
+		page.setDefaultTimeout(10000);
 		try {
 			await page.goto(address);
 			const more = page.getByRole('button', { name: 'More Formatting' });
 			await more.click();
 			await page.getByRole('button', { name: 'Font Family' }).click();
-			await page.getByRole('menuitem', { name: 'Arial', exact: true }).click();
+			await page.getByRole('menuitemradio', { name: 'Arial', exact: true }).click();
 			await page.waitForFunction(() => !document.querySelector('#word-toolbar-overflow')!.matches(':popover-open'));
 			await more.focus();
 			await page.keyboard.press('Enter');
@@ -124,6 +127,7 @@ suite('Office toolbar in a browser', () => {
 			await page.getByRole('button', { name: 'Bold', exact: true }).click();
 			assert.equal(await page.getByRole('button', { name: 'Save (Ctrl+S)', exact: true }).count(), 0);
 			await page.keyboard.press('Control+s');
+			if (!await page.getByRole('button', { name: 'Undo (Ctrl+Z)', exact: true }).isVisible()) { await more.click(); }
 			await page.getByRole('button', { name: 'Undo (Ctrl+Z)', exact: true }).click();
 			const messages = await page.evaluate(() => Reflect.get(window, 'officeMessages'));
 			assert.deepStrictEqual(messages.filter((message: { type: string }) => message.type !== 'ready'), [
@@ -137,11 +141,12 @@ suite('Office toolbar in a browser', () => {
 			await page.waitForFunction(() => document.querySelector('#word-toolbar-overflow')!.matches(':popover-open'));
 			await page.keyboard.press('Escape');
 			assert.equal(await more.evaluate(element => element === document.activeElement), true);
-			assert.equal(await page.getByRole('button', { name: 'Redo (Ctrl+Shift+Z)', exact: true }).isDisabled(), true);
+			assert.equal(await page.getByRole('button', { name: 'Redo (Ctrl+Shift+Z)', exact: true, includeHidden: true }).isDisabled(), true);
 		} finally { await page.close(); }
 	});
 	test('Word shows style previews and a table grid with hover and keyboard selection', async () => {
 		const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+		page.setDefaultTimeout(10000);
 		try {
 			await page.goto(address);
 			await page.getByRole('button', { name: 'Paragraph Style', exact: true }).click();
@@ -165,6 +170,7 @@ suite('Office toolbar in a browser', () => {
 	});
 	test('Word batches text without reordering a following formatting command', async () => {
 		const page = await browser.newPage();
+		page.setDefaultTimeout(10000);
 		try {
 			await page.goto(address);
 			await page.getByRole('button', { name: 'Paragraph Style', exact: true }).waitFor();
@@ -182,6 +188,7 @@ suite('Office toolbar in a browser', () => {
 	test('PDF and slides retain their existing controls', async () => {
 		for (const kind of ['pdf', 'slides']) {
 			const page = await browser.newPage();
+		page.setDefaultTimeout(10000);
 			try {
 				await page.goto(`${address}?kind=${kind}`);
 				await page.getByRole('button', { name: 'Insert text', exact: true }).waitFor();
@@ -194,6 +201,7 @@ suite('Office toolbar in a browser', () => {
 	});
 	test('Agent shimmer follows page coordinates, clears and respects reduced motion', async () => {
 		const page = await browser.newPage({ reducedMotion: 'reduce' });
+		page.setDefaultTimeout(10000);
 		try {
 			await page.goto(address);
 			await page.getByRole('button', { name: 'More Formatting' }).waitFor();
@@ -222,6 +230,7 @@ suite('Office toolbar in a browser', () => {
 	});
 	test('Paragraph panel patches only changed fields, guards selection and exposes accessible ruler controls', async () => {
 		const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+		page.setDefaultTimeout(10000);
 		try {
 			await page.goto(address); await page.getByRole('button', { name: 'More Formatting' }).waitFor();
 			const state = { revision: 4, undo: true, selection: { anchor: 1, focus: 1 }, caret: { page: 0, x: 72, y: 72, height: 12 }, paragraph: { id: 'internal-1', properties: { alignment: 'left', indents: { left: 0, right: 0, firstLine: 0 }, spacing: { before: 0, after: 8 }, lineSpacing: { rule: 'multiple', value: 1.15 }, tabs: [{ pos: 144, align: 'right', leader: 'dot' }], keepNext: false, keepLines: false, widowControl: true, pageBreakBefore: false }, mixed: [], ruler: { left: 72, width: 468 } } };
@@ -253,6 +262,7 @@ suite('Office toolbar in a browser', () => {
 
 	test('Ruler matches the page at narrow widths and high DPI, uses inch graduations and retains point-based edits', async () => {
 		const page = await browser.newPage({ viewport: { width: 1280, height: 1000 }, deviceScaleFactor: 2 });
+		page.setDefaultTimeout(10000);
 		try {
 			await page.goto(address); await page.getByRole('button', { name: 'More Formatting' }).waitFor();
 			await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: {
@@ -281,6 +291,31 @@ suite('Office toolbar in a browser', () => {
 		} finally { await page.close(); }
 	});
 
+	test('Long font names preserve the toolbar layout, selected options and reduced-motion behavior', async () => {
+		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 }, reducedMotion: 'no-preference' });
+		page.setDefaultTimeout(10000);
+		try {
+			await page.goto(address);
+			const font = page.getByRole('button', { name: 'Font Family', exact: true });
+			const before = await font.boundingBox(); assert.ok(before);
+			await font.click();
+			assert.equal(await page.getByRole('menu', { name: 'Font Family', exact: true }).evaluate(e => getComputedStyle(e).animationName), 'word-menu-open');
+			await page.getByRole('menuitemradio', { name: 'Times New Roman', exact: true }).click();
+			const after = await font.boundingBox(); assert.ok(after); assert.equal(after.width, before.width);
+			assert.equal(await font.locator('.word-control-value').innerText(), 'Times New Roman');
+			assert.equal(await font.locator('.word-control-value').evaluate(e => getComputedStyle(e).textOverflow), 'ellipsis');
+			await font.click(); assert.equal(await page.getByRole('menuitemradio', { name: 'Times New Roman', exact: true }).getAttribute('aria-checked'), 'true');
+			await page.keyboard.press('Escape');
+			for (const width of [640, 360, 1600]) {
+				await page.setViewportSize({ width, height: 800 });
+				await page.waitForFunction(() => { const row = document.querySelector('.word-toolbar-row')!; return row.scrollWidth <= row.clientWidth; });
+			}
+			await page.emulateMedia({ reducedMotion: 'reduce' }); await font.click();
+			assert.equal(await page.getByRole('menu', { name: 'Font Family', exact: true }).evaluate(e => getComputedStyle(e).animationName), 'none');
+			assert.equal(await page.getByRole('menuitemradio', { name: 'Times New Roman', exact: true }).getAttribute('aria-checked'), 'true');
+		} finally { await page.close(); }
+	});
+
 	test('Word button palettes and tooltips dispatch native formatting commands', async () => {
 		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 		page.setDefaultTimeout(10000);
@@ -297,7 +332,7 @@ suite('Office toolbar in a browser', () => {
 			await page.keyboard.press('End'); await page.keyboard.press('Enter');
 			const commands = await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((message: { type: string }) => message.type === 'execute'));
 			assert.deepEqual(commands.map((message: { command: string; args: object }) => [message.command, message.args]), [
-				['format.color', { color: 'C00000' }], ['format.highlight', { color: 'yellow' }], ['format.strikethrough', {}], ['format.size', { size: 48 }]
+				['format.color', { color: 'C00000' }], ['format.highlight', { color: 'yellow' }], ['format.strikethrough', {}], ['format.size', { size: 72 }]
 			]);
 			await page.getByRole('button', { name: 'Bold', exact: true }).hover();
 			await page.getByRole('tooltip').waitFor({ state: 'visible' });
@@ -309,8 +344,30 @@ suite('Office toolbar in a browser', () => {
 		} finally { await page.close(); }
 	});
 
+	test('Direct toolbar messages reject stale document instances and preserve typing order', async () => {
+		const page = await browser.newPage(); page.setDefaultTimeout(10000);
+		try {
+			await page.goto(address + '?hosted=1');
+			await page.waitForFunction(() => Reflect.get(window, 'officeMessages').some((m: { type: string }) => m.type === 'toolbarState'));
+			await page.evaluate(() => {
+				document.body.dataset.documentInstance = 'current-instance';
+				const context = Reflect.get(window, 'officeMessages').filter((m: { type: string }) => m.type === 'toolbarState').at(-1).context;
+				window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: { type: 'toolbarAction', instance: 'old-instance', context, action: { control: 'bold' } } }));
+			});
+			assert.equal(await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((m: { type: string }) => m.type === 'execute').length), 0);
+			await page.evaluate(() => {
+				const context = Reflect.get(window, 'officeMessages').filter((m: { type: string }) => m.type === 'toolbarState').at(-1).context;
+				window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: { type: 'toolbarAction', instance: 'current-instance', context, action: { control: 'bold' } } }));
+			});
+			await page.keyboard.insertText('After action');
+			await page.waitForFunction(() => Reflect.get(window, 'officeMessages').filter((m: { type: string }) => m.type === 'execute').length === 2);
+			assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((m: { type: string }) => m.type === 'execute').map((m: { command: string }) => m.command)), ['format.bold', 'text.insert']);
+		} finally { await page.close(); }
+	});
+
 	test('App toolbar reuses document actions while the in-tab toolbar stays hidden and stale selections are refused', async () => {
 		const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
+		page.setDefaultTimeout(10000);
 		try {
 			await page.goto(address + '/?hosted=1');
 			await page.waitForFunction(() => Reflect.get(window, 'officeMessages').some((message: { type: string }) => message.type === 'toolbarState'));
@@ -343,6 +400,7 @@ suite('Office toolbar in a browser', () => {
 
 	test('Font size steppers retain selection commands and Save/History stay out of the toolbar', async () => {
 		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+		page.setDefaultTimeout(10000);
 		try {
 			await page.goto(address);
 			await page.getByRole('button', { name: 'Increase Font Size', exact: true }).click();
@@ -350,6 +408,8 @@ suite('Office toolbar in a browser', () => {
 			await page.getByRole('button', { name: 'Decrease Font Size', exact: true }).click();
 			const commands = await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((m: { command?: string }) => m.command === 'format.size'));
 			assert.deepEqual(commands.map((m: { args: { size: number } }) => m.args.size), [12, 13, 12]);
+			assert.equal(await page.locator('#keyboard').evaluate(e => e === document.activeElement), true);
+			await page.keyboard.type('after size');
 			assert.equal(await page.getByRole('button', { name: 'Save (Ctrl+S)', exact: true }).count(), 0);
 			assert.equal(await page.getByRole('button', { name: /Document Versions/ }).count(), 0);
 		} finally { await page.close(); }
@@ -357,6 +417,7 @@ suite('Office toolbar in a browser', () => {
 
 	test('Table hover handles, context actions and border drags use native page coordinates and dismiss safely', async () => {
 		const page = await browser.newPage({ viewport: { width: 1200, height: 1000 } });
+		page.setDefaultTimeout(10000);
 		try {
 			await page.goto(address);
 			await page.getByRole('button', { name: 'More Formatting' }).waitFor();
@@ -364,19 +425,48 @@ suite('Office toolbar in a browser', () => {
 			await page.waitForFunction(() => Reflect.get(window, 'officeMessages').some((m: { type: string }) => m.type === 'render'));
 			await page.evaluate(() => {
 				const request = Reflect.get(window, 'officeMessages').filter((m: { type: string }) => m.type === 'render').at(-1).request;
-				window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: { type: 'rendered', request, page: 0, result: { width: 1, height: 1, pixels: new Uint8Array([255,255,255,255]), tables: [{ cols: [72, 250, 540], rows: [{ row: 0, top: 100, bottom: 140 }, { row: 1, top: 140, bottom: 180 }], endsHere: true }] } } }));
+				window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: { type: 'rendered', request, page: 0, result: { width: 1, height: 1, pixels: new Uint8Array([255,255,255,255]), tables: [{ cols: [72, 250, 540], rows: [{ row: 0, top: 100, bottom: 140, edges: [0, 2] }, { row: 1, top: 140, bottom: 180, edges: [0, 1, 2] }], endsHere: true }] } } }));
 			});
 			const paper = await page.locator('.page.word').boundingBox(); assert.ok(paper); const scale = paper.width / 612;
 			await page.mouse.move(paper.x + 400 * scale, paper.y + 160 * scale);
+			assert.equal(await page.getByRole('button', { name: 'Row options', exact: true }).count(), 0, 'Edge controls stay quiet over cell text');
+			await page.mouse.move(paper.x + 64 * scale, paper.y + 160 * scale);
 			assert.equal(await page.getByRole('button', { name: 'Row options', exact: true }).isVisible(), true);
 			await page.mouse.click(paper.x + 400 * scale, paper.y + 160 * scale, { button: 'right' });
 			await page.getByRole('menuitem', { name: 'Sort column descending', exact: true }).click();
 			let commands = await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((m: { type: string }) => m.type === 'execute'));
 			assert.deepEqual(commands.at(-1), { type: 'execute', command: 'table.sort', args: { column: 1, descending: true } });
-			await page.mouse.move(paper.x + 250 * scale, paper.y + 160 * scale); await page.mouse.down();
-			await page.mouse.move(paper.x + 280 * scale, paper.y + 160 * scale); await page.mouse.up();
+			await page.mouse.move(paper.x + 250 * scale, paper.y + 120 * scale);
+			assert.equal(await page.locator('.page.word').evaluate(e => getComputedStyle(e).cursor), 'text', 'Merged cells have no internal resize edge');
+			await page.mouse.move(paper.x + 250 * scale, paper.y + 160 * scale);
+			assert.equal(await page.locator('.page.word').evaluate(e => getComputedStyle(e).cursor), 'col-resize');
+			await page.mouse.down(); assert.equal(await page.locator('#keyboard').evaluate(e => e === document.activeElement), true); await page.mouse.move(paper.x + 280 * scale, paper.y + 160 * scale);
+			await page.waitForFunction(() => Reflect.get(window, 'officeMessages').some((m: { type: string }) => m.type === 'tablePreview'));
+			await page.evaluate(() => {
+				const m = Reflect.get(window, 'officeMessages').filter((m: { type: string }) => m.type === 'tablePreview').at(-1);
+				window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: { type: 'tablePreview', request: m.request, revision: m.args.revision, result: { kind: 'column', rects: [{ x: 280, y: 100, width: 0, height: 80 }] } } }));
+			});
+			assert.equal(await page.locator('.word-table-preview').count(), 1);
+			assert.equal(await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((m: { command?: string }) => m.command === 'table.resizeDrag').length), 0, 'Dragging must not mutate until release');
+			await page.mouse.up();
+			assert.equal(await page.locator('.word-table-preview').count(), 0);
+			assert.equal(await page.locator('#keyboard').evaluate(e => e === document.activeElement), true);
+			await page.mouse.move(paper.x + 400 * scale, paper.y + 140 * scale);
+			assert.equal(await page.locator('.page.word').evaluate(e => getComputedStyle(e).cursor), 'row-resize');
 			commands = await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((m: { type: string }) => m.type === 'execute'));
 			assert.equal(commands.at(-1).command, 'table.resizeDrag'); assert.ok(Math.abs(commands.at(-1).args.toX - 280) < 1);
+			await page.mouse.move(paper.x + 250 * scale, paper.y + 160 * scale); await page.mouse.down(); await page.mouse.move(paper.x + 300 * scale, paper.y + 160 * scale);
+			await page.keyboard.press('Escape'); await page.mouse.up();
+			assert.equal(await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((m: { command?: string }) => m.command === 'table.resizeDrag').length), 1, 'Escape cancels without an edit');
+			await page.mouse.dblclick(paper.x + 250 * scale, paper.y + 160 * scale);
+			commands = await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((m: { type: string }) => m.type === 'execute'));
+			assert.equal(commands.at(-1).command, 'table.fitColumn');
+			await page.mouse.click(paper.x + 400 * scale, paper.y + 160 * scale, { button: 'right' });
+			await page.getByRole('menuitem', { name: 'Set row height…', exact: true }).click();
+			await page.locator('#prompt').fill('30'); await page.locator('#confirm').click();
+			assert.equal(await page.locator('#keyboard').evaluate(e => e === document.activeElement), true);
+			await page.keyboard.type('continue');
+			await page.waitForFunction(() => Reflect.get(window, 'officeMessages').some((m: { command?: string }) => m.command === 'text.insert'));
 			await page.mouse.click(paper.x + 400 * scale, paper.y + 160 * scale, { button: 'right' });
 			await page.keyboard.press('Escape'); assert.equal(await page.getByRole('menu', { name: 'Table options', exact: true }).isVisible(), false);
 		} finally { await page.close(); }

@@ -174,7 +174,8 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			if (!target || target.doc.uri.toString() !== uri.toString() || target.doc.instance !== instance || !target.panel.active) { return false; }
 			return target.doc.enqueue(async () => {
 				if (!target.panel.active || target.doc.instance !== instance) { return false; }
-				return target.panel.webview.postMessage({ type: 'toolbarAction', context, action });
+				if (kind === 'word') { target.panel.reveal(target.panel.viewColumn, false); }
+				return target.panel.webview.postMessage({ type: 'toolbarAction', context, instance, action });
 			});
 		}));
 		const changed = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<Document>>();
@@ -307,7 +308,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				panel.webview.options = { enableScripts: true, localResourceRoots: [output] };
 				const nonce = randomBytes(24).toString('hex');
 				const resource = (name: string) => panel.webview.asWebviewUri(vscode.Uri.joinPath(output, name));
-				panel.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src data: blob:;"><link rel="stylesheet" href="${resource('editor.css')}"></head><body class="${appToolbar ? 'app-toolbar-hosted' : ''}"><header id="toolbar" aria-label="Document formatting"></header><div id="info"><span id="filename"></span><span id="hint"></span></div><div id="error" role="alert" hidden></div><main id="pages"></main><textarea id="keyboard" aria-label="Document text input" spellcheck="false"></textarea><dialog id="dialog"><form method="dialog"><label id="prompt-label" for="prompt"></label><input id="prompt"><div><button value="cancel">Cancel</button><button id="confirm" value="ok">Apply</button></div></form></dialog><script nonce="${nonce}" src="${resource('editor.js')}"></script></body></html>`;
+				panel.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src data: blob:;"><link rel="stylesheet" href="${resource('editor.css')}"></head><body data-document-instance="${doc.instance}" class="${appToolbar ? 'app-toolbar-hosted' : ''}"><header id="toolbar" aria-label="Document formatting"></header><div id="info"><span id="filename"></span><span id="hint"></span></div><div id="error" role="alert" hidden></div><main id="pages"></main><textarea id="keyboard" aria-label="Document text input" spellcheck="false"></textarea><dialog id="dialog"><form method="dialog"><label id="prompt-label" for="prompt"></label><input id="prompt"><div><button value="cancel">Cancel</button><button id="confirm" value="ok">Apply</button></div></form></dialog><script nonce="${nonce}" src="${resource('editor.js')}"></script></body></html>`;
 				const listener = panel.webview.onDidReceiveMessage(message => {
 					doc.serial = doc.serial.then(async () => {
 						try {
@@ -316,6 +317,14 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 									if (appToolbar && panel.active) { await vscode.commands.executeCommand('_sangamOne.documentToolbar.update', doc.uri, { kind, panel: panelId, instance: doc.instance, context: message.context, controls: message.controls, paragraphStyle: message.paragraphStyle }); }
 									break;
 								case 'ready': await doc.broadcast(); break;
+								case 'tablePreview': {
+									// Preview requests never change selection, history, or the document.
+									let result;
+									if (kind === 'word' && message.args?.revision === doc.view.state.revision) {
+										try { result = await doc.client.request('tablePreview', { args: message.args }); } catch { /* A stale drag is discarded. */ }
+									}
+									await panel.webview.postMessage({ type: 'tablePreview', request: message.request, revision: message.args?.revision, result }); break;
+								}
 								case 'render': {
 									const result = await doc.client.request('render', { page: message.page, scale: message.scale, ...(kind === 'word' ? { frame: message.request, base: message.base } : {}) });
 									await panel.webview.postMessage({ type: 'rendered', request: message.request, page: message.page, result }); break;

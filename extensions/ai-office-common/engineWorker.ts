@@ -49,6 +49,7 @@ parentPort?.on('message', message => {
 						if (message.review) { engine.agent?.reviewStart?.(); }
 						result = { state: await engine.execute(message.command, message.args), pages: engine.pages() };
 						if (message.review) { engine.agent?.reviewFinish?.(); } break;
+					case 'tablePreview': result = engine.tablePreview?.(message.args); break;
 					case 'export': result = await engine.export(); break;
 					case 'render': {
 						const raster = engine.render(message.page, message.scale);

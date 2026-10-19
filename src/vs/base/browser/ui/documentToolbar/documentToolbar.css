@@ -298,3 +298,18 @@
 
 .word-toolbar-group[data-label="Font"] > .word-button-control:first-child .word-dropdown-button { max-width: 136px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .word-toolbar-group[data-label="Font"] > .word-button-control:nth-of-type(2) .word-dropdown-button { min-width: 44px; font-variant-numeric: tabular-nums; }
+
+/* Fixed value slots keep long font names from changing the toolbar layout. */
+.word-toolbar-group[data-label="Font"] > .word-button-control:first-child { width: 124px; min-width: 0; flex: 0 0 124px; }
+.word-toolbar-group[data-label="Font"] > .word-button-control:first-child .word-dropdown-button { width: 100%; max-width: none; min-width: 0; }
+.word-toolbar-group[data-label="Font"] > .word-button-control:nth-of-type(2) { width: 52px; flex: 0 0 52px; }
+.word-toolbar-group[data-label="Font"] > .word-button-control:nth-of-type(2) .word-dropdown-button { width: 100%; min-width: 0; }
+.word-control-value { display: block; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; }
+.word-dropdown-button::after { flex: 0 0 5px; }
+.word-option-menu button[aria-checked="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.word-option-menu button[aria-checked="true"]::after { content: '✓'; margin-inline-start: auto; font: 13px var(--vscode-font-family, sans-serif); }
+.word-option-menu button { justify-content: flex-start; }
+.word-visual-menu:popover-open, .word-toolbar-overflow:popover-open { animation: word-menu-open 180ms cubic-bezier(.2,.8,.2,1); transform-origin: top left; }
+@keyframes word-menu-open { from { opacity: 0; transform: translateY(-5px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .word-visual-menu:popover-open, .word-toolbar-overflow:popover-open { animation: none; } }
+.monaco-workbench.reduce-motion .word-visual-menu:popover-open, .monaco-workbench.reduce-motion .word-toolbar-overflow:popover-open { animation: none; }

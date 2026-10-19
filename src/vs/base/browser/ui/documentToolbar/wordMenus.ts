@@ -31,10 +31,11 @@ export function wordMenus(select: HTMLSelectElement, table: HTMLButtonElement, i
 			menu.style.top = `${Math.max(8, Math.min(rect.bottom + 6, targetWindow.innerHeight - menu.offsetHeight - 8))}px`;
 			initialFocus()?.focus({ preventScroll: true });
 		}, listen);
-		menu.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true); } }, listen);
+		menu.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(true); } else if (event.key === 'Tab') { close(); } }, listen);
 		ownerDocument.addEventListener('pointerdown', event => { if (event.target instanceof targetWindow.Node && !menu.contains(event.target) && !button.contains(event.target)) { close(); } }, listen);
 		ownerDocument.addEventListener('focusin', event => { if (event.target instanceof targetWindow.Node && !menu.contains(event.target) && !button.contains(event.target)) { close(); } }, listen);
 		targetWindow.addEventListener('resize', () => close(), listen);
+		ownerDocument.addEventListener('scroll', event => { if (event.target instanceof targetWindow.Node && !menu.contains(event.target)) { close(); } }, { ...listen, capture: true });
 		menu.addEventListener('toggle', () => button.setAttribute('aria-expanded', String(menu.matches(':popover-open'))), listen);
 		return { menu, close };
 	};
@@ -92,12 +93,16 @@ export function wordMenus(select: HTMLSelectElement, table: HTMLButtonElement, i
 	const selector = (select: HTMLSelectElement, content: string | SVGSVGElement) => {
 		const button = ownerDocument.createElement('button'); button.type = 'button'; button.className = 'word-dropdown-button';
 		button.title = select.title; button.setAttribute('aria-label', select.getAttribute('aria-label') || select.title);
-		if (typeof content === 'string') { button.textContent = content; } else { button.append(content); }
+		const value = ownerDocument.createElement('span'); value.className = 'word-control-value';
+		if (typeof content === 'string') { value.textContent = content; button.append(value); } else { button.append(content); }
 		const wrapper = ownerDocument.createElement('span'); wrapper.className = 'word-button-control'; select.hidden = true; wrapper.append(button, select);
 		const items: HTMLButtonElement[] = [];
-		const popup = create(button, `word-option-menu-${selectors.length}`, select.title, () => items[0]); popup.menu.classList.add('word-option-menu'); popup.menu.setAttribute('role', 'menu'); button.setAttribute('aria-haspopup', 'menu');
+		const current = () => select.dataset.currentFont ?? select.dataset.currentSize ?? select.dataset.currentValue;
+		const popup = create(button, `word-option-menu-${selectors.length}`, select.title, () => items.find(item => item.dataset.value === current()) || items[0]); popup.menu.classList.add('word-option-menu'); popup.menu.setAttribute('role', 'menu'); button.setAttribute('aria-haspopup', 'menu');
 		for (const option of [...select.options].filter(option => option.value)) {
-			const item = ownerDocument.createElement('button'); item.type = 'button'; item.textContent = option.textContent; item.setAttribute('role', 'menuitem');
+			const item = ownerDocument.createElement('button'); item.type = 'button'; item.textContent = option.textContent; item.setAttribute('role', typeof content === 'string' ? 'menuitemradio' : 'menuitem'); item.dataset.value = option.value; item.setAttribute('aria-label', option.textContent || option.value);
+			if (typeof content === 'string') { item.setAttribute('aria-checked', String(option.value === current())); }
+			if (select.classList.contains('word-font-select')) { item.style.fontFamily = option.value; }
 			if (select.dataset.palette) {
 				const swatch = ownerDocument.createElement('span'); swatch.className = 'word-color-swatch';
 				const colors: Record<string, string> = { yellow: '#ffff00', brightGreen: '#00ff00', turquoise: '#00ffff', pink: '#ff00ff', blue: '#0000ff', red: '#ff0000', darkBlue: '#000080', teal: '#008080', green: '#008000', violet: '#800080', darkRed: '#800000', darkYellow: '#808000', gray50: '#808080', gray25: '#c0c0c0', black: '#000000' };
@@ -106,13 +111,16 @@ export function wordMenus(select: HTMLSelectElement, table: HTMLButtonElement, i
 			item.addEventListener('click', () => { popup.close(); select.value = option.value; select.dispatchEvent(new targetWindow.Event('change', { bubbles: true })); focusDocument(); }, listen);
 			items.push(item); popup.menu.append(item);
 		}
+		const syncSelection = () => { for (const item of items) { if (item.getAttribute('role') === 'menuitemradio') { item.setAttribute('aria-checked', String(item.dataset.value === current())); } } };
+		button.addEventListener('click', syncSelection, listen);
+		select.addEventListener('formatstate', syncSelection, listen); select.addEventListener('change', () => { select.dataset.currentValue = select.value; syncSelection(); }, { ...listen, capture: true });
 		popup.menu.addEventListener('keydown', event => {
 			if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) { return; }
 			event.preventDefault(); const index = items.indexOf(ownerDocument.activeElement as HTMLButtonElement);
 			items[event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
 		}, listen);
 		selectors.push({ select, button }); button.disabled = select.disabled; observer.observe(select, { attributes: true, attributeFilter: ['disabled'] });
-		return { element: wrapper, button };
+		return { element: wrapper, button, value };
 	};
 	const update = () => { for (const entry of selectors) { entry.button.disabled = entry.select.disabled; } styleButton.disabled = select.disabled; };
 	const observer = new targetWindow.MutationObserver(update);

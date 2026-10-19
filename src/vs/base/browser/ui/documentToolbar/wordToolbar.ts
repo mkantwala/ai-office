@@ -94,8 +94,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 		return element;
 	};
 	controls.style.className = 'word-style-select';
-	// The current bridge does not report selection formatting. Show action labels,
-	// rather than pretending that the caret's style or font is known.
+	// Formatting values are supplied by the native selection state.
 	controls.style.options[0].textContent = 'Paragraph Style';
 	controls.style.title = 'Paragraph Style';
 	controls.style.setAttribute('aria-label', 'Paragraph Style');
@@ -132,11 +131,14 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	}
 	controls.size.addEventListener('change', () => { if (controls.size.value) { controls.size.dataset.lastSize = controls.size.value; controls.size.dataset.currentSize = controls.size.value; } }, { ...listen, capture: true });
 	const syncFont = () => {
-		dropdowns[0].button.firstChild!.textContent = controls.font.dataset.currentFont || controls.font.dataset.lastFont || 'Font';
-		dropdowns[1].button.firstChild!.textContent = controls.size.dataset.currentSize || controls.size.dataset.lastSize || (controls.size.dataset.currentSize !== undefined ? '—' : '11');
-		decrease.disabled = increase.disabled = controls.size.disabled;
+		const fontName = controls.font.dataset.currentFont ?? controls.font.dataset.lastFont ?? 'Font';
+		dropdowns[0].value.textContent = fontName || 'Mixed fonts';
+		dropdowns[0].button.title = `Font Family · ${fontName || 'Mixed fonts'}`;
+		dropdowns[1].value.textContent = controls.size.dataset.currentSize !== undefined ? controls.size.dataset.currentSize || '—' : controls.size.dataset.lastSize || '11';
+		const numericSize = Number(controls.size.dataset.currentSize || controls.size.dataset.lastSize || 11);
+		decrease.disabled = controls.size.disabled || numericSize <= 1; increase.disabled = controls.size.disabled || numericSize >= 400;
 	};
-	controls.font.addEventListener('change', () => { if (controls.font.value) { controls.font.dataset.lastFont = controls.font.value; } syncFont(); }, { ...listen, capture: true });
+	controls.font.addEventListener('change', () => { if (controls.font.value) { controls.font.dataset.lastFont = controls.font.value; controls.font.dataset.currentFont = controls.font.value; } syncFont(); }, { ...listen, capture: true });
 	controls.font.addEventListener('formatstate', syncFont, listen);
 	controls.size.addEventListener('change', syncFont, listen);
 	controls.size.addEventListener('formatstate', syncFont, listen);

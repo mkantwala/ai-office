@@ -37,18 +37,28 @@ function publishToolbar() {
 	const controls: DocumentToolbarControl[] = Object.entries(toolbarControls).map(([key, control]) => ({ key, ...(['font', 'size'].includes(key) ? { currentValue: String(state.formatting?.[key as 'font' | 'size'] ?? '') } : {}), type: control instanceof HTMLSelectElement ? 'select' : 'button', label: control.getAttribute('aria-label') || control.title || control.textContent || key, ...(control instanceof HTMLButtonElement ? { text: control.textContent || '' } : {}), disabled: control.disabled, ...(control.hasAttribute('aria-pressed') ? { pressed: control.getAttribute('aria-pressed') === 'true' } : {}), ...(control instanceof HTMLSelectElement ? { options: Array.from(control.options).map(option => ({ value: option.value, label: option.textContent || '' })) } : {}) }));
 	send('toolbarState', { controls, context: toolbarContext, paragraphStyle: state.paragraphStyle });
 }
-function toolbarAction(action: DocumentToolbarAction, context: string) {
-	if (context !== toolbarContext) { publishToolbar(); message('The document selection changed. Choose the formatting action again.'); return; }
-	if (action.control === 'table' && kind === 'word' && Number.isInteger(action.rows) && Number.isInteger(action.cols) && action.rows! >= 1 && action.rows! <= 20 && action.cols! >= 1 && action.cols! <= 10) { execute('insert.table', { rows: action.rows, cols: action.cols, borders: true }); return; }
-	if (action.control === 'size' && kind === 'word' && typeof action.value === 'string' && /^\d+(?:\.\d+)?$/.test(action.value) && Number(action.value) >= 1 && Number(action.value) <= 400 && !toolbarControls.size?.disabled) { execute('format.size', { size: Number(action.value) }); return; }
+function toolbarAction(action: DocumentToolbarAction, context: string, instance?: string) {
+	if (document.body.dataset.documentInstance && instance !== document.body.dataset.documentInstance || context !== toolbarContext) { publishToolbar(); message('The document selection changed. Choose the formatting action again.'); return; }
+	if (action.control === 'table' && kind === 'word' && Number.isInteger(action.rows) && Number.isInteger(action.cols) && action.rows! >= 1 && action.rows! <= 20 && action.cols! >= 1 && action.cols! <= 10) { execute('insert.table', { rows: action.rows, cols: action.cols, borders: true }); focusWordInput(); return; }
+	if (action.control === 'size' && kind === 'word' && typeof action.value === 'string' && /^\d+(?:\.\d+)?$/.test(action.value) && Number(action.value) >= 1 && Number(action.value) <= 400 && !toolbarControls.size?.disabled) { execute('format.size', { size: Number(action.value) }); focusWordInput(); return; }
 	const control = toolbarControls[action.control]; if (!control || control.disabled) { return; }
 	if (control instanceof HTMLSelectElement) { if (!Array.from(control.options).some(option => option.value === action.value && option.value)) { return; } control.value = action.value!; control.dispatchEvent(new Event('change')); }
 	else { control.click(); }
+	focusWordInput();
 }
 const comments = document.createElement('details');
 comments.className = 'comments'; comments.hidden = true; pages.before(comments);
 const keyboard = el('keyboard') as HTMLTextAreaElement;
-const wordTable = new WordTable(pages, point, place, execute, ask, () => keyboard.focus({ preventScroll: true }));
+function focusWordInput() {
+	if (kind !== 'word') { return; }
+	const dialog = document.querySelector<HTMLDialogElement>('dialog[open]');
+	if (dialog) { if (!dialog.contains(document.activeElement)) { dialog.querySelector<HTMLElement>('input, select, textarea, button')?.focus({ preventScroll: true }); } return; }
+	if (!document.querySelector('.word-table-context:popover-open')) { keyboard.focus({ preventScroll: true }); }
+}
+const wordTable = new WordTable(pages, point, place, execute, ask, focusWordInput,
+	page => page.getBoundingClientRect().width / dimensions[Number(page.dataset.page)][0],
+	(request, args) => send('tablePreview', { request, args }),
+	at => !!state.rects?.some(r => r.page === at.page && at.x >= r.x && at.x <= r.x + r.width && at.y >= r.y && at.y <= r.y + r.height));
 let wordParagraph: WordParagraph | undefined;
 let kind: Kind;
 let state: State = { revision: -1 };
@@ -94,6 +104,7 @@ function typeWordText(text: string) {
 }
 window.addEventListener('pagehide', () => { flushWordInput(); disposeToolbar?.(); wordParagraph?.dispose(); wordTable.dispose(); clearAgent(); }, { once: true });
 window.addEventListener('blur', flushWordInput);
+window.addEventListener('focus', () => { if (document.activeElement === document.body || document.activeElement === keyboard) { focusWordInput(); } });
 function send(type: string, data: Record<string, unknown> = {}) { if (type !== 'render' && type !== 'ready') { flushWordInput(); } api.postMessage({ type, ...data }); }
 function execute(command: string, args: Record<string, unknown> = {}) {
 	el('error').hidden = true;
@@ -117,12 +128,20 @@ async function ask(label: string, initial = ''): Promise<string | undefined> {
 	if (dialog.open) { input.focus(); return undefined; }
 	el('prompt-label').textContent = label; input.value = initial; dialog.returnValue = 'cancel';
 	dialog.showModal(); input.focus(); input.select();
-	return new Promise(resolve => dialog.addEventListener('close', () => resolve(dialog.returnValue === 'ok' ? input.value : undefined), { once: true }));
+	return new Promise(resolve => {
+		const controller = new AbortController(); const signal = controller.signal;
+		const finish = () => { controller.abort(); focusWordInput(); resolve(dialog.returnValue === 'ok' ? input.value : undefined); };
+		dialog.querySelector('form')!.addEventListener('submit', event => {
+			event.preventDefault(); dialog.close((event.submitter as HTMLButtonElement | null)?.value === 'ok' ? 'ok' : 'cancel'); finish();
+		}, { signal });
+		dialog.addEventListener('cancel', event => { event.preventDefault(); dialog.close('cancel'); finish(); }, { signal });
+		dialog.addEventListener('close', finish, { signal, once: true });
+	});
 }
 function button(label: string, title: string, action: () => void, disabled = false) {
 	const b = document.createElement('button'); b.textContent = label; b.title = title; b.setAttribute('aria-label', title); b.disabled = disabled;
 	b.addEventListener('pointerdown', event => event.preventDefault());
-	b.addEventListener('click', action); toolbar.append(b); return b;
+	b.addEventListener('click', () => { action(); focusWordInput(); }); toolbar.append(b); return b;
 }
 function menu(label: string, items: [string, string][], action: (value: string) => void, disabled = false) {
 	const select = document.createElement('select'); select.title = label; select.setAttribute('aria-label', label); select.disabled = disabled;
@@ -143,8 +162,8 @@ function buildToolbar() {
 	const text = button('Text', 'Insert text', () => { if (kind === 'word') { keyboard.focus(); return; } void (async () => { const text = await ask('New text'); if (!text) { return; } execute(kind === 'pdf' ? 'page_add_text' : 'insert.text', { page: currentPage + 1, text, ...(kind === 'pdf' ? { at: [50, 50], width: 300 } : {}) }); })(); });
 	const style = menu('Normal text', [['Normal', 'Normal text'], ...(kind === 'word' ? [['Title', 'Title'], ['Subtitle', 'Subtitle']] as [string, string][] : []), ['Heading1', 'Heading 1'], ['Heading2', 'Heading 2'], ['Heading3', 'Heading 3']], style => execute('para.style', { style }), kind !== 'word');
 	style.id = 'paragraph-style';
-	const font = menu('Font', (kind === 'pdf' ? [['helvetica', 'Sans'], ['times', 'Serif'], ['courier', 'Mono']] : [['Arial', 'Arial'], ['Times New Roman', 'Times New Roman'], ['Courier New', 'Courier New']]) as [string, string][], font => format('font', font));
-	const size = menu('Size', ['10', '11', '12', '14', '16', '18', '24', '32', '48'].map(x => [x, x]), size => format('size', Number(size)));
+	const font = menu('Font', (kind === 'pdf' ? [['helvetica', 'Sans'], ['times', 'Serif'], ['courier', 'Mono']] : ['Aptos', 'Arial', 'Calibri', 'Cambria', 'Georgia', 'Times New Roman', 'Verdana', 'Courier New'].map(font => [font, font])) as [string, string][], font => format('font', font));
+	const size = menu('Size', ['8', '9', '10', '11', '12', '14', '16', '18', '20', '22', '24', '26', '28', '32', '36', '48', '72'].map(x => [x, x]), size => format('size', Number(size)));
 	const emphasis: HTMLButtonElement[] = [];
 	for (const [label, property] of [['B', 'bold'], ['I', 'italic'], ['U', 'underline']]) {
 		const b = button(label, property, () => {
@@ -237,7 +256,7 @@ function makePages() {
 			if (!pointerFrame) { pointerFrame = requestAnimationFrame(() => { pointerFrame = 0; if (lastPointer) { execute('caret.set', { ...lastPointer, extend: true }); } }); }
 		});
 		page.addEventListener('pointerup', () => { drag = false; });
-		page.addEventListener('dblclick', () => { if (kind === 'word') { execute('select.word'); } });
+		page.addEventListener('dblclick', event => { if (kind === 'word' && !event.defaultPrevented) { execute('select.word'); } });
 		observer.observe(page);
 	}
 }
@@ -342,8 +361,10 @@ document.addEventListener('keydown', event => {
 });
 window.addEventListener('message', event => {
 	if (event.origin !== location.origin) { return; } const data = event.data;
+	if (data.type === 'focusDocument') { if (!document.body.dataset.documentInstance || data.instance === document.body.dataset.documentInstance) { focusWordInput(); } return; }
+	if (data.type === 'tablePreview') { wordTable.preview(data.request, data.revision, data.result); return; }
 	if (data.type === 'publishToolbar') { publishToolbar(); return; }
-	if (data.type === 'toolbarAction') { toolbarAction(data.action, data.context); return; }
+	if (data.type === 'toolbarAction') { toolbarAction(data.action, data.context, data.instance); return; }
 	if (data.type === 'agentActivity') { agentRects = Array.isArray(data.rects) ? data.rects : []; agentOverlay(); return; }
 	if (data.type === 'draft') { wordReview.updateDrafts(data.sections); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
 	if (data.type === 'review') { wordReview.update(data.review); showReviewSummary(); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
@@ -361,6 +382,7 @@ window.addEventListener('message', event => {
 		for (const comment of state.comments || []) { const p = document.createElement('p'); p.textContent = (comment.resolved ? 'Resolved · ' : '') + (comment.author || 'Comment') + ': ' + comment.text; if (typeof comment.parentId === 'number') { p.style.marginInlineStart = '24px'; } comments.append(p); }
 		if (!initialized) { initialized = true; buildToolbar(); }
 		if (kind === 'word') {
+			for (const [key, value] of Object.entries({ bold: state.formatting?.bold, italic: state.formatting?.italic, underline: state.formatting?.underline, strike: state.formatting?.strike })) { if (typeof value === 'boolean') { toolbarControls[key]?.setAttribute('aria-pressed', String(value)); } }
 			const size = toolbarControls.size; if (size) { size.dataset.currentSize = String(state.formatting?.size ?? ''); toolbarControls.font.dataset.currentFont = state.formatting?.font || ''; size.dispatchEvent(new Event('formatstate')); }
 			const style = el('paragraph-style'); style.dataset.currentStyle = state.paragraphStyle || ''; style.dispatchEvent(new Event('formatstate'));
 		}
