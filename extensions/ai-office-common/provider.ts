@@ -328,8 +328,8 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 									}); break;
 								case 'versions': void vscode.commands.executeCommand('aiOffice.word.versions', doc.uri.toString()); break;
 								case 'draftDiscard': doc.drafts.discard(message.id); await doc.broadcast(); break;
-								case 'undo': void vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri.toString(), 'undo').then(undefined, error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
-								case 'redo': void vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri.toString(), 'redo').then(undefined, error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
+								case 'undo': void vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri, 'undo').then(undefined, error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
+								case 'redo': void vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri, 'redo').then(undefined, error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
 								case 'save':
 									void vscode.commands.executeCommand('workbench.action.files.save').then(() => panel.webview.postMessage(doc.dirty ? { type: 'error', error: 'The document was not saved. Your edits remain open; retry Save or use Save As.' } : { type: 'saved', pendingSections: doc.drafts.status().pending }), error => panel.webview.postMessage({ type: 'error', error: String(error) })); break;
 								case 'image': {
@@ -422,7 +422,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			if (['edit.undo', 'edit.redo', 'edit_undo', 'edit_redo'].includes(command)) {
 				await doc.serial;
 				checkAgentAccess(token);
-				await vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri.toString(), command.endsWith('redo') ? 'redo' : 'undo');
+				await vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri, command.endsWith('redo') ? 'redo' : 'undo');
 				return { ...doc.view, name: basename(doc.uri.path), uri: doc.uri.toString() };
 			}
 			let result: View | undefined;
@@ -486,7 +486,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 		for (let step = 0; step < steps; step++) {
 			if (token?.isCancellationRequested) { throw new vscode.CancellationError(); }
 			const position = doc.history.cursor;
-			if (!await vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri.toString(), action)) { throw new Error('No further document history is available.'); }
+			if (!await vscode.commands.executeCommand('_aiOffice.documentHistory', doc.uri, action)) { throw new Error('No further document history is available.'); }
 			if (doc.history.cursor !== position + (action === 'redo' ? 1 : -1)) { throw new Error('Document history changed during restoration. Read its current status before continuing.'); }
 		}
 		return { uri: doc.uri.toString(), version: doc.version, ...historyStatus(doc), completed: true };

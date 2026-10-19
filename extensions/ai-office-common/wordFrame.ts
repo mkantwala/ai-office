@@ -5,15 +5,19 @@
 
 interface Raster { pixels: Uint8Array; width: number; height: number }
 
-// Keep one full frame in the worker. Send only changed scanlines across the
+// Keep up to two page frames in the worker. Send only changed scanlines across the
 // extension host/webview bridge, but only when the receiver still has that frame.
 export class WordFrame {
-	private previous?: Raster & { page: number; scale: number; frame: number };
+	private readonly frames = new Map<number, Raster & { scale: number; frame: number }>();
 
 	update(raster: Raster, page: number, scale: number, frame: number, base?: number) {
-		const previous = this.previous;
-		this.previous = { ...raster, page, scale, frame };
-		if (!previous || previous.frame !== base || previous.page !== page || previous.scale !== scale || previous.width !== raster.width || previous.height !== raster.height) {
+		const previous = this.frames.get(page);
+		this.frames.delete(page);
+		this.frames.set(page, { ...raster, scale, frame });
+		while (this.frames.size > 1 && (this.frames.size > 2 || [...this.frames.values()].reduce((sum, value) => sum + value.pixels.byteLength, 0) > 32 * 1024 * 1024)) {
+			this.frames.delete(this.frames.keys().next().value!);
+		}
+		if (!previous || previous.frame !== base || previous.scale !== scale || previous.width !== raster.width || previous.height !== raster.height) {
 			return { ...raster, pixels: raster.pixels.slice() };
 		}
 		const stride = raster.width * 4;

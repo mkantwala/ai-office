@@ -20,3 +20,18 @@ Table-border color/thickness, row/column insertion/deletion, standalone image re
 All ordinary document toolbar commands remain available in the editor. The tool's smaller surface intentionally provides deterministic targeting and bounded output. Large image payloads can exceed the tool input limit; do not inline oversized base64 data into model context.
 
 The shared document adapter also exposes `content.find`, `content.replace`, `content.delete`, and `content.append` through the CLI and the `aiOfficeEdit` tool. They locate content by text and support Word, PDF and PowerPoint. The Word tools described above use internal block identities and revision checks for edits to the live document.
+
+## Tables
+
+Use `office_document_help` with the exact command to load its parameters. Run table commands through `office_document_edit` (`operation:command`) on a current paragraph ID **inside the intended cell**. The target selects that cell; a table ID selects all its content. Structural commands need a fresh document version. Native commands preserve block IDs for surviving content and create one Undo step.
+
+- Insert: `table.insertRowAbove`, `table.insertRowBelow`, `table.insertColumnLeft`, `table.insertColumnRight`.
+- Delete: `table.deleteRow`, `table.deleteColumn`, `table.deleteTable`. Confirm the requested scope from the user's instruction.
+- Move: `table.moveAxis` with `axis:row|column`, `forward:true|false` moves one position. Merged cells must be unmerged first; edge moves are refused without mutation.
+- Size: `table.columnWidth` with `width` in points (72 points = 1 inch).
+- Sort: `table.sort` with zero-based `column`, `descending` and optional `header`. Supply `header:true` to protect a header row when it is not marked as repeating in DOCX.
+- Cell formatting: `table.cellAlign` with `value:topLeft|topCenter|topRight|centerLeft|center|centerRight|bottomLeft|bottomCenter|bottomRight`; `table.shading` with six-digit `color` or `null` to clear.
+- Selection: `table.selectRow`, `table.selectColumn`, `table.selectTable` are interactive commands. For agent edits, address the paragraph in the intended cell directly.
+- Pointer gestures: `table.resizeDrag`, `table.moveDrag` accept zero-based `page` and page-point `x,y,toX,toY`. These support editor handles; prefer semantic commands for agents, rather than guessing coordinates.
+
+Table handles and context menus only expose geometry for rendered pages. They do not create an HTML copy of the table or bypass native review/history.

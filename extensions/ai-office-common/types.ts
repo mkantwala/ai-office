@@ -7,7 +7,9 @@ import type { ParagraphProperties } from './paragraphProperties.js';
 
 export type Kind = 'word' | 'pdf' | 'slides';
 export interface Block { id: number; text: string; rect: number[]; font?: string; size?: number; row?: number; col?: number }
+export interface TableGeometry { cols: number[]; rows: { row: number; top: number; bottom: number }[]; endsHere: boolean }
 export interface State {
+	formatting?: { font: string | null; size: number | null };
 	paragraph?: { id: string; properties: ParagraphProperties; mixed: string[]; ruler?: { left: number; width: number } | null };
 	undoDepth?: number;
 	agentAppliedEdits?: { id: string; operation: string; command?: string; params?: unknown }[];
@@ -50,6 +52,6 @@ export interface Engine {
 	commands(): Command[];
 	execute(id: string, args: Record<string, unknown>): Promise<State>;
 	export(): Promise<Uint8Array>;
-	render(page: number, scale: number): { pixels?: Uint8Array; width?: number; height?: number; svg?: string };
+	render(page: number, scale: number): { pixels?: Uint8Array; width?: number; height?: number; svg?: string; tables?: TableGeometry[] };
 	dispose(): void;
 }

@@ -54,7 +54,7 @@ parentPort?.on('message', message => {
 						const raster = engine.render(message.page, message.scale);
 						if (wordFrame && raster.pixels && raster.width && raster.height && typeof message.frame === 'number') {
 							const update = wordFrame.update({ pixels: raster.pixels, width: raster.width, height: raster.height }, message.page, message.scale, message.frame, message.base);
-							result = update; transfer = [update.pixels.buffer as ArrayBuffer];
+							result = { ...update, tables: raster.tables }; transfer = [update.pixels.buffer as ArrayBuffer];
 						} else { result = raster; }
 						break;
 					}

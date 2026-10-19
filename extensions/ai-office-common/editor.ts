@@ -8,6 +8,7 @@ import type { Kind, State, Block } from './types.js';
 import { arrangeWordToolbar } from './wordToolbar.js';
 import { renderAgentActivity } from './agentOverlay.js';
 import type { DocumentToolbarAction, DocumentToolbarControl } from '../../src/vs/base/browser/ui/documentToolbar/documentToolbar.js';
+import { WordTable } from './wordTable.js';
 import { WordParagraph } from './wordParagraph.js';
 import { WordReview } from './wordReview.js';
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
@@ -33,12 +34,13 @@ let toolbarContext = '';
 function publishToolbar() {
 	if (!appToolbar || !initialized) { return; }
 	toolbarContext = JSON.stringify([state.revision, state.selection, selected?.id]);
-	const controls: DocumentToolbarControl[] = Object.entries(toolbarControls).map(([key, control]) => ({ key, type: control instanceof HTMLSelectElement ? 'select' : 'button', label: control.getAttribute('aria-label') || control.title || control.textContent || key, ...(control instanceof HTMLButtonElement ? { text: control.textContent || '' } : {}), disabled: control.disabled, ...(control.hasAttribute('aria-pressed') ? { pressed: control.getAttribute('aria-pressed') === 'true' } : {}), ...(control instanceof HTMLSelectElement ? { options: Array.from(control.options).map(option => ({ value: option.value, label: option.textContent || '' })) } : {}) }));
+	const controls: DocumentToolbarControl[] = Object.entries(toolbarControls).map(([key, control]) => ({ key, ...(['font', 'size'].includes(key) ? { currentValue: String(state.formatting?.[key as 'font' | 'size'] ?? '') } : {}), type: control instanceof HTMLSelectElement ? 'select' : 'button', label: control.getAttribute('aria-label') || control.title || control.textContent || key, ...(control instanceof HTMLButtonElement ? { text: control.textContent || '' } : {}), disabled: control.disabled, ...(control.hasAttribute('aria-pressed') ? { pressed: control.getAttribute('aria-pressed') === 'true' } : {}), ...(control instanceof HTMLSelectElement ? { options: Array.from(control.options).map(option => ({ value: option.value, label: option.textContent || '' })) } : {}) }));
 	send('toolbarState', { controls, context: toolbarContext, paragraphStyle: state.paragraphStyle });
 }
 function toolbarAction(action: DocumentToolbarAction, context: string) {
 	if (context !== toolbarContext) { publishToolbar(); message('The document selection changed. Choose the formatting action again.'); return; }
 	if (action.control === 'table' && kind === 'word' && Number.isInteger(action.rows) && Number.isInteger(action.cols) && action.rows! >= 1 && action.rows! <= 20 && action.cols! >= 1 && action.cols! <= 10) { execute('insert.table', { rows: action.rows, cols: action.cols, borders: true }); return; }
+	if (action.control === 'size' && kind === 'word' && typeof action.value === 'string' && /^\d+(?:\.\d+)?$/.test(action.value) && Number(action.value) >= 1 && Number(action.value) <= 400 && !toolbarControls.size?.disabled) { execute('format.size', { size: Number(action.value) }); return; }
 	const control = toolbarControls[action.control]; if (!control || control.disabled) { return; }
 	if (control instanceof HTMLSelectElement) { if (!Array.from(control.options).some(option => option.value === action.value && option.value)) { return; } control.value = action.value!; control.dispatchEvent(new Event('change')); }
 	else { control.click(); }
@@ -46,6 +48,7 @@ function toolbarAction(action: DocumentToolbarAction, context: string) {
 const comments = document.createElement('details');
 comments.className = 'comments'; comments.hidden = true; pages.before(comments);
 const keyboard = el('keyboard') as HTMLTextAreaElement;
+const wordTable = new WordTable(pages, point, place, execute, ask, () => keyboard.focus({ preventScroll: true }));
 let wordParagraph: WordParagraph | undefined;
 let kind: Kind;
 let state: State = { revision: -1 };
@@ -57,7 +60,7 @@ let pendingText = false;
 let renderId = 0;
 const visible = new Set<number>();
 const rendered = new Set<number>();
-const pendingRender = new Map<number, { revision: number; page: number; draft: boolean }>();
+const pendingRender = new Map<number, { revision: number; page: number }>();
 let renderBusy = false;
 let composing = false;
 let drag = false;
@@ -78,14 +81,6 @@ function agentOverlay() {
 
 let wordText = '';
 let wordTextTimer: ReturnType<typeof setTimeout> | undefined;
-let wordTypingUntil = 0;
-let wordRefineTimer: ReturnType<typeof setTimeout> | undefined;
-
-function wordTyping() {
-	wordTypingUntil = performance.now() + 200;
-	clearTimeout(wordRefineTimer);
-	wordRefineTimer = setTimeout(() => { rendered.clear(); renderNext(); }, 210);
-}
 let revealWordCaret = false;
 function flushWordInput() {
 	clearTimeout(wordTextTimer); wordTextTimer = undefined;
@@ -94,15 +89,13 @@ function flushWordInput() {
 	api.postMessage({ type: 'execute', command: 'text.insert', args: { text } });
 }
 function typeWordText(text: string) {
-	wordTyping();
 	wordText += text;
 	if (!wordTextTimer) { wordTextTimer = setTimeout(flushWordInput, 0); }
 }
-window.addEventListener('pagehide', () => { flushWordInput(); clearTimeout(wordRefineTimer); disposeToolbar?.(); wordParagraph?.dispose(); clearAgent(); }, { once: true });
+window.addEventListener('pagehide', () => { flushWordInput(); disposeToolbar?.(); wordParagraph?.dispose(); wordTable.dispose(); clearAgent(); }, { once: true });
 window.addEventListener('blur', flushWordInput);
 function send(type: string, data: Record<string, unknown> = {}) { if (type !== 'render' && type !== 'ready') { flushWordInput(); } api.postMessage({ type, ...data }); }
 function execute(command: string, args: Record<string, unknown> = {}) {
-	if (kind === 'word' && command.startsWith('text.')) { wordTyping(); }
 	el('error').hidden = true;
 	send('execute', { command, args });
 }
@@ -231,6 +224,7 @@ function makePages() {
 		const content = document.createElement(kind === 'slides' ? 'img' : 'canvas'); page.append(content); pages.append(page);
 		page.addEventListener('pointerdown', event => {
 			if ((event.target as HTMLElement).closest('.word-review-zone')) { return; }
+			if (event.button !== 0) { return; }
 			if (event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLButtonElement) { return; }
 			currentPage = index;
 			if (kind === 'word') {
@@ -251,7 +245,7 @@ const observer = new IntersectionObserver(entries => {
 	for (const entry of entries) {
 		const index = Number((entry.target as HTMLElement).dataset.page);
 		if (entry.isIntersecting) { visible.add(index); }
-		else { visible.delete(index); rendered.delete(index); const canvas = entry.target.querySelector('canvas'); if (canvas) { canvas.width = canvas.height = 1; } entry.target.querySelectorAll('.word-review-slice').forEach(node => node.remove()); }
+		else { visible.delete(index); rendered.delete(index); wordTable.forget(index); const canvas = entry.target.querySelector('canvas'); if (canvas) { canvas.width = canvas.height = 1; } entry.target.querySelectorAll('.word-review-slice').forEach(node => node.remove()); }
 	}
 	renderNext();
 }, { rootMargin: '450px' });
@@ -260,13 +254,12 @@ function renderNext() {
 	const caretPage = kind === 'word' ? state.caret?.page : undefined;
 	const page = caretPage !== undefined && visible.has(caretPage) && !rendered.has(caretPage) ? caretPage : [...visible].find(index => !rendered.has(index)); if (page === undefined) { return; }
 	const node = pages.children[page] as HTMLElement;
-	const draft = kind === 'word' && performance.now() < wordTypingUntil;
-	const request = ++renderId; renderBusy = true; pendingRender.set(request, { revision: state.revision, page, draft });
+	const request = ++renderId; renderBusy = true; pendingRender.set(request, { revision: state.revision, page });
 	const canvas = node.querySelector('canvas');
 	const scale = node.clientWidth * Math.min(devicePixelRatio, 2) / dimensions[page][0];
-	// Use a smaller raster while keys are arriving; restore full display resolution
-	// after the burst. Layout and saved document quality are always unchanged.
-	send('render', { request, page, scale: draft ? Math.min(scale, 1) : scale, ...(kind === 'word' && canvas && canvas.width > 1 ? { base: Number(canvas.dataset.frame) } : {}) });
+	// Keep the same physical-pixel resolution while typing; native rendering caches
+	// repaint changed text bands without downsampling the page.
+	send('render', { request, page, scale, ...(kind === 'word' && canvas && canvas.width > 1 ? { base: Number(canvas.dataset.frame) } : {}) });
 }
 function place(node: HTMLElement, page: number, x: number, y: number, w: number, h: number) {
 	const element = pages.children[page] as HTMLElement; if (!element || !dimensions[page]?.[0] || ![x, y, w, h].every(Number.isFinite)) { return; }
@@ -360,7 +353,7 @@ window.addEventListener('message', event => {
 	if (data.type === 'state') {
 		kind = data.kind; const changed = state.revision !== data.state.revision;
 		const repaginated = JSON.stringify(dimensions) !== JSON.stringify(data.pages);
-		state = data.state; dimensions = data.pages;
+		state = data.state; dimensions = data.pages; wordTable.update(state.revision);
 		revealWordCaret = kind === 'word' && (data.command?.startsWith('text.') || data.command === 'insert.table');
 		const commentsOpen = comments.open;
 		comments.replaceChildren(); comments.open = commentsOpen; comments.hidden = kind === 'word' || !state.comments?.length;
@@ -368,6 +361,7 @@ window.addEventListener('message', event => {
 		for (const comment of state.comments || []) { const p = document.createElement('p'); p.textContent = (comment.resolved ? 'Resolved · ' : '') + (comment.author || 'Comment') + ': ' + comment.text; if (typeof comment.parentId === 'number') { p.style.marginInlineStart = '24px'; } comments.append(p); }
 		if (!initialized) { initialized = true; buildToolbar(); }
 		if (kind === 'word') {
+			const size = toolbarControls.size; if (size) { size.dataset.currentSize = String(state.formatting?.size ?? ''); toolbarControls.font.dataset.currentFont = state.formatting?.font || ''; size.dispatchEvent(new Event('formatstate')); }
 			const style = el('paragraph-style'); style.dataset.currentStyle = state.paragraphStyle || ''; style.dispatchEvent(new Event('formatstate'));
 		}
 		el('filename').textContent = data.name;
@@ -399,11 +393,11 @@ window.addEventListener('message', event => {
 			}
 			canvas.dataset.frame = String(data.request);
 			canvas.dataset.revision = String(request.revision);
-			if (kind === 'word') { wordReview.paint(data.page, dimensions); }
+			if (kind === 'word') { wordReview.paint(data.page, dimensions); if (request.revision === state.revision) { wordTable.render(data.page, request.revision, result.tables || []); } }
 		}
 		// Show completed Word frames during continuous typing instead of discarding
 		// every frame until the user stops. A newer revision still requests a refresh.
-		if (request.revision === state.revision && (!request.draft || performance.now() < wordTypingUntil)) { rendered.add(data.page); } renderNext();
+		if (request.revision === state.revision) { rendered.add(data.page); } renderNext();
 	}
 });
 let resizeTimer: ReturnType<typeof setTimeout>;

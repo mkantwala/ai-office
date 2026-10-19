@@ -295,3 +295,6 @@
 .word-toolbar select[hidden], .word-toolbar-overflow select[hidden] { display: none; }
 
 .word-option-menu button:hover, .word-option-menu button:focus-visible { background: var(--vscode-list-hoverBackground, #8882); }
+
+.word-toolbar-group[data-label="Font"] > .word-button-control:first-child .word-dropdown-button { max-width: 136px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.word-toolbar-group[data-label="Font"] > .word-button-control:nth-of-type(2) .word-dropdown-button { min-width: 44px; font-variant-numeric: tabular-nums; }

@@ -59,17 +59,17 @@ dialog::backdrop{background:#0005}dialog label{display:block;margin-bottom:12px;
 .word-paragraph-dialog button[type="submit"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 .word-tab-rows { grid-column: 1 / -1; display: grid; gap: 12px; }
 .word-tab-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px; align-items: end; }
-.word-ruler { position: relative; height: 28px; max-width: none; margin: 12px auto 0; flex-shrink: 0; color: var(--vscode-descriptionForeground, #737373); background: color-mix(in srgb, var(--vscode-editor-foreground, #555) 11%, var(--vscode-editor-background, #fff)); border: 0; border-block: 1px solid var(--vscode-panel-border, #8884); border-radius: 2px; user-select: none; touch-action: none; font: 10px/1 var(--vscode-font-family, system-ui); }
+.word-ruler { position: relative; height: 20px; max-width: none; margin: 8px auto 0; flex-shrink: 0; color: var(--vscode-descriptionForeground, #737373); background: color-mix(in srgb, var(--vscode-editor-foreground, #555) 11%, var(--vscode-editor-background, #fff)); border: 0; border-block: 1px solid var(--vscode-panel-border, #8884); border-radius: 2px; user-select: none; touch-action: none; font: 10px/1 var(--vscode-font-family, system-ui); }
 .word-ruler-body { position: absolute; inset-block: 0; background: color-mix(in srgb, var(--vscode-editor-foreground, #555) 3%, var(--vscode-editor-background, #fff)); border-inline: 1px solid var(--vscode-panel-border, #8885); pointer-events: none; }
 .word-ruler-tick { position: absolute; bottom: 0; width: 1px; height: 4px; background: currentColor; opacity: .45; pointer-events: none; }
-.word-ruler-tick[data-kind="half"] { height: 7px; opacity: .6; }
-.word-ruler-tick[data-kind="major"] { height: 10px; opacity: .7; }
+.word-ruler-tick[data-kind="half"] { height: 5px; opacity: .6; }
+.word-ruler-tick[data-kind="major"] { height: 7px; opacity: .7; }
 .word-ruler-number { position: absolute; top: 3px; transform: translateX(-50%); pointer-events: none; font-variant-numeric: tabular-nums; }
 .word-ruler-unit { position: absolute; top: 3px; left: 5px; font-size: 9px; opacity: .75; pointer-events: none; }
-.word-ruler button { position: absolute; top: 16px; width: 20px; min-width: 20px; height: 18px; min-height: 18px; padding: 0; margin: 0 0 0 -10px; border: 0; border-radius: 3px; background: transparent; color: var(--vscode-focusBorder, #557add); cursor: ew-resize; z-index: 1; }
+.word-ruler button { position: absolute; top: 8px; width: 20px; min-width: 20px; height: 18px; min-height: 18px; padding: 0; margin: 0 0 0 -10px; border: 0; border-radius: 3px; background: transparent; color: var(--vscode-focusBorder, #557add); cursor: ew-resize; z-index: 1; }
 .word-ruler button svg { width: 12px; height: 10px; display: block; margin: auto; fill: var(--vscode-editor-background, #fff); stroke: currentColor; stroke-width: 1.2; stroke-linejoin: round; }
 .word-ruler button[data-marker="firstLine"] { top: -5px; }
-.word-ruler button[data-marker^="tab:"] { top: 10px; }
+.word-ruler button[data-marker^="tab:"] { top: 6px; }
 .word-ruler button[data-marker^="tab:"] svg { fill: none; stroke-width: 2; }
 .word-ruler button:hover, .word-ruler button[data-dragging] { background: color-mix(in srgb, var(--vscode-focusBorder, #557add) 14%, transparent); }
 .word-ruler button:hover, .word-ruler button:focus-visible { z-index: 2; }
@@ -85,3 +85,34 @@ dialog::backdrop{background:#0005}dialog label{display:block;margin-bottom:12px;
 .app-toolbar-hosted #info { border: 0; padding: 4px 18px; min-height: 20px; }
 .app-toolbar-hosted #pages { padding-top: 12px; }
 .app-toolbar-hosted #error { top: 0; }
+
+/* Table chrome follows the reference proportions; content colors remain exact DOCX fills. */
+.word-table-handles { pointer-events: none; }
+.word-table-handles button { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; width: 20px; min-width: 0; height: 20px; min-height: 0; padding: 0; z-index: 8; pointer-events: auto; color: var(--vscode-descriptionForeground); background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: var(--vscode-cornerRadius-small, 4px); font: 12px/1 system-ui; transition: background 120ms, border-color 120ms; }
+.word-table-handles button[data-handle="row"] { width: 12px; height: 28px; border-radius: 8px; }
+.word-table-handles button[data-handle="column"] { width: 28px; height: 10px; border-radius: 6px; font-size: 0; }
+.word-table-handles button[data-handle="options"] { width: 28px; height: 28px; border-radius: var(--vscode-cornerRadius-large, 8px); font-size: 16px; }
+.word-table-handles button[data-handle="move"] { background: transparent; border-color: transparent; }
+.word-table-handles button:hover { background: var(--vscode-toolbar-hoverBackground); border-color: var(--vscode-descriptionForeground); color: var(--vscode-editor-foreground); }
+.word-table-handles button:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.word-table-handles button[data-command="table.moveDrag"] { cursor: grab; }
+.word-table-handles button[data-command="table.resizeDrag"] { cursor: nwse-resize; }
+.word-table-handles svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.word-table-context { margin: 0; padding: 8px; width: min(292px, calc(100vw - 16px)); max-height: min(760px, calc(100vh - 16px)); overflow: auto; scrollbar-width: thin; scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; box-sizing: border-box; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 16px; background: var(--vscode-menu-background, var(--vscode-editorWidget-background)); color: var(--vscode-menu-foreground, var(--vscode-editor-foreground)); box-shadow: 0 8px 24px var(--vscode-widget-shadow); font: 14px/1.4 var(--vscode-font-family, system-ui); }
+.word-table-context button, .word-table-context summary { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 36px; padding: 8px 12px; margin: 0; border: 0; border-radius: var(--vscode-cornerRadius-small, 4px); background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; transition: background 120ms; }
+.word-table-context button > svg { flex: 0 0 16px; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; color: var(--vscode-descriptionForeground); }
+.word-table-context button:hover, .word-table-context summary:hover { background: var(--vscode-menu-selectionBackground); color: var(--vscode-menu-selectionForeground); }
+.word-table-context button:focus-visible, .word-table-context summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.word-table-context hr { margin: 8px 12px; border: 0; border-top: 1px solid var(--vscode-menu-separatorBackground, var(--vscode-panel-border)); }
+.word-table-context .destructive { color: var(--vscode-errorForeground); padding-left: 40px; }
+.word-table-context .destructive svg { display: none; }
+.word-table-context summary { padding-left: 40px; }
+.word-table-context summary::after { content: '›'; margin-left: auto; }
+.word-table-context details[open] summary::after { transform: rotate(90deg); }
+.word-table-context details button { padding-left: 24px; }
+.word-table-palette { display: flex; justify-content: space-between; gap: 4px; padding: 8px 10px; }
+.word-table-palette button { position: relative; flex: 0 0 26px; width: 26px; min-width: 26px; height: 26px; min-height: 26px; padding: 0; border: 1px solid var(--vscode-descriptionForeground); border-radius: 50%; }
+.word-table-palette button:hover { box-shadow: 0 0 0 2px var(--vscode-menu-background, var(--vscode-editorWidget-background)), 0 0 0 3px var(--vscode-focusBorder); }
+.word-table-palette .no-fill::after { content: ''; position: absolute; left: 11px; top: -1px; width: 2px; height: 26px; background: var(--vscode-errorForeground); transform: rotate(45deg); }
+@media (prefers-reduced-motion: reduce) { .word-table-context button, .word-table-context summary, .word-table-handles button { transition: none; } }
+@media (forced-colors: active) { .word-table-handles button, .word-table-context, .word-table-palette button { border-color: ButtonText; } }

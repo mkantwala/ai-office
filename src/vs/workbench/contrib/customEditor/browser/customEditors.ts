@@ -37,9 +37,9 @@ import { CustomEditorDiffInput, CustomEditorSideBySideDiffInput } from './custom
 import { CustomEditorInput } from './customEditorInput.js';
 
 // Document tools and webview buttons address the document explicitly, even when chat has focus.
-CommandsRegistry.registerCommand('_aiOffice.documentHistory', async (accessor, resource: string, action: string) => {
+CommandsRegistry.registerCommand('_aiOffice.documentHistory', async (accessor, resource: URI | string, action: string) => {
 	const service = accessor.get(IUndoRedoService);
-	const uri = URI.parse(resource);
+	const uri = URI.isUri(resource) ? resource : URI.parse(resource);
 	if (action !== 'undo' && action !== 'redo') { throw new Error('Unknown document history action'); }
 	if (action === 'undo' ? !service.canUndo(uri) : !service.canRedo(uri)) { return false; }
 	if (action === 'undo') { await service.undo(uri); } else { await service.redo(uri); }

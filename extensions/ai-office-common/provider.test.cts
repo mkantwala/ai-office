@@ -147,6 +147,7 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		commands: {
 			registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() { } }; }, executeCommand: async (id, ...args) => {
 				if (id === '_aiOffice.documentHistory') {
+					assert.equal(args[0], doc.uri, 'History must cross the extension boundary as a URI object so remote schemes translate');
 					if (args[1] === 'undo') { await edits[doc.history.cursor - 1].undo(); } else { await edits[doc.history.cursor].redo(); }
 					return true;
 				}

@@ -443,6 +443,43 @@ test('Word imports missing built-in styles without replacing custom styles', asy
 	} finally { engine.dispose(); }
 });
 
+test('Word cached typing pixels match full repaint through edits, formatting and undo', async () => {
+	const engine = await openEngine('word', 'Raster.docx', docx, root);
+	try {
+		for (const scale of [1, 1.375, 2]) {
+			engine.render(0, scale);
+			for (const [command, args] of [
+				['caret.docStart', {}], ['text.insert', { text: 'Sharp accents: é Å 漢字 ' }],
+				['text.backspace', {}], ['text.newParagraph', {}],
+				['text.insert', { text: 'Wrapping text across lines. '.repeat(14) }],
+				['edit.undo', {}], ['edit.redo', {}], ['select.all', {}],
+				['format.size', { size: 28 }], ['format.bold', { value: true }],
+				['format.underline', { value: true }], ['edit.undo', {}],
+				['caret.docEnd', {}], ['insert.table', { rows: 2, cols: 2 }], ['text.insert', { text: 'Cell typing' }]
+			] as [string, Record<string, unknown>][]) {
+				await engine.execute(command, args);
+				const cached = engine.render(0, scale);
+				// A different scale replaces this page's baseline and forces a complete
+				// repaint at the original scale, without changing the document or fonts.
+				engine.render(0, scale + .125);
+				const full = engine.render(0, scale);
+				assert.equal(cached.width, full.width); assert.equal(cached.height, full.height);
+				assert.ok(Buffer.from(cached.pixels!).equals(Buffer.from(full.pixels!)), `Cached pixels differ after ${command} at ${scale}x`);
+			}
+		}
+	} finally { engine.dispose(); }
+});
+
+test('Word frame cache retains adjacent pages and evicts older baselines', () => {
+	const cache = new WordFrame();
+	const raster = { pixels: new Uint8Array(400).fill(255), width: 10, height: 10 };
+	cache.update(raster, 0, 2, 1); cache.update(raster, 1, 2, 2);
+	const changed = { ...raster, pixels: raster.pixels.slice() }; changed.pixels[44] = 0;
+	assert.equal(cache.update(changed, 0, 2, 3, 1).height, 1, 'Neighboring page must not force a full transfer');
+	cache.update(raster, 2, 2, 4);
+	assert.equal(cache.update(raster, 1, 2, 5, 2).height, 10, 'Evicted page must receive a complete raster');
+});
+
 test('Word frame patches reconstruct full pixels and reject stale bases', () => {
 	const cache = new WordFrame();
 	const initial = { pixels: new Uint8Array(400).fill(255), width: 10, height: 10 };
@@ -806,5 +843,36 @@ test('Word comment text update and reopening can commit atomically with one Undo
 		assert.deepEqual({ text: read().text, resolved: read().resolved }, { text: 'Updated comment', resolved: false });
 		await engine.execute('edit.undo', {});
 		assert.deepEqual({ text: read().text, resolved: read().resolved }, { text: 'Original comment', resolved: true });
+	} finally { engine.dispose(); }
+});
+
+test('Word table context commands preserve block identities, native undo and DOCX properties', async () => {
+	const engine = await openEngine('word', 'Context table.docx', docx, root);
+	try {
+		const agent = engine.agent!;
+		const first = (agent.read({}) as { blocks: { id: string }[] }).blocks[0];
+		await agent.edit({ revision: engine.state().revision, operation: 'insert', id: first.id, position: 'after', blocks: [{ kind: 'table', rows: [['Name', 'Value'], ['Zoe', '2'], ['Amy', '1']] }] });
+		const target = (agent.read({ query: 'Zoe' }) as { blocks: { id: string; kind: string }[] }).blocks.find(b => b.kind === 'paragraph')!;
+		const command = (id: string, params = {}) => agent.edit({ revision: engine.state().revision, operation: 'command', id: target.id, command: id, params });
+		const geometry = engine.render(0, 1).tables!; assert.equal(geometry.length, 1); assert.equal(geometry[0].cols.length, 3); assert.equal(geometry[0].rows.length, 3);
+		await command('table.moveAxis', { axis: 'row', forward: true });
+		let xml = strFromU8(unzipSync(await engine.export())['word/document.xml']); assert.ok(xml.indexOf('Amy') < xml.indexOf('Zoe'));
+		assert.equal((agent.read({ id: target.id }) as { blocks: { text: string }[] }).blocks[0].text, 'Zoe');
+		await engine.execute('edit.undo', {}); xml = strFromU8(unzipSync(await engine.export())['word/document.xml']); assert.ok(xml.indexOf('Zoe') < xml.indexOf('Amy'));
+		await command('table.moveAxis', { axis: 'column', forward: true });
+		xml = strFromU8(unzipSync(await engine.export())['word/document.xml']); assert.ok(xml.indexOf('Value') < xml.indexOf('Name'));
+		await engine.execute('edit.undo', {});
+		await command('table.sort', { column: 0, header: true, descending: false });
+		xml = strFromU8(unzipSync(await engine.export())['word/document.xml']); assert.ok(xml.indexOf('Amy') < xml.indexOf('Zoe'));
+		await command('table.columnWidth', { width: 120 }); await command('table.shading', { color: 'D9EAD3' }); await command('table.cellAlign', { value: 'topCenter' });
+		xml = strFromU8(unzipSync(await engine.export())['word/document.xml']); assert.match(xml, /D9EAD3/); assert.match(xml, /w:jc w:val="center"/);
+		await command('table.insertRowAbove'); assert.equal(engine.render(0, 1).tables![0].rows.length, 4);
+		await engine.execute('table.deleteRow', {}); assert.equal(engine.render(0, 1).tables![0].rows.length, 3);
+		await command('table.insertColumnRight'); assert.equal(engine.render(0, 1).tables![0].cols.length, 4);
+		await engine.execute('table.deleteColumn', {}); assert.equal(engine.render(0, 1).tables![0].cols.length, 3);
+		const bytes = await engine.export(); const reopened = await openEngine('word', 'Reopened.docx', bytes, root);
+		try { assert.equal((reopened.agent!.read({ id: target.id }) as { blocks: { text: string }[] }).blocks[0].text, 'Zoe'); assert.match(strFromU8(unzipSync(await reopened.export())['word/document.xml']), /D9EAD3/); } finally { reopened.dispose(); }
+		await command('table.deleteTable'); assert.equal(engine.render(0, 1).tables!.length, 0);
+		await engine.execute('edit.undo', {}); assert.equal(engine.render(0, 1).tables!.length, 1);
 	} finally { engine.dispose(); }
 });

@@ -111,12 +111,38 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 		controls.emphasis[index].classList.add('word-emphasis-button');
 	}
 	controls.save.classList.add('word-save-button');
-	const history = group('Document', [iconButton(controls.undo, 'undo'), iconButton(controls.redo, 'redo'), iconButton(controls.save, 'save'), ...(controls.versions ? [iconButton(controls.versions, 'versions')] : [])]);
+	const history = group('Document', [iconButton(controls.undo, 'undo'), iconButton(controls.redo, 'redo')]);
 	const host = toolbar.closest<HTMLElement>('.monaco-workbench') || ownerDocument.body;
 	const menus = wordMenus(controls.style, controls.table, insertTable, focusDocument, host, () => more.focus());
 	const style = group('Styles', [menus.style]);
 	const dropdowns = [menus.selector(controls.font, 'Font'), menus.selector(controls.size, 'Size'), menus.selector(controls.align, icon('align', ownerDocument)), menus.selector(controls.spacing, icon('spacing', ownerDocument)), menus.selector(controls.list, icon('list', ownerDocument))];
-	const font = group('Font', dropdowns.slice(0, 2).map(item => item.element));
+	const decrease = ownerDocument.createElement('button');
+	const increase = ownerDocument.createElement('button');
+	for (const [button, label, text, delta] of [[decrease, 'Decrease Font Size', '−', -1], [increase, 'Increase Font Size', '+', 1]] as const) {
+		button.type = 'button'; button.textContent = text; button.title = label; button.setAttribute('aria-label', label);
+		button.addEventListener('pointerdown', event => event.preventDefault(), listen);
+		button.addEventListener('click', () => {
+			const current = Number(controls.size.dataset.currentSize || controls.size.dataset.lastSize || 11);
+			const value = String(Math.max(1, Math.min(400, current + delta)));
+			for (const option of [...controls.size.options]) { if (option.dataset.step) { option.remove(); } }
+			if (![...controls.size.options].some(option => option.value === value)) { const option = new targetWindow.Option(value, value); option.dataset.step = 'true'; controls.size.add(option); }
+			controls.size.value = value; controls.size.dataset.lastSize = value; controls.size.dataset.currentSize = value;
+			controls.size.dispatchEvent(new targetWindow.Event('change', { bubbles: true }));
+		}, listen);
+	}
+	controls.size.addEventListener('change', () => { if (controls.size.value) { controls.size.dataset.lastSize = controls.size.value; controls.size.dataset.currentSize = controls.size.value; } }, { ...listen, capture: true });
+	const syncFont = () => {
+		dropdowns[0].button.firstChild!.textContent = controls.font.dataset.currentFont || controls.font.dataset.lastFont || 'Font';
+		dropdowns[1].button.firstChild!.textContent = controls.size.dataset.currentSize || controls.size.dataset.lastSize || (controls.size.dataset.currentSize !== undefined ? '—' : '11');
+		decrease.disabled = increase.disabled = controls.size.disabled;
+	};
+	controls.font.addEventListener('change', () => { if (controls.font.value) { controls.font.dataset.lastFont = controls.font.value; } syncFont(); }, { ...listen, capture: true });
+	controls.font.addEventListener('formatstate', syncFont, listen);
+	controls.size.addEventListener('change', syncFont, listen);
+	controls.size.addEventListener('formatstate', syncFont, listen);
+	const fontObserver = new targetWindow.MutationObserver(syncFont); fontObserver.observe(controls.size, { attributes: true, attributeFilter: ['disabled'] });
+	syncFont();
+	const font = group('Font', [dropdowns[0].element, decrease, dropdowns[1].element, increase]);
 	const emphasis = group('Text Formatting', [...controls.emphasis, ...(controls.strike ? [controls.strike] : [])]);
 	if (controls.strike) { controls.strike.classList.add('word-emphasis-button'); controls.strike.style.textDecoration = 'line-through'; }
 	const colors = [controls.color, controls.highlight].filter((item): item is HTMLSelectElement => !!item).map(select => { select.dataset.palette = 'true'; return menus.selector(select, icon(select === controls.color ? 'color' : 'highlight', ownerDocument)); });
@@ -144,7 +170,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	more.popoverTargetElement = overflow;
 	if (controls.clear) { table.append(iconButton(controls.clear, 'clear')); }
 	overflow.append(table);
-	const allControls = [controls.undo, controls.redo, controls.save, controls.versions, controls.properties, controls.text, menus.styleButton, ...dropdowns.map(item => item.button), ...controls.emphasis, controls.strike, controls.clear, controls.table, controls.image, controls.link, controls.comment, more].filter((control): control is HTMLButtonElement => !!control);
+	const allControls = [controls.undo, controls.redo, decrease, increase, controls.properties, controls.text, menus.styleButton, ...dropdowns.map(item => item.button), ...controls.emphasis, controls.strike, controls.clear, controls.table, controls.image, controls.link, controls.comment, more].filter((control): control is HTMLButtonElement => !!control);
 	row.append(...groups, more);
 	toolbar.replaceChildren(row);
 	host.append(overflow);
@@ -185,7 +211,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 		const focused = ownerDocument.activeElement;
 		for (const element of groups) { row.insertBefore(element, more); }
 		// Move real controls, preserving their listeners, disabled state and values.
-		for (const element of [insert, paragraph, font, style, emphasis, history]) {
+		for (const element of [insert, paragraph, style, emphasis, history, font]) {
 			if (row.scrollWidth <= row.clientWidth) { break; }
 			overflow.insertBefore(element, table);
 		}
@@ -200,7 +226,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	layout();
 	const disposeFeedback = wordToolbarFeedback(host);
 	return () => {
-		observer.disconnect(); events.abort(); disposeFeedback(); menus.dispose(); overflow.remove();
+		observer.disconnect(); fontObserver.disconnect(); events.abort(); disposeFeedback(); menus.dispose(); overflow.remove();
 		toolbar.classList.remove('word-toolbar');
 	};
 }

@@ -7,6 +7,7 @@ import { arrangeWordToolbar } from './wordToolbar.js';
 
 export interface DocumentToolbarControl {
 	key: string;
+	currentValue?: string;
 	type: 'button' | 'select';
 	label: string;
 	text?: string;
@@ -36,6 +37,7 @@ export function createDocumentToolbar(element: HTMLElement, descriptors: Documen
 			control.addEventListener('pointerdown', event => event.preventDefault());
 			control.addEventListener('click', () => action({ control: descriptor.key }));
 		}
+		if (descriptor.currentValue !== undefined) { control.dataset[descriptor.key === 'font' ? 'currentFont' : 'currentSize'] = descriptor.currentValue; }
 		control.disabled = descriptor.disabled; controls.set(descriptor.key, control);
 	}
 	const button = (key: string) => controls.get(key) as HTMLButtonElement;
@@ -53,6 +55,7 @@ export function createDocumentToolbar(element: HTMLElement, descriptors: Documen
 			for (const descriptor of descriptors) {
 				const control = controls.get(descriptor.key); if (!control) { continue; }
 				control.disabled = descriptor.disabled;
+				if (descriptor.currentValue !== undefined) { control.dataset[descriptor.key === 'font' ? 'currentFont' : 'currentSize'] = descriptor.currentValue; control.dispatchEvent(new targetWindow.Event('formatstate')); }
 				if (descriptor.pressed !== undefined) { control.setAttribute('aria-pressed', String(descriptor.pressed)); }
 			}
 			const style = select('style'); style.dataset.currentStyle = paragraphStyle || ''; style.dispatchEvent(new Event('formatstate'));
@@ -74,6 +77,7 @@ export function isDocumentToolbarSnapshot(value: unknown): value is DocumentTool
 	for (const control of snapshot.controls) {
 		if (!control || seen.has(control.key) || ![...selectKeys, ...buttonKeys].includes(control.key) || control.type !== (selectKeys.includes(control.key) ? 'select' : 'button') || typeof control.label !== 'string' || control.label.length > 160 || typeof control.disabled !== 'boolean') { return false; }
 		if (control.type === 'select' && (!Array.isArray(control.options) || control.options.length > 40 || control.options.some(option => !option || typeof option.value !== 'string' || option.value.length > 200 || typeof option.label !== 'string' || option.label.length > 200))) { return false; }
+		if (control.currentValue !== undefined && (!['font', 'size'].includes(control.key) || typeof control.currentValue !== 'string' || control.currentValue.length > 200)) { return false; }
 		seen.add(control.key);
 	}
 	return [...selectKeys.filter(key => !['color', 'highlight'].includes(key)), ...buttonKeys.filter(key => !['text', 'properties', 'versions', 'strike', 'clear'].includes(key))].every(key => seen.has(key));
