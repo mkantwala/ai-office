@@ -114,3 +114,17 @@ Formatting uses real compact buttons with keyboard-accessible option menus, loca
 The Word comments summary bar is temporarily hidden; native comment data and agent comment commands remain available.
 
 The paragraph ruler displays inches from the text margin, with adaptive subdivisions, shaded page margins and vector indent/tab handles. Its width follows the rendered page in CSS pixels, including narrow views and high-DPI displays. Native measurements and guarded agent edits remain in points; focused/dragged markers announce both units. Tab handle shapes distinguish left, center, right, decimal and bar stops.
+
+## Opt-in live Cloudflare evaluation
+
+`cloudflareAgent.live.cts` exercises the registered chat participant, actual document tool backend, request history and native Word worker against synthetic DOCX files. It replaces only the VS Code UI/service shell. It makes real, billable GLM-4.7-Flash requests and is deliberately excluded from the normal test runner. Supply `CF_ACCOUNT_ID` and `CF_API_TOKEN` through the process environment; no credentials belong in the repository. Build the extension and Word engine first, then run from the repository root:
+
+```sh
+node --use-env-proxy extensions/ai-office-common/cloudflareAgent.live.cts
+```
+
+Use `--only=format-all,history-undo-redo` to rerun selected scenarios. The Node proxy flag is useful in managed environments; ordinary direct-network installations can omit it. JSON traces and synthetic result DOCX files are written under ignored `.build/live-cloudflare`. The checks inspect actual native content, DOCX XML, formatting and history rather than accepting the model's completion claim. Results are model evaluations and can vary between runs; a failed assertion is retained as a failure. Missing PDF engine artifacts can block the separate all-format suite without affecting this Word evaluation.
+
+Formatting tools accept both `RRGGBB` and `#RRGGBB`, canonicalizing colors before native edits. Paragraph distances are explicitly points in the tool schema. Deletion receipts distinguish required structural paragraphs from requested new content, and the native agent refuses repeated deletion of those paragraphs. An initial tool-free model answer receives an evidence check before it can be used as the document agent's answer.
+
+The live harness stops subsequent network scenarios after HTTP 401/403/429 and reports them as blocked, never passed. Comment text updates can include an explicit resolved boolean; both changes commit atomically, and operation-specific fields are validated instead of silently ignored.

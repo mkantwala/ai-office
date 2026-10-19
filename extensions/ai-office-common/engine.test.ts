@@ -770,3 +770,41 @@ test('Word agent color, highlight and strike preserve block identity and round-t
 		await assert.rejects(prepareWordFormatting({ query: 'AI', format: { clear: true, bold: true } }, read), /used alone/);
 	} finally { engine.dispose(); }
 });
+
+test('Word agent refuses repeated deletion of a required trailing paragraph without changing IDs or history', async () => {
+	const engine = await openEngine('word', 'Structural paragraph.docx', docx, root);
+	try {
+		const agent = engine.agent!;
+		const read = () => agent.read({ parentId: 'body' }) as { blocks: { id: string; kind: string; text: string }[] };
+		const last = read().blocks.at(-1)!;
+		const edit = (input: Record<string, unknown>) => agent.edit({ ...input, revision: engine.state().revision });
+		await edit({ operation: 'insert', id: last.id, position: 'before', blocks: [{ kind: 'table', rows: [['Owner'], ['Maya']] }] });
+		await edit({ operation: 'delete', id: last.id });
+		const before = read().blocks; const blank = before.at(-1)!;
+		assert.equal(blank.kind, 'paragraph'); assert.equal(blank.text, '');
+		const revision = engine.state().revision; const depth = engine.state().undoDepth;
+		await assert.rejects(edit({ operation: 'delete', id: blank.id }), /required after a table|empty container/);
+		assert.equal(engine.state().revision, revision); assert.equal(engine.state().undoDepth, depth);
+		assert.deepEqual(read().blocks.map(block => block.id), before.map(block => block.id));
+	} finally { engine.dispose(); }
+});
+
+test('Word comment text update and reopening can commit atomically with one Undo step', async () => {
+	const engine = await openEngine('word', 'Comment update.docx', docx, root);
+	try {
+		const agent = engine.agent!;
+		const id = (agent.read({ parentId: 'body' }) as { blocks: { id: string }[] }).blocks[0].id;
+		const edit = (input: Record<string, unknown>) => agent.edit({ ...input, revision: engine.state().revision });
+		await edit({ operation: 'comment', action: 'add', id, text: 'Original comment' });
+		const read = () => (agent.read({ operation: 'comments' }) as { comments: { commentId: number; text: string; resolved: boolean }[] }).comments[0];
+		const commentId = read().commentId;
+		await edit({ operation: 'comment', action: 'resolve', commentId, resolved: true });
+		await edit({ operation: 'batch', edits: [
+			{ operation: 'comment', action: 'update', commentId, text: 'Updated comment' },
+			{ operation: 'comment', action: 'resolve', commentId, resolved: false }
+		] });
+		assert.deepEqual({ text: read().text, resolved: read().resolved }, { text: 'Updated comment', resolved: false });
+		await engine.execute('edit.undo', {});
+		assert.deepEqual({ text: read().text, resolved: read().resolved }, { text: 'Original comment', resolved: true });
+	} finally { engine.dispose(); }
+});

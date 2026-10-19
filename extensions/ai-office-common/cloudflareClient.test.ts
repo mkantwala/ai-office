@@ -121,3 +121,17 @@ test('Word agent distinguishes large comment reads from completed draft mutation
 		});
 	}
 });
+
+test('Word agent obtains current evidence when a model claims Redo without invoking history', async () => {
+	let rounds = 0, invoked = 0;
+	const result = await runOfficeAgent({
+		messages: [{ role: 'user', content: 'Redo that change.' }], tools, signal: new AbortController().signal, requireInitialTool: true, progress: () => {},
+		complete: async (messages, _tools, required) => {
+			if (++rounds === 1) { assert.equal(required, false); return { role: 'assistant', content: 'Done, redone.' }; }
+			if (rounds === 2) { assert.equal(required, true); assert.match(messages.at(-1)!.content!, /Prior chat summaries/); return call('office_document_edit', '{}'); }
+			return { role: 'assistant', content: 'Confirmed after the document operation.' };
+		},
+		invoke: async () => { invoked++; return '{}'; }
+	});
+	assert.equal(invoked, 1); assert.equal(result, 'Confirmed after the document operation.');
+});

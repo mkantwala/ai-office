@@ -47,6 +47,16 @@ function validateDocumentAuxiliary(tool: 'draft' | 'comments', input: DocumentTo
 	const operation = input.operation ?? (tool === 'draft' ? 'status' : 'list');
 	const allowed = tool === 'draft' ? ['plan', 'status', 'fill', 'discard'] : ['list', 'add', 'reply', 'update', 'resolve', 'delete'];
 	if (!allowed.includes(operation)) { throw new Error(`Unsupported ${tool} operation.`); }
+	if (tool === 'comments') {
+		const fields: Record<string, string[]> = {
+			list: ['commentId', 'offset', 'limit', 'textOffset', 'textLimit'], add: ['id', 'text', 'find', 'nth', 'start', 'end'],
+			reply: ['commentId', 'text'], update: ['commentId', 'text', 'resolved'], resolve: ['commentId', 'resolved'], delete: ['commentId']
+		};
+		for (const key of Object.keys(input)) {
+			if (!['operation', 'uri', 'version', ...fields[operation]].includes(key)) { throw new Error(`${operation} comments does not accept ${key}. Replies, updates, resolve and delete use commentId from a comment list; only add accepts a text anchor.`); }
+		}
+		if (input.resolved !== undefined && typeof input.resolved !== 'boolean') { throw new Error('resolved must be an explicit boolean.'); }
+	}
 	for (const key of ['uri', 'version', 'id', 'sectionId']) {
 		if (input[key] !== undefined && (typeof input[key] !== 'string' || !input[key])) { throw new Error(`${key} must be a non-empty string.`); }
 	}

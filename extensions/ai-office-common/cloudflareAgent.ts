@@ -91,7 +91,9 @@ export function registerCloudflareAgent(context: vscode.ExtensionContext) {
 			if (!requestId) { throw new Error('The document agent requires the chat request identity. Reload the window to update the built-in extension.'); }
 			const result = await withAgentRequest(requestId, () => runOfficeAgent({
 				messages, tools, signal: cancel.signal,
-				complete: (messages, tools) => completeOfficeChat(key, messages, tools, cancel.signal),
+				// Force a tool only when an initial answer lacks a current receipt.
+				requireInitialTool: true,
+				complete: (messages, tools, required) => completeOfficeChat(key, messages, tools, cancel.signal, undefined, required),
 				progress: name => stream.progress(name === 'office_document_format' ? vscode.l10n.t('Formatting your document') : name === 'office_document_edit' ? vscode.l10n.t('Editing your document') : name === 'office_document_help' ? vscode.l10n.t('Checking document capabilities') : vscode.l10n.t('Reading the relevant content')),
 				async invoke(name, input) {
 					const result = await vscode.lm.invokeTool(name, { input, toolInvocationToken: request.toolInvocationToken }, token);

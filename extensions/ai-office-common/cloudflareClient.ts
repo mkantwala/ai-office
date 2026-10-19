@@ -65,7 +65,8 @@ export async function runOfficeAgent(options: {
 	messages: OfficeMessage[];
 	tools: OfficeTool[];
 	signal: AbortSignal;
-	complete: (messages: OfficeMessage[], tools: OfficeTool[]) => Promise<OfficeMessage>;
+	complete: (messages: OfficeMessage[], tools: OfficeTool[], required?: boolean) => Promise<OfficeMessage>;
+	requireInitialTool?: boolean;
 	invoke: (name: string, input: Record<string, unknown>) => Promise<string>;
 	progress: (name: string) => void;
 }): Promise<string> {
@@ -74,6 +75,8 @@ export async function runOfficeAgent(options: {
 	const searches = new Map<string, { uri: string; total: number; ids: Set<string>; pending: boolean }>();
 	const applied = new Map<string, { uri: string; label: string; ids: Set<string>; verified?: boolean }>();
 	let reviewed = false;
+	let invokedTool = false;
+	let forceTool = false;
 	const repeatedErrors = new Map<string, number>();
 	const repeatedReads = new Map<string, number>();
 	let lastError: string | undefined;
@@ -85,10 +88,16 @@ export async function runOfficeAgent(options: {
 
 	for (let round = 0; round < 16; round++) {
 		options.signal.throwIfAborted();
-		const reply = await options.complete(messages, options.tools);
+		const reply = await options.complete(messages, options.tools, forceTool);
 		options.signal.throwIfAborted();
 		messages.push(reply);
 		if (!reply.tool_calls?.length) {
+			if (options.requireInitialTool && !invokedTool) {
+				if (forceTool) { return 'No current document tool result was received, so this request could not be verified.'; }
+				forceTool = true;
+				messages.push({ role: 'system', content: 'No document tool has run in this user turn. Prior chat summaries do not execute the current request. Obtain a current tool receipt before answering. In particular, Undo/Redo require office_document_history status and the requested history mutation; never claim they ran based on conversation history.' });
+				continue;
+			}
 			const remaining = gaps();
 			if (applied.size && !reviewed) {
 				reviewed = true;
@@ -106,6 +115,7 @@ export async function runOfficeAgent(options: {
 				if (call.function.arguments.length > 160000) { throw new Error('Tool input is too large.'); }
 				const input = JSON.parse(call.function.arguments);
 				if (!input || typeof input !== 'object' || Array.isArray(input)) { throw new Error('Tool input must be an object.'); }
+				invokedTool = true; forceTool = false;
 				options.progress(call.function.name);
 				result = await options.invoke(call.function.name, input);
 				try {

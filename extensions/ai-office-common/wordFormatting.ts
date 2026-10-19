@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { validateParagraphProperties } from './paragraphProperties.js';
+import { normalizeParagraphProperties, paragraphPropertiesSchema } from './paragraphProperties.js';
 
 interface WordBlock { id: string; kind: string; text: string; textLength: number; nextTextOffset?: number | null }
 interface WordRead { blocks?: WordBlock[]; total?: number; nextOffset?: number | null; styles?: { id: string; name: string; size: number }[] }
@@ -25,7 +25,12 @@ export async function prepareWordFormatting(input: Record<string, unknown>, read
 	if (target === 'matches' && !query) { throw new Error('A literal query is required to format matching text.'); }
 	if (!input.format || typeof input.format !== 'object' || Array.isArray(input.format)) { throw new Error('format must be an object with supported formatting properties.'); }
 	const format = input.format as Record<string, unknown>;
-	for (const key of Object.keys(format)) { if (!fields.includes(key)) { throw new Error(`Unsupported format property ${key}. Supported: ${fields.join(', ')}.`); } }
+	for (const key of Object.keys(format)) {
+		if (!fields.includes(key)) {
+			if (Object.hasOwn(paragraphPropertiesSchema.properties, key)) { throw new Error(`Use format.paragraph.${key}, not format.${key}. Paragraph layout, shading, borders, tabs and pagination belong inside format.paragraph. Preserve the other requested properties in the corrected call.`); }
+			throw new Error(`Unsupported format property ${key}. Supported: ${fields.join(', ')}. To replace words, use office_document_edit with operation=replaceText, id and version from read, find=old words, and text=new words. Formatting never changes text.`);
+		}
+	}
 	if (format.size !== undefined && format.sizeFromStyle !== undefined) { throw new Error('Use either size or sizeFromStyle, not both.'); }
 	const commands: { command: string; params: Record<string, unknown> }[] = [];
 	for (const key of ['paragraphStyle', 'font', 'sizeFromStyle']) {
@@ -51,13 +56,13 @@ export async function prepareWordFormatting(input: Record<string, unknown>, read
 			commands.push({ command: 'format.' + key, params: { value: format[key] } });
 		}
 	}
-	if (format.clear !== undefined) {
+	if (format.clear !== undefined && format.clear !== false) {
 		if (format.clear !== true || Object.keys(format).length !== 1) { throw new Error('clear must be true and used alone.'); }
 		commands.push({ command: 'format.clear', params: {} });
 	}
 	if (format.color !== undefined) {
-		if (typeof format.color !== 'string' || !/^(auto|[0-9a-fA-F]{6})$/.test(format.color)) { throw new Error('color must be auto or six hexadecimal digits (RRGGBB).'); }
-		commands.push({ command: 'format.color', params: { color: format.color } });
+		if (typeof format.color !== 'string' || !/^(auto|#?[0-9a-fA-F]{6})$/.test(format.color)) { throw new Error('color must be auto or six hexadecimal digits (RRGGBB), with an optional #.'); }
+		commands.push({ command: 'format.color', params: { color: format.color.replace(/^#/, '') } });
 	}
 	if (format.highlight !== undefined) {
 		if (typeof format.highlight !== 'string' || !['none', 'yellow', 'brightGreen', 'turquoise', 'pink', 'blue', 'red', 'darkBlue', 'teal', 'green', 'violet', 'darkRed', 'darkYellow', 'gray50', 'gray25', 'black'].includes(format.highlight)) { throw new Error('Unsupported highlight color.'); }
@@ -72,9 +77,9 @@ export async function prepareWordFormatting(input: Record<string, unknown>, read
 		commands.push({ command: 'para.lineSpacing', params: { value: format.lineSpacing } });
 	}
 	if (format.paragraph !== undefined) {
-		validateParagraphProperties(format.paragraph);
-		if (format.alignment !== undefined && format.paragraph.alignment !== undefined || format.lineSpacing !== undefined && format.paragraph.lineSpacing !== undefined) { throw new Error('Specify alignment and line spacing only once.'); }
-		commands.push({ command: 'para.properties', params: format.paragraph as Record<string, unknown> });
+		const paragraph = normalizeParagraphProperties(format.paragraph);
+		if (format.alignment !== undefined && paragraph.alignment !== undefined || format.lineSpacing !== undefined && paragraph.lineSpacing !== undefined) { throw new Error('Specify alignment and line spacing only once.'); }
+		commands.push({ command: 'para.properties', params: paragraph as Record<string, unknown> });
 	}
 	if (!commands.length) { throw new Error('Provide at least one supported format property.'); }
 	const blocks: WordBlock[] = [];
@@ -153,7 +158,7 @@ export function validateDocumentEdits(input: Record<string, unknown>) {
 			if (![...common, ...properties[operation]].includes(key)) { throw new Error(`The ${operation} operation does not accept ${key}. For formatting, use office_document_format with query or ids and format properties. update only replaces text.`); }
 		}
 		if (operation === 'replaceText' && (typeof edit.find !== 'string' || !edit.find || edit.find.length > 2000 || edit.nth !== undefined && (!Number.isInteger(edit.nth) || edit.nth < 1))) { throw new Error('replaceText requires literal find text and optional positive nth.'); }
-		if (['update', 'replaceText'].includes(operation) && typeof edit.text !== 'string') { throw new Error('update requires text. For formatting use office_document_format; do not replace unchanged text.'); }
+		if (['update', 'replaceText'].includes(operation) && typeof edit.text !== 'string') { throw new Error(`${operation} requires text containing the NEW replacement words. Use {operation:"replaceText", id:<block ID from read>, version:<version from read>, find:"old words", text:"new words"}. Use office_document_format only for appearance changes.`); }
 	}
 }
 

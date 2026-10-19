@@ -16,16 +16,16 @@ export interface ParagraphProperties {
 	keepNext?: boolean; keepLines?: boolean; pageBreakBefore?: boolean; widowControl?: boolean;
 }
 
-const numberSchema = (minimum: number, maximum: number) => ({ type: 'number', minimum, maximum });
+const numberSchema = (minimum: number, maximum: number) => ({ type: 'number', minimum, maximum, description: 'Points (pt), never twips. 1 inch = 72 pt; half an inch = 36 pt.' });
 const enumSchema = (...values: string[]) => ({ type: 'string', enum: values });
 const objectSchema = (properties: Record<string, object>, required?: string[]) => ({ type: 'object', properties, additionalProperties: false, minProperties: 1, ...(required ? { required } : {}) });
-const colorSchema = { type: 'string', pattern: '^[a-fA-F0-9]{6}$' };
+const colorSchema = { type: 'string', pattern: '^#?[a-fA-F0-9]{6}$' };
 /** Shared source for the strict agent schema; distances are points. */
 export const paragraphPropertiesSchema = objectSchema({
 	alignment: enumSchema('left', 'center', 'right', 'justify', 'distribute'),
 	indents: objectSchema({ left: numberSchema(-1584, 1584), right: numberSchema(-1584, 1584), firstLine: numberSchema(-1584, 1584) }),
 	spacing: objectSchema({ before: numberSchema(0, 1584), after: numberSchema(0, 1584) }),
-	lineSpacing: objectSchema({ rule: enumSchema('multiple', 'exactly', 'atLeast'), value: numberSchema(.5, 1584) }, ['rule', 'value']),
+	lineSpacing: objectSchema({ rule: enumSchema('multiple', 'exactly', 'atLeast'), value: { ...numberSchema(.5, 1584), description: 'When rule is multiple, use a ratio (double = 2). For exactly or atLeast, use points (12 = 12 pt).' } }, ['rule', 'value']),
 	tabs: { type: 'array', maxItems: 64, items: objectSchema({ pos: numberSchema(0, 1584), align: enumSchema('left', 'center', 'right', 'decimal', 'bar'), leader: enumSchema('none', 'dot', 'hyphen', 'underscore', 'middleDot') }, ['pos']) },
 	borders: objectSchema(Object.fromEntries(['top', 'left', 'bottom', 'right', 'between'].map(side => [side, { anyOf: [{ type: 'null' }, objectSchema({ width: numberSchema(.25, 6), color: colorSchema, style: enumSchema('single', 'double', 'dotted', 'dashed') })] }]))),
 	shading: colorSchema,
@@ -56,4 +56,20 @@ export function validateParagraphProperties(value: unknown): asserts value is Pa
 		} else if (key === 'shading') { color(v); }
 		else if (typeof v !== 'boolean') { throw new Error(`${key} must be true or false.`); }
 	}
+}
+
+/** Accept standard CSS hex notation at the model boundary; native patches stay canonical. */
+export function normalizeParagraphProperties(value: unknown): ParagraphProperties {
+	const patch = structuredClone(value);
+	if (patch && typeof patch === 'object' && !Array.isArray(patch)) {
+		const properties = patch as Record<string, unknown>;
+		if (typeof properties.shading === 'string') { properties.shading = properties.shading.replace(/^#/, ''); }
+		if (properties.borders && typeof properties.borders === 'object' && !Array.isArray(properties.borders)) {
+			for (const border of Object.values(properties.borders)) {
+				if (border && typeof border === 'object' && typeof border.color === 'string') { border.color = border.color.replace(/^#/, ''); }
+			}
+		}
+	}
+	validateParagraphProperties(patch);
+	return patch;
 }

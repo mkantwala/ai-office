@@ -64,10 +64,10 @@ index 0000000..c26334e
 +wasm-bindgen = "0.2"
 diff --git a/apps/ai-office-preview/src/agent.rs b/apps/ai-office-preview/src/agent.rs
 new file mode 100644
-index 0000000..05273ce
+index 0000000..9dc015b
 --- /dev/null
 +++ b/apps/ai-office-preview/src/agent.rs
-@@ -0,0 +1,580 @@
+@@ -0,0 +1,590 @@
 +//! Internal, revision-checked block editing for the AI Office agent.
 +use serde_json::{Value, json};
 +use sha2::{Digest, Sha256};
@@ -511,6 +511,16 @@ index 0000000..05273ce
 +            require_detach(&session.doc, &node, args)?;
 +            if matches!(node.kind, "row" | "cell") {
 +                return Err("Delete a paragraph or table; row/cell deletion is not exposed".into());
++            }
++            // Empty terminal paragraphs after tables (and in empty containers) are structural.
++            // Removing them only regenerates a fresh ID and invites an agent deletion loop.
++            if session.doc.para(node.story, &node.path).is_some_and(|p| p.text.is_empty()) {
++                if let Some(container) = session.doc.container(node.story, &node.path) {
++                    let index = node.path.last();
++                    if index + 1 == container.len() && (index == 0 || matches!(&*container[index - 1], Block::Table(_))) {
++                        return Err("This empty paragraph is required after a table or in an empty container. Keep it; removing it would only recreate it.".into());
++                    }
++                }
 +            }
 +            session.doc.remove_block(node.story, &node.path).map_err(|e| e.to_string())?;
 +        }

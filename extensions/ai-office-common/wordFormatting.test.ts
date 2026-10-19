@@ -60,3 +60,25 @@ test('Word paragraph tool schema stays aligned with the shared typed property co
 	const { description: _description, ...schema } = tool.inputSchema.properties.format.properties.paragraph;
 	assert.deepEqual(schema, paragraphPropertiesSchema);
 });
+
+test('Word formatting canonicalizes model hex colors without mutating inputs or weakening native patches', async () => {
+	let reads = 0;
+	const read = async () => { reads++; return { blocks: [{ id: 'p1', kind: 'paragraph', text: 'target', textLength: 6 }] }; };
+	const format = { color: '#c00000', paragraph: { shading: '#EEEEEE', borders: { bottom: { color: '#123456', width: 1 } } } };
+	const plan = await prepareWordFormatting({ ids: ['p1'], format }, read);
+	assert.equal(plan.edits[0].params.color, 'c00000');
+	assert.deepEqual(plan.edits[1].params, { shading: 'EEEEEE', borders: { bottom: { color: '123456', width: 1 } } });
+	assert.equal(format.color, '#c00000'); assert.equal(format.paragraph.shading, '#EEEEEE');
+	const before = reads;
+	for (const format of [{ color: '#BAD' }, { color: '#1234567' }, { paragraph: { shading: '#BAD' } }, { paragraph: { borders: { bottom: { color: '#123456', extra: true } } } }]) {
+		await assert.rejects(prepareWordFormatting({ ids: ['p1'], format }, read));
+	}
+	assert.equal(reads, before, 'Invalid colors and unknown fields fail before target reads or edits');
+});
+
+test('Word formatting repairs name the correct payload fields and ignore an explicit false clear flag', async () => {
+	const read = async () => ({ blocks: [{ id: 'p1', kind: 'paragraph', text: 'target', textLength: 6 }] });
+	const plan = await prepareWordFormatting({ query: 'target', format: { bold: true, clear: false } }, read);
+	assert.deepEqual(plan.commands, ['format.bold']);
+	await assert.rejects(prepareWordFormatting({ query: 'target', format: { shading: '#EEEEEE' } }, read), /format\.paragraph\.shading/);
+});

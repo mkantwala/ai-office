@@ -220,17 +220,20 @@
 												"left": {
 													"type": "number",
 													"minimum": -1584,
-													"maximum": 1584
+													"maximum": 1584,
+													"description": "Points (pt), never twips. 1 inch = 72 pt; half an inch = 36 pt."
 												},
 												"right": {
 													"type": "number",
 													"minimum": -1584,
-													"maximum": 1584
+													"maximum": 1584,
+													"description": "Points (pt), never twips. 1 inch = 72 pt; half an inch = 36 pt."
 												},
 												"firstLine": {
 													"type": "number",
 													"minimum": -1584,
-													"maximum": 1584
+													"maximum": 1584,
+													"description": "Points (pt), never twips. 1 inch = 72 pt; half an inch = 36 pt."
 												}
 											},
 											"additionalProperties": false,
@@ -242,12 +245,14 @@
 												"before": {
 													"type": "number",
 													"minimum": 0,
-													"maximum": 1584
+													"maximum": 1584,
+													"description": "Points (pt), never twips. 1 inch = 72 pt; half an inch = 36 pt."
 												},
 												"after": {
 													"type": "number",
 													"minimum": 0,
-													"maximum": 1584
+													"maximum": 1584,
+													"description": "Points (pt), never twips. 1 inch = 72 pt; half an inch = 36 pt."
 												}
 											},
 											"additionalProperties": false,
@@ -267,7 +272,8 @@
 												"value": {
 													"type": "number",
 													"minimum": 0.5,
-													"maximum": 1584
+													"maximum": 1584,
+													"description": "When rule is multiple, use a ratio (double = 2). For exactly or atLeast, use points (12 = 12 pt)."
 												}
 											},
 											"additionalProperties": false,
@@ -286,7 +292,8 @@
 													"pos": {
 														"type": "number",
 														"minimum": 0,
-														"maximum": 1584
+														"maximum": 1584,
+														"description": "Points (pt), never twips. 1 inch = 72 pt; half an inch = 36 pt."
 													},
 													"align": {
 														"type": "string",
@@ -330,11 +337,12 @@
 																"width": {
 																	"type": "number",
 																	"minimum": 0.25,
-																	"maximum": 6
+																	"maximum": 6,
+																	"description": "Points (pt), never twips. 1 inch = 72 pt; half an inch = 36 pt."
 																},
 																"color": {
 																	"type": "string",
-																	"pattern": "^[a-fA-F0-9]{6}$"
+																	"pattern": "^#?[a-fA-F0-9]{6}$"
 																},
 																"style": {
 																	"type": "string",
@@ -362,11 +370,12 @@
 																"width": {
 																	"type": "number",
 																	"minimum": 0.25,
-																	"maximum": 6
+																	"maximum": 6,
+																	"description": "Points (pt), never twips. 1 inch = 72 pt; half an inch = 36 pt."
 																},
 																"color": {
 																	"type": "string",
-																	"pattern": "^[a-fA-F0-9]{6}$"
+																	"pattern": "^#?[a-fA-F0-9]{6}$"
 																},
 																"style": {
 																	"type": "string",
@@ -394,11 +403,12 @@
 																"width": {
 																	"type": "number",
 																	"minimum": 0.25,
-																	"maximum": 6
+																	"maximum": 6,
+																	"description": "Points (pt), never twips. 1 inch = 72 pt; half an inch = 36 pt."
 																},
 																"color": {
 																	"type": "string",
-																	"pattern": "^[a-fA-F0-9]{6}$"
+																	"pattern": "^#?[a-fA-F0-9]{6}$"
 																},
 																"style": {
 																	"type": "string",
@@ -426,11 +436,12 @@
 																"width": {
 																	"type": "number",
 																	"minimum": 0.25,
-																	"maximum": 6
+																	"maximum": 6,
+																	"description": "Points (pt), never twips. 1 inch = 72 pt; half an inch = 36 pt."
 																},
 																"color": {
 																	"type": "string",
-																	"pattern": "^[a-fA-F0-9]{6}$"
+																	"pattern": "^#?[a-fA-F0-9]{6}$"
 																},
 																"style": {
 																	"type": "string",
@@ -458,11 +469,12 @@
 																"width": {
 																	"type": "number",
 																	"minimum": 0.25,
-																	"maximum": 6
+																	"maximum": 6,
+																	"description": "Points (pt), never twips. 1 inch = 72 pt; half an inch = 36 pt."
 																},
 																"color": {
 																	"type": "string",
-																	"pattern": "^[a-fA-F0-9]{6}$"
+																	"pattern": "^#?[a-fA-F0-9]{6}$"
 																},
 																"style": {
 																	"type": "string",
@@ -485,7 +497,7 @@
 										},
 										"shading": {
 											"type": "string",
-											"pattern": "^[a-fA-F0-9]{6}$"
+											"pattern": "^#?[a-fA-F0-9]{6}$"
 										},
 										"keepNext": {
 											"type": "boolean"
@@ -502,15 +514,15 @@
 									},
 									"additionalProperties": false,
 									"minProperties": 1,
-									"description": "Partial properties of paragraph/heading/list-item blocks. Distances in points; omitted properties stay unchanged. Tabs replace stops; border sides patch independently; null removes a side. Shading is an explicit RGB fill."
+									"description": "Partial properties of paragraph/heading/list-item blocks. Distances in points; omitted properties stay unchanged. Tabs replace stops; border sides patch independently; null removes a side. Shading is an explicit RGB fill. Distances are points, never twips: 1 inch = 72 pt; half an inch = 36 pt."
 								},
 								"strikethrough": {
 									"type": "boolean"
 								},
 								"color": {
 									"type": "string",
-									"pattern": "^(auto|[0-9a-fA-F]{6})$",
-									"description": "Text color: RRGGBB or auto."
+									"pattern": "^(auto|#?[0-9a-fA-F]{6})$",
+									"description": "Text color: RRGGBB, #RRGGBB, or auto."
 								},
 								"highlight": {
 									"type": "string",
@@ -535,8 +547,7 @@
 								},
 								"clear": {
 									"type": "boolean",
-									"const": true,
-									"description": "Clear formatting; use alone."
+									"description": "True clears formatting and must be used alone. False is ignored."
 								}
 							},
 							"additionalProperties": false
@@ -545,7 +556,20 @@
 					"required": [
 						"format"
 					],
-					"additionalProperties": false
+					"additionalProperties": false,
+					"anyOf": [
+						{
+							"required": [
+								"query"
+							]
+						},
+						{
+							"required": [
+								"ids",
+								"version"
+							]
+						}
+					]
 				}
 			},
 			{
@@ -553,7 +577,7 @@
 				"toolReferenceName": "officeDocumentEdit",
 				"displayName": "Edit Word Content",
 				"userDescription": "Edit Word Content in the live Word editor.",
-				"modelDescription": "Edit native Word blocks atomically. replaceText uses literal find + optional nth and preserves surrounding formatting/objects. update uses Unicode ranges. Include ifHash from read for safe text edits across unrelated revisions. Structural insert/delete/replaceBlocks require a fresh version; replaceBlocks intentionally retires old IDs and structure. Comment anchor detachment is refused unless explicitly authorized with allowDetach. Successful receipts are undoable and unsaved; leave Keep/Undo decisions to the user. For formatting use office_document_format.",
+				"modelDescription": "Edit native Word blocks atomically. replaceText uses literal find + optional nth and preserves surrounding formatting/objects. update uses Unicode ranges. Include ifHash from read for safe text edits across unrelated revisions. Structural insert/delete/replaceBlocks require a fresh version; replaceBlocks intentionally retires old IDs and structure. Comment anchor detachment is refused unless explicitly authorized with allowDetach. Successful receipts are undoable and unsaved; leave Keep/Undo decisions to the user. For formatting use office_document_format. replaceText REQUIRES id, version, find (OLD words), and text (NEW words). Example: {operation:\"replaceText\",id:<from read>,version:<from read>,find:\"Maya\",text:\"Priya\"}. edits is only valid when operation=batch.",
 				"canBeReferencedInPrompt": true,
 				"inputSchema": {
 					"type": "object",
@@ -632,7 +656,8 @@
 						},
 						"text": {
 							"type": "string",
-							"maxLength": 100000
+							"maxLength": 100000,
+							"description": "Required for update and replaceText: NEW replacement text. For replaceText also send id, version and find=old text."
 						},
 						"start": {
 							"type": "integer",
@@ -722,7 +747,8 @@
 									},
 									"text": {
 										"type": "string",
-										"maxLength": 100000
+										"maxLength": 100000,
+										"description": "Required for update and replaceText: NEW replacement text. For replaceText also send id, version and find=old text."
 									},
 									"start": {
 										"type": "integer",
@@ -764,7 +790,40 @@
 									"id",
 									"operation"
 								],
-								"additionalProperties": false
+								"additionalProperties": false,
+								"allOf": [
+									{
+										"if": {
+											"properties": {
+												"operation": {
+													"enum": [
+														"update",
+														"replaceText"
+													]
+												}
+											}
+										},
+										"then": {
+											"required": [
+												"text"
+											]
+										}
+									},
+									{
+										"if": {
+											"properties": {
+												"operation": {
+													"const": "replaceText"
+												}
+											}
+										},
+										"then": {
+											"required": [
+												"find"
+											]
+										}
+									}
+								]
 							}
 						},
 						"ifHash": {
@@ -791,7 +850,59 @@
 						"operation",
 						"version"
 					],
-					"additionalProperties": false
+					"additionalProperties": false,
+					"allOf": [
+						{
+							"if": {
+								"properties": {
+									"operation": {
+										"const": "batch"
+									}
+								}
+							},
+							"then": {
+								"required": [
+									"edits"
+								]
+							},
+							"else": {
+								"required": [
+									"id"
+								]
+							}
+						},
+						{
+							"if": {
+								"properties": {
+									"operation": {
+										"enum": [
+											"update",
+											"replaceText"
+										]
+									}
+								}
+							},
+							"then": {
+								"required": [
+									"text"
+								]
+							}
+						},
+						{
+							"if": {
+								"properties": {
+									"operation": {
+										"const": "replaceText"
+									}
+								}
+							},
+							"then": {
+								"required": [
+									"find"
+								]
+							}
+						}
+					]
 				}
 			},
 			{
@@ -1058,7 +1169,7 @@
 				"toolReferenceName": "officeDocumentComments",
 				"displayName": "Word Comment Threads",
 				"userDescription": "Word Comment Threads",
-				"modelDescription": "Read paginated native comment threads with anchors and orphaned/resolved status. Mutations require fresh version. add anchors exact find/nth or Unicode start/end within paragraph id; reply/update/resolve/delete target internal numeric commentId. Resolve only when asked. Replies attach to root threads. Load guide=comments before comment mutations.",
+				"modelDescription": "Read paginated native comment threads with anchors and orphaned/resolved status. Mutations require fresh version. add anchors exact find/nth or Unicode start/end within paragraph id; reply/update/resolve/delete target internal numeric commentId. Resolve only when asked. Replies attach to root threads. Load guide=comments before comment mutations. update accepts text plus optional resolved in one atomic edit. resolve requires an explicit resolved boolean; false reopens. reply/update/resolve/delete require commentId from list; find/id anchors are only for add.",
 				"canBeReferencedInPrompt": true,
 				"inputSchema": {
 					"type": "object",
@@ -1168,7 +1279,7 @@
 		"languageModelChatProviders": [
 			{
 				"vendor": "ai-office-cloudflare",
-				"displayName": "Cloudflare · Sangam One",
+				"displayName": "Cloudflare \u00b7 Sangam One",
 				"managementCommand": "aiOffice.cloudflare.configure"
 			}
 		],

@@ -156,10 +156,17 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		workspace: { isTrusted: true, fs: { stat: async () => ({ size: 32 }), readFile: async () => Buffer.from('Initial content') } }
 	};
 	class EngineClient {
-		text = 'Initial content'; revision = 0; past = []; future = []; failNextRead = false;
+		text = 'Initial content'; revision = 0; past = []; future = []; failNextRead = false; comments = [{ commentId: 0, text: 'Original comment', resolved: true }];
 		async request(method, args) {
+			if (method === 'agentRead' && args.args.operation === 'comments') { return { comments: this.comments.map(comment => ({ ...comment })) }; }
 			if (method === 'agentRead') { if (this.failNextRead) { this.failNextRead = false; throw new Error('Preview read failed'); } return { blocks: [{ id: 'internal-id', parentId: 'body', text: this.text }] }; }
 			if (method === 'agentRects') { return [{ page: 0, x: 72, y: 72, width: 120, height: 20 }]; }
+			if (method === 'agentEdit' && args.args.operation === 'batch' && args.args.edits.every(edit => edit.operation === 'comment')) {
+				assert.equal(args.args.revision, this.revision);
+				for (const edit of args.args.edits) { if (edit.action === 'update') { this.comments[0].text = edit.text; } else if (edit.action === 'resolve') { this.comments[0].resolved = edit.resolved; } }
+				this.past.push(this.text); this.revision++;
+				return { pages: [[612, 792]], state: { revision: this.revision, undo: true, undoDepth: this.past.length, agentAppliedEdits: args.args.edits } };
+			}
 			if (method === 'agentEdit') {
 				assert.equal(args.args.revision, this.revision);
 				if (args.args.text === 'fail') { throw new Error('Invalid edit'); }
@@ -282,7 +289,12 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		assert.equal((await invoke('read', {})).blocks[0].text, 'Applied despite preview failure');
 		await invoke('history', { operation: 'undo', version: applied.version });
 		assert.equal((await invoke('read', {})).blocks[0].text, 'Initial content');
-
+		const commentState = await invoke('comments', {});
+		const commentEdit = await invoke('comments', { operation: 'update', version: commentState.version, commentId: 0, text: 'Updated comment', resolved: false });
+		assert.equal(commentEdit.completed, true); assert.deepEqual(commentEdit.comments, [{ commentId: 0, text: 'Updated comment', resolved: false }]);
+		assert.deepEqual(commentEdit.appliedEdits.map(edit => edit.action), ['update', 'resolve']);
+		assert.match((await invoke('comments', { operation: 'update', version: commentEdit.version, commentId: 0, text: 'Bad', resolved: 'false' })).error, /explicit boolean/);
+		assert.match((await invoke('comments', { operation: 'reply', version: commentEdit.version, commentId: 0, text: 'Bad', find: 'ignored anchor' })).error, /does not accept find/);
 
 	} finally { doc.dispose(); }
 });

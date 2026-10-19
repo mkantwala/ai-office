@@ -254,7 +254,9 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				try { content = await doc.client.request<Record<string, unknown>>('agentRead', { args: input.operation === 'comment' ? { operation: 'comments' } : ['insert', 'delete', 'replaceBlocks'].includes(String(input.operation)) ? { parentId, limit: 20 } : { id: targetId } }); }
 				catch { warnings.push('Content was applied; its preview could not be read. Request a small read to inspect it, without repeating the edit.'); }
 				const commandResult = JSON.stringify(result.state.agentCommandResult ?? null).length <= 8000 ? result.state.agentCommandResult : { truncated: true, guidance: 'Read the relevant document/comment blocks in pages.' };
-				return { uri: doc.uri.toString(), version: doc.version, completed: true, ...(warnings.length ? { warnings } : {}), rebased, ...content, created: result.state.agentCreatedBlocks || [], commandResult, appliedEdits: result.state.agentAppliedEdits || edits.map(edit => ({ id: edit.id, operation: edit.operation, command: edit.command, params: edit.params })), saved: false, undoable: result.state.revision !== before };
+				const created = result.state.agentCreatedBlocks || [];
+				const structuralPlaceholders = edits.every(edit => edit.operation === 'delete') ? created : [];
+				return { uri: doc.uri.toString(), version: doc.version, completed: true, ...(warnings.length ? { warnings } : {}), rebased, ...content, created: structuralPlaceholders.length ? [] : created, ...(structuralPlaceholders.length ? { retainedStructuralParagraphs: structuralPlaceholders.length, guidance: 'The requested deletion completed. The document engine retained required empty structural paragraphs (after tables or in empty containers). These are not unfinished deletions; do not delete them again.' } : {}), commandResult, appliedEdits: result.state.agentAppliedEdits || edits.map(edit => ({ id: edit.id, operation: edit.operation, command: edit.command, params: edit.params })), saved: false, undoable: result.state.revision !== before };
 			} finally {
 				// Give fast operations enough time to paint, without delaying the engine itself.
 				await new Promise(resolve => setTimeout(resolve, Math.max(0, 400 - (Date.now() - started))));
@@ -588,6 +590,13 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 						const action = input.operation ?? 'list';
 						if (!['list', 'add', 'reply', 'update', 'resolve', 'delete'].includes(String(action))) { throw new Error('Use list, add, reply, update, resolve or delete for comments.'); }
 						if (action === 'list') { return { uri: doc.uri.toString(), version: doc.version, ...await doc.client.request<Record<string, unknown>>('agentRead', { args: { ...input, operation: 'comments' } }) }; }
+						if (action === 'update' && typeof input.resolved === 'boolean') {
+							const result = await agentEdits.get('word')!(doc, { operation: 'batch', version: input.version, edits: [
+								{ operation: 'comment', action: 'update', commentId: input.commentId, text: input.text },
+								{ operation: 'comment', action: 'resolve', commentId: input.commentId, resolved: input.resolved }
+							] }, token);
+							return { ...result as Record<string, unknown>, ...await doc.client.request<Record<string, unknown>>('agentRead', { args: { operation: 'comments', commentId: input.commentId } }) };
+						}
 						return agentEdits.get('word')!(doc, { ...input, operation: 'comment', action }, token);
 					}
 					if (tool === 'draft') {
