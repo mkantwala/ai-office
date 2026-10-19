@@ -479,7 +479,7 @@ export interface IEditorGroupsContainer {
  */
 export interface IEditorPart extends IEditorGroupsContainer {
 
-	/** Reserve a single shared toolbar above all editor groups in this window. */
+	/** Mount the shared toolbar below the active editor group’s tabs. */
 	registerToolbar(element: HTMLElement, height: number): IDisposable;
 
 	/**

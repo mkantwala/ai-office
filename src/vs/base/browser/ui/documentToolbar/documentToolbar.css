@@ -273,7 +273,7 @@
 .word-toolbar button:disabled, .word-toolbar select:disabled, .word-toolbar-overflow button:disabled, .word-toolbar-overflow select:disabled { opacity: .35; cursor: default; }
 .word-toolbar button:focus-visible, .word-toolbar select:focus-visible, .word-toolbar-overflow button:focus-visible, .word-toolbar-overflow select:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 .word-toolbar button[aria-pressed="true"], .word-toolbar-overflow button[aria-pressed="true"] { background: color-mix(in srgb, var(--vscode-focusBorder) 22%, transparent); border-color: var(--vscode-focusBorder); }
-.sangam-document-toolbar { box-sizing: border-box; padding: 0 8px 6px; background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background)); }
+.sangam-document-toolbar { display: flex; box-sizing: border-box; padding: 0 8px 6px; background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background)); }
 .sangam-document-toolbar > .word-toolbar { position: relative; top: 0; margin: 0; height: 42px; padding: 4px 8px; font: 12px var(--vscode-font-family); color: var(--vscode-foreground); }
 /* The editor-part header is flex; allow the compact row to shrink into its overflow menu. */
 .sangam-document-toolbar > .word-toolbar { box-sizing: border-box; flex: 1; min-width: 0; width: 100%; }

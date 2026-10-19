@@ -44,7 +44,7 @@ function toolbarAction(action: DocumentToolbarAction, context: string) {
 	else { control.click(); }
 }
 const comments = document.createElement('details');
-comments.className = 'comments'; pages.before(comments);
+comments.className = 'comments'; comments.hidden = true; pages.before(comments);
 const keyboard = el('keyboard') as HTMLTextAreaElement;
 let wordParagraph: WordParagraph | undefined;
 let kind: Kind;
@@ -363,7 +363,7 @@ window.addEventListener('message', event => {
 		state = data.state; dimensions = data.pages;
 		revealWordCaret = kind === 'word' && (data.command?.startsWith('text.') || data.command === 'insert.table');
 		const commentsOpen = comments.open;
-		comments.replaceChildren(); comments.open = commentsOpen; comments.hidden = !state.comments?.length;
+		comments.replaceChildren(); comments.open = commentsOpen; comments.hidden = kind === 'word' || !state.comments?.length;
 		const summary = document.createElement('summary'); summary.textContent = `Comments (${state.comments?.length || 0})`; comments.append(summary);
 		for (const comment of state.comments || []) { const p = document.createElement('p'); p.textContent = (comment.resolved ? 'Resolved · ' : '') + (comment.author || 'Comment') + ': ' + comment.text; if (typeof comment.parentId === 'number') { p.style.marginInlineStart = '24px'; } comments.append(p); }
 		if (!initialized) { initialized = true; buildToolbar(); }

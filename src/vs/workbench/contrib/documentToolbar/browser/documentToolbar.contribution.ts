@@ -27,6 +27,7 @@ class DocumentToolbarContribution extends Disposable implements IWorkbenchContri
 	private shape = '';
 	private input?: CustomEditorInput;
 	private ready = false;
+	private groupId?: number;
 
 	constructor(
 		@IEditorService private readonly editors: IEditorService,
@@ -57,6 +58,7 @@ class DocumentToolbarContribution extends Disposable implements IWorkbenchContri
 		this.host.addEventListener('pointerdown', capture); this.host.addEventListener('focusin', capture);
 		this._register({ dispose: () => { this.host.removeEventListener('pointerdown', capture); this.host.removeEventListener('focusin', capture); this.controls?.dispose(); this.host.remove(); } });
 		this._register(this.editors.onDidActiveEditorChange(() => this.activeChanged()));
+		this._register(this.groups.onDidActivateGroup(() => this.activeChanged()));
 		void this.groups.whenReady.then(() => { this.ready = true; this.activeChanged(); });
 	}
 
@@ -67,7 +69,10 @@ class DocumentToolbarContribution extends Disposable implements IWorkbenchContri
 
 	private activeChanged() {
 		if (!this.ready) { return; }
-		const input = this.activeInput(); if (input === this.input) { return; } this.input = input;
+		const input = this.activeInput(); const groupId = this.groups.activeGroup.id;
+		if (input === this.input && groupId === this.groupId) { return; }
+		if (groupId !== this.groupId) { this.registration.clear(); }
+		this.input = input; this.groupId = groupId;
 		this.target = undefined; this.interaction = undefined; this.shape = '';
 		this.controls?.dispose(); this.controls = undefined; this.toolbar.replaceChildren();
 		if (!input) { this.registration.clear(); return; }

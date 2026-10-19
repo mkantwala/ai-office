@@ -302,6 +302,9 @@ export interface IEditorGroupMenuIds {
  */
 export interface IEditorGroupView extends IDisposable, ISerializableView, IEditorGroup {
 
+	/** Mount workbench controls between this group's tabs and editor pane. */
+	registerToolbar(element: HTMLElement, height: number): IDisposable;
+
 	readonly onDidFocus: Event<void>;
 
 	readonly onWillOpenEditor: Event<IEditorWillOpenEvent>;
