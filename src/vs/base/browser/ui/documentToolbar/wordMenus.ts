@@ -13,7 +13,7 @@ export function wordMenus(select: HTMLSelectElement, table: HTMLButtonElement, i
 	const styleButton = ownerDocument.createElement('button');
 	styleButton.type = 'button'; styleButton.disabled = select.disabled; styleButton.className = 'word-style-select';
 	styleButton.title = 'Paragraph Style'; styleButton.setAttribute('aria-label', 'Paragraph Style');
-	styleButton.textContent = 'Paragraph style';
+	styleButton.textContent = 'Aa';
 	select.hidden = true;
 	const wrapper = ownerDocument.createElement('span'); wrapper.className = 'word-style-control'; wrapper.append(styleButton, select);
 	const create = (button: HTMLButtonElement, id: string, label: string, initialFocus: () => HTMLElement | undefined) => {
@@ -48,10 +48,10 @@ export function wordMenus(select: HTMLSelectElement, table: HTMLButtonElement, i
 		item.append(check, sample); styles.menu.append(item); styleItems.push(item);
 		item.addEventListener('click', () => { styles.close(); select.value = option.value; select.dispatchEvent(new Event('change', { bubbles: true })); focusDocument(); }, listen);
 	}
-	styles.menu.setAttribute('role', 'menu');
+	styles.menu.setAttribute('role', 'menu'); styleButton.setAttribute('aria-haspopup', 'menu');
 	select.addEventListener('formatstate', () => { styleButton.disabled = select.disabled;
 		const current = select.dataset.currentStyle;
-		styleButton.textContent = [...select.options].find(option => option.value === current)?.textContent || 'Paragraph style';
+		styleButton.textContent = 'Aa';
 		for (const item of styleItems) { item.setAttribute('aria-checked', String(item.dataset.style === current)); }
 	}, listen);
 	styles.menu.addEventListener('keydown', event => {
@@ -87,6 +87,37 @@ export function wordMenus(select: HTMLSelectElement, table: HTMLButtonElement, i
 		cells[(row - 1) * 10 + col - 1].focus();
 	}, listen);
 
+	// Button menus share the original select's command and disabled state.
+	const selectors: { select: HTMLSelectElement; button: HTMLButtonElement }[] = [];
+	const selector = (select: HTMLSelectElement, content: string | SVGSVGElement) => {
+		const button = ownerDocument.createElement('button'); button.type = 'button'; button.className = 'word-dropdown-button';
+		button.title = select.title; button.setAttribute('aria-label', select.getAttribute('aria-label') || select.title);
+		if (typeof content === 'string') { button.textContent = content; } else { button.append(content); }
+		const wrapper = ownerDocument.createElement('span'); wrapper.className = 'word-button-control'; select.hidden = true; wrapper.append(button, select);
+		const items: HTMLButtonElement[] = [];
+		const popup = create(button, `word-option-menu-${selectors.length}`, select.title, () => items[0]); popup.menu.classList.add('word-option-menu'); popup.menu.setAttribute('role', 'menu'); button.setAttribute('aria-haspopup', 'menu');
+		for (const option of [...select.options].filter(option => option.value)) {
+			const item = ownerDocument.createElement('button'); item.type = 'button'; item.textContent = option.textContent; item.setAttribute('role', 'menuitem');
+			if (select.dataset.palette) {
+				const swatch = ownerDocument.createElement('span'); swatch.className = 'word-color-swatch';
+				const colors: Record<string, string> = { yellow: '#ffff00', brightGreen: '#00ff00', turquoise: '#00ffff', pink: '#ff00ff', blue: '#0000ff', red: '#ff0000', darkBlue: '#000080', teal: '#008080', green: '#008000', violet: '#800080', darkRed: '#800000', darkYellow: '#808000', gray50: '#808080', gray25: '#c0c0c0', black: '#000000' };
+				swatch.style.backgroundColor = /^[0-9a-f]{6}$/i.test(option.value) ? `#${option.value}` : colors[option.value] || 'transparent'; item.prepend(swatch);
+			}
+			item.addEventListener('click', () => { popup.close(); select.value = option.value; select.dispatchEvent(new targetWindow.Event('change', { bubbles: true })); focusDocument(); }, listen);
+			items.push(item); popup.menu.append(item);
+		}
+		popup.menu.addEventListener('keydown', event => {
+			if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) { return; }
+			event.preventDefault(); const index = items.indexOf(ownerDocument.activeElement as HTMLButtonElement);
+			items[event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+		}, listen);
+		selectors.push({ select, button }); button.disabled = select.disabled; observer.observe(select, { attributes: true, attributeFilter: ['disabled'] });
+		return { element: wrapper, button };
+	};
+	const update = () => { for (const entry of selectors) { entry.button.disabled = entry.select.disabled; } styleButton.disabled = select.disabled; };
+	const observer = new targetWindow.MutationObserver(update);
+	observer.observe(select, { attributes: true, attributeFilter: ['disabled'] });
+
 	highlight(1, 1); tables.menu.append(heading, grid, size);
-	return { style: wrapper, styleButton, dispose: () => { events.abort(); menus.forEach(menu => menu.remove()); } };
+	return { style: wrapper, styleButton, selector, dispose: () => { observer.disconnect(); events.abort(); menus.forEach(menu => menu.remove()); } };
 }

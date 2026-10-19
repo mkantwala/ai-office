@@ -70,7 +70,7 @@ suite('Office toolbar in a browser', () => {
 				assert.ok(bounds && bounds.height <= 48, `Toolbar wrapped at ${width}px`);
 				assert.equal(await controls.count(), controlCount);
 			}
-			assert.equal(await page.locator('#toolbar').getByRole('combobox', { name: 'Font Family' }).isVisible(), true);
+			assert.equal(await page.locator('#toolbar').getByRole('button', { name: 'Font Family' }).isVisible(), true);
 		} finally { await page.close(); }
 	});
 	test('Overflow retains formatting, insertion, save and keyboard behavior', async () => {
@@ -79,7 +79,8 @@ suite('Office toolbar in a browser', () => {
 			await page.goto(address);
 			const more = page.getByRole('button', { name: 'More Formatting' });
 			await more.click();
-			await page.getByRole('combobox', { name: 'Font Family' }).selectOption('Arial');
+			await page.getByRole('button', { name: 'Font Family' }).click();
+			await page.getByRole('menuitem', { name: 'Arial', exact: true }).click();
 			await page.waitForFunction(() => !document.querySelector('#word-toolbar-overflow')!.matches(':popover-open'));
 			await more.focus();
 			await page.keyboard.press('Enter');
@@ -88,6 +89,7 @@ suite('Office toolbar in a browser', () => {
 			await more.click();
 			await page.getByRole('button', { name: 'Insert table', exact: true }).click();
 			await page.getByRole('button', { name: '3 columns, 2 rows', exact: true }).click();
+			if (!await page.getByRole('button', { name: 'Bold', exact: true }).isVisible()) { await page.getByRole('button', { name: 'More Formatting' }).click(); }
 			await page.getByRole('button', { name: 'Bold', exact: true }).click();
 			await page.getByRole('button', { name: 'Save (Ctrl+S)', exact: true }).click();
 			await page.getByRole('button', { name: 'Undo (Ctrl+Z)', exact: true }).click();
@@ -217,6 +219,34 @@ suite('Office toolbar in a browser', () => {
 		} finally { await page.close(); }
 	});
 
+	test('Word button palettes and tooltips dispatch native formatting commands', async () => {
+		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+		page.setDefaultTimeout(10000);
+		try {
+			await page.goto(address);
+			await page.evaluate(() => { document.body.style.setProperty('--vscode-foreground', '#cccccc'); document.body.style.setProperty('--vscode-editorWidget-background', '#252526'); });
+			await page.getByRole('button', { name: 'Text Color', exact: true }).click();
+			assert.equal(await page.getByRole('menuitem', { name: 'Red', exact: true }).evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)');
+			await page.getByRole('menuitem', { name: 'Red', exact: true }).click();
+			await page.getByRole('button', { name: 'Text Highlight', exact: true }).click();
+			await page.getByRole('menuitem', { name: 'Yellow', exact: true }).click();
+			await page.getByRole('button', { name: 'Strikethrough', exact: true }).click();
+			await page.getByRole('button', { name: 'Font Size', exact: true }).click();
+			await page.keyboard.press('End'); await page.keyboard.press('Enter');
+			const commands = await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((message: { type: string }) => message.type === 'execute'));
+			assert.deepEqual(commands.map((message: { command: string; args: object }) => [message.command, message.args]), [
+				['format.color', { color: 'C00000' }], ['format.highlight', { color: 'yellow' }], ['format.strikethrough', {}], ['format.size', { size: 48 }]
+			]);
+			await page.getByRole('button', { name: 'Bold', exact: true }).hover();
+			await page.getByRole('tooltip').waitFor({ state: 'visible' });
+			assert.match(await page.getByRole('tooltip').innerText(), /Bold/);
+			await page.keyboard.press('Escape');
+			await page.getByRole('tooltip').waitFor({ state: 'hidden' });
+			await page.emulateMedia({ reducedMotion: 'reduce' });
+			assert.equal(await page.getByRole('button', { name: 'Bold', exact: true }).evaluate(element => getComputedStyle(element).transitionDuration), '0s');
+		} finally { await page.close(); }
+	});
+
 	test('App toolbar reuses document actions while the in-tab toolbar stays hidden and stale selections are refused', async () => {
 		const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
 		try {
@@ -231,6 +261,7 @@ suite('Office toolbar in a browser', () => {
 			assert.equal(await page.locator('#toolbar').isVisible(), false);
 			assert.equal((await page.locator('.sangam-document-toolbar > header').boundingBox())?.height, 42);
 			assert.equal(await page.getByRole('toolbar', { name: 'Document formatting' }).count(), 1);
+			if (!await page.getByRole('button', { name: 'Bold', exact: true }).isVisible()) { await page.getByRole('button', { name: 'More Formatting' }).click(); }
 			await page.getByRole('button', { name: 'Bold', exact: true }).click();
 			await page.getByRole('button', { name: 'Paragraph Style', exact: true }).click();
 			await page.getByRole('menuitemradio', { name: 'Heading 2' }).click();
@@ -244,7 +275,7 @@ suite('Office toolbar in a browser', () => {
 			const more = page.getByRole('button', { name: 'More Formatting' });
 			await page.waitForFunction(() => { const host = document.querySelector('.sangam-document-toolbar')!; const more = document.querySelector('.word-more-button')!; return more.getBoundingClientRect().right <= host.getBoundingClientRect().right; });
 			await more.click();
-			assert.equal(await page.getByRole('combobox', { name: 'Font Family' }).isVisible(), true);
+			assert.equal(await page.getByRole('button', { name: 'Font Family' }).isVisible(), true);
 		} finally { await page.close(); }
 	});
 

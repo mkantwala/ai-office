@@ -650,10 +650,10 @@ index 0000000..05273ce
 +}
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..9e68eda
+index 0000000..70f8390
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,353 @@
+@@ -0,0 +1,357 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -988,6 +988,10 @@ index 0000000..9e68eda
 +            | "select.text"
 +            | "select.collapse"
 +            | "format.bold"
++            | "format.strikethrough"
++            | "format.color"
++            | "format.highlight"
++            | "format.clear"
 +            | "format.italic"
 +            | "format.underline"
 +            | "format.font"

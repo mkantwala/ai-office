@@ -503,6 +503,40 @@
 									"additionalProperties": false,
 									"minProperties": 1,
 									"description": "Partial properties of paragraph/heading/list-item blocks. Distances in points; omitted properties stay unchanged. Tabs replace stops; border sides patch independently; null removes a side. Shading is an explicit RGB fill."
+								},
+								"strikethrough": {
+									"type": "boolean"
+								},
+								"color": {
+									"type": "string",
+									"pattern": "^(auto|[0-9a-fA-F]{6})$",
+									"description": "Text color: RRGGBB or auto."
+								},
+								"highlight": {
+									"type": "string",
+									"enum": [
+										"none",
+										"yellow",
+										"brightGreen",
+										"turquoise",
+										"pink",
+										"blue",
+										"red",
+										"darkBlue",
+										"teal",
+										"green",
+										"violet",
+										"darkRed",
+										"darkYellow",
+										"gray50",
+										"gray25",
+										"black"
+									]
+								},
+								"clear": {
+									"type": "boolean",
+									"const": true,
+									"description": "Clear formatting; use alone."
 								}
 							},
 							"additionalProperties": false
@@ -1134,7 +1168,7 @@
 		"languageModelChatProviders": [
 			{
 				"vendor": "ai-office-cloudflare",
-				"displayName": "Cloudflare \u00b7 Sangam One",
+				"displayName": "Cloudflare · Sangam One",
 				"managementCommand": "aiOffice.cloudflare.configure"
 			}
 		],

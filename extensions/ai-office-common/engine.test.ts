@@ -747,3 +747,26 @@ test('Word review undoes progressive fills and their dependent comment as one sa
 		assert.deepEqual(read(), initial); assert.equal(engine.state().comments!.length, 0); assert.equal(engine.agent!.reviewRead!().changes.length, 0);
 	} finally { engine.dispose(); }
 });
+
+test('Word agent color, highlight and strike preserve block identity and round-trip with undo', async () => {
+	const engine = await openEngine('word', 'Colors.docx', docx, root);
+	try {
+		const agent = engine.agent!;
+		const read: Parameters<typeof prepareWordFormatting>[1] = async args => agent.read(args) as Awaited<ReturnType<Parameters<typeof prepareWordFormatting>[1]>>;
+		const plan = await prepareWordFormatting({ query: 'AI Office', format: { color: 'C00000', highlight: 'yellow', strikethrough: true } }, read);
+		const id = plan.edits[0].id;
+		await agent.edit({ operation: 'batch', revision: engine.state().revision, edits: plan.edits });
+		const xml = strFromU8(unzipSync(await engine.export())['word/document.xml']);
+		assert.match(xml, /w:color w:val="C00000"/); assert.match(xml, /w:highlight w:val="yellow"/); assert.match(xml, /w:strike/);
+		assert.equal((await read({ id })).blocks?.[0].id, id);
+		await engine.execute('edit.undo', {});
+		assert.doesNotMatch(strFromU8(unzipSync(await engine.export())['word/document.xml']), /w:highlight|w:strike/);
+		await engine.execute('edit.redo', {});
+		const clear = await prepareWordFormatting({ query: 'AI Office', format: { clear: true } }, read);
+		await agent.edit({ operation: 'batch', revision: engine.state().revision, edits: clear.edits });
+		assert.doesNotMatch(strFromU8(unzipSync(await engine.export())['word/document.xml']), /w:highlight|w:strike/);
+		await assert.rejects(prepareWordFormatting({ query: 'AI', format: { color: '#BAD' } }, read), /color must/);
+		await assert.rejects(prepareWordFormatting({ query: 'AI', format: { highlight: ['yellow'] } }, read), /Unsupported highlight/);
+		await assert.rejects(prepareWordFormatting({ query: 'AI', format: { clear: true, bold: true } }, read), /used alone/);
+	} finally { engine.dispose(); }
+});

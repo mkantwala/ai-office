@@ -44,6 +44,7 @@ export function createDocumentToolbar(element: HTMLElement, descriptors: Documen
 	for (const [index, control] of emphasis.entries()) { control.textContent = ['B', 'I', 'U'][index]; control.style.fontWeight = index === 0 ? '700' : ''; control.style.fontStyle = index === 1 ? 'italic' : ''; control.style.textDecoration = index === 2 ? 'underline' : ''; }
 	const dispose = arrangeWordToolbar(element, {
 		text: button('text'), undo: button('undo'), redo: button('redo'), save: button('save'), versions: button('versions'), properties: button('properties'),
+		strike: button('strike'), clear: button('clear'), color: select('color'), highlight: select('highlight'),
 		style: select('style'), font: select('font'), size: select('size'), emphasis,
 		align: select('align'), list: select('list'), spacing: select('spacing'), table: button('table'), image: button('image'), link: button('link'), comment: button('comment')
 	}, (rows, cols) => action({ control: 'table', rows, cols }), focusDocument);
@@ -66,14 +67,14 @@ export function isDocumentToolbarSnapshot(value: unknown): value is DocumentTool
 	const snapshot = value as DocumentToolbarSnapshot;
 	if (!['word', 'pdf', 'slides'].includes(snapshot.kind) || ['uri', 'panel', 'instance', 'context'].some(key => typeof snapshot[key as keyof DocumentToolbarSnapshot] !== 'string' || String(snapshot[key as keyof DocumentToolbarSnapshot]).length > 2000)) { return false; }
 	if (snapshot.paragraphStyle !== undefined && (typeof snapshot.paragraphStyle !== 'string' || snapshot.paragraphStyle.length > 200)) { return false; }
-	if (!Array.isArray(snapshot.controls) || snapshot.controls.length > 24) { return false; }
-	const selectKeys = ['style', 'font', 'size', 'align', 'list', 'spacing'];
-	const buttonKeys = ['text', 'bold', 'italic', 'underline', 'table', 'image', 'link', 'comment', 'undo', 'redo', 'save', 'properties', 'versions'];
+	if (!Array.isArray(snapshot.controls) || snapshot.controls.length > 28) { return false; }
+	const selectKeys = ['style', 'font', 'size', 'align', 'list', 'spacing', 'color', 'highlight'];
+	const buttonKeys = ['text', 'bold', 'italic', 'underline', 'table', 'image', 'link', 'comment', 'undo', 'redo', 'save', 'properties', 'versions', 'strike', 'clear'];
 	const seen = new Set<string>();
 	for (const control of snapshot.controls) {
 		if (!control || seen.has(control.key) || ![...selectKeys, ...buttonKeys].includes(control.key) || control.type !== (selectKeys.includes(control.key) ? 'select' : 'button') || typeof control.label !== 'string' || control.label.length > 160 || typeof control.disabled !== 'boolean') { return false; }
 		if (control.type === 'select' && (!Array.isArray(control.options) || control.options.length > 40 || control.options.some(option => !option || typeof option.value !== 'string' || option.value.length > 200 || typeof option.label !== 'string' || option.label.length > 200))) { return false; }
 		seen.add(control.key);
 	}
-	return [...selectKeys, ...buttonKeys.filter(key => !['text', 'properties', 'versions'].includes(key))].every(key => seen.has(key));
+	return [...selectKeys.filter(key => !['color', 'highlight'].includes(key)), ...buttonKeys.filter(key => !['text', 'properties', 'versions', 'strike', 'clear'].includes(key))].every(key => seen.has(key));
 }

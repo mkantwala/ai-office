@@ -10,7 +10,7 @@ interface WordRead { blocks?: WordBlock[]; total?: number; nextOffset?: number |
 type ReadWord = (args: Record<string, unknown>) => Promise<WordRead>;
 interface Edit { operation: string; id: string; command: string; params: Record<string, unknown>; start?: number; end?: number }
 
-const fields = ['paragraphStyle', 'font', 'size', 'sizeFromStyle', 'bold', 'italic', 'underline', 'alignment', 'lineSpacing', 'paragraph'];
+const fields = ['paragraphStyle', 'font', 'size', 'sizeFromStyle', 'bold', 'italic', 'underline', 'alignment', 'lineSpacing', 'paragraph', 'strikethrough', 'color', 'highlight', 'clear'];
 
 /** Resolve a complete formatting operation inside the document's serial queue. */
 export async function prepareWordFormatting(input: Record<string, unknown>, read: ReadWord) {
@@ -45,11 +45,23 @@ export async function prepareWordFormatting(input: Record<string, unknown>, read
 		if (typeof size !== 'number' || !Number.isFinite(size) || size < 1 || size > 1638) { throw new Error('size must be between 1 and 1638 points.'); }
 		commands.push({ command: 'format.size', params: { size } });
 	}
-	for (const key of ['bold', 'italic', 'underline']) {
+	for (const key of ['bold', 'italic', 'underline', 'strikethrough']) {
 		if (format[key] !== undefined) {
 			if (typeof format[key] !== 'boolean') { throw new Error(`${key} must be true or false.`); }
 			commands.push({ command: 'format.' + key, params: { value: format[key] } });
 		}
+	}
+	if (format.clear !== undefined) {
+		if (format.clear !== true || Object.keys(format).length !== 1) { throw new Error('clear must be true and used alone.'); }
+		commands.push({ command: 'format.clear', params: {} });
+	}
+	if (format.color !== undefined) {
+		if (typeof format.color !== 'string' || !/^(auto|[0-9a-fA-F]{6})$/.test(format.color)) { throw new Error('color must be auto or six hexadecimal digits (RRGGBB).'); }
+		commands.push({ command: 'format.color', params: { color: format.color } });
+	}
+	if (format.highlight !== undefined) {
+		if (typeof format.highlight !== 'string' || !['none', 'yellow', 'brightGreen', 'turquoise', 'pink', 'blue', 'red', 'darkBlue', 'teal', 'green', 'violet', 'darkRed', 'darkYellow', 'gray50', 'gray25', 'black'].includes(format.highlight)) { throw new Error('Unsupported highlight color.'); }
+		commands.push({ command: 'format.highlight', params: { color: format.highlight } });
 	}
 	if (format.alignment !== undefined) {
 		if (!['left', 'center', 'right', 'justify', 'distribute', 'start', 'end'].includes(String(format.alignment))) { throw new Error('Unsupported paragraph alignment.'); }

@@ -161,6 +161,10 @@ function buildToolbar() {
 		emphasis.push(b);
 		b.style.fontWeight = property === 'bold' ? '700' : ''; b.style.fontStyle = property === 'italic' ? 'italic' : ''; b.style.textDecoration = property === 'underline' ? 'underline' : '';
 	}
+	const strike = kind === 'word' ? button('S', 'Strikethrough', () => execute('format.strikethrough')) : undefined;
+	const clear = kind === 'word' ? button('Clear', 'Clear Formatting', () => execute('format.clear')) : undefined;
+	const color = kind === 'word' ? menu('Text Color', [['auto', 'Automatic'], ['000000', 'Black'], ['FFFFFF', 'White'], ['C00000', 'Red'], ['E97132', 'Orange'], ['FFFF00', 'Yellow'], ['008000', 'Green'], ['0070C0', 'Blue'], ['7030A0', 'Purple'], ['808080', 'Gray']], color => execute('format.color', { color })) : undefined;
+	const highlight = kind === 'word' ? menu('Text Highlight', [['none', 'No highlight'], ['yellow', 'Yellow'], ['brightGreen', 'Bright green'], ['turquoise', 'Turquoise'], ['pink', 'Pink'], ['blue', 'Blue'], ['red', 'Red'], ['gray25', 'Light gray'], ['gray50', 'Gray']], color => execute('format.highlight', { color })) : undefined;
 	const align = menu('Align', ['left', 'center', 'right', 'justify'].map(x => [x, x]), value => {
 		if (needsBox()) { return; } flushText(); execute(kind === 'pdf' ? 'text_edit' : 'para.align', kind === 'word' ? { value } : { ...selectionArgs(), [kind === 'pdf' ? 'align' : 'value']: value });
 	});
@@ -208,10 +212,10 @@ function buildToolbar() {
 			execute('para.properties', { ...patch, ifRevision: snapshot.revision, ifSelection: snapshot.selection });
 		}, () => keyboard.focus({ preventScroll: true }));
 		properties = button('Paragraph', 'Paragraph Properties · Indents, Spacing, Borders and Pagination', () => wordParagraph?.open());
-		if (!appToolbar) { disposeToolbar = arrangeWordToolbar(toolbar, { undo, redo, save, versions, properties, style, font, size, emphasis, align, list, spacing, table, image, link, comment },
+		if (!appToolbar) { disposeToolbar = arrangeWordToolbar(toolbar, { undo, redo, save, versions, properties, style, font, size, emphasis, strike, clear, color, highlight, align, list, spacing, table, image, link, comment },
 			(rows, cols) => execute('insert.table', { rows, cols, borders: true }), () => keyboard.focus({ preventScroll: true })); }
 	}
-	toolbarControls = { text, style, font, size, bold: emphasis[0], italic: emphasis[1], underline: emphasis[2], align, list, spacing, table, image, link, comment, undo, redo, save, ...(properties ? { properties } : {}), ...(versions ? { versions } : {}) };
+	toolbarControls = { ...(strike ? { strike } : {}), ...(clear ? { clear } : {}), ...(color ? { color } : {}), ...(highlight ? { highlight } : {}), text, style, font, size, bold: emphasis[0], italic: emphasis[1], underline: emphasis[2], align, list, spacing, table, image, link, comment, undo, redo, save, ...(properties ? { properties } : {}), ...(versions ? { versions } : {}) };
 	if (appToolbar) { toolbar.hidden = true; }
 }
 function point(event: PointerEvent, page: HTMLElement) {

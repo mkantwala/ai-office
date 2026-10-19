@@ -17,6 +17,10 @@ interface WordToolbarControls {
 	font: HTMLSelectElement;
 	size: HTMLSelectElement;
 	emphasis: HTMLButtonElement[];
+	strike?: HTMLButtonElement;
+	color?: HTMLSelectElement;
+	highlight?: HTMLSelectElement;
+	clear?: HTMLButtonElement;
 	align: HTMLSelectElement;
 	list: HTMLSelectElement;
 	spacing: HTMLSelectElement;
@@ -28,6 +32,11 @@ interface WordToolbarControls {
 
 // Original line icons. Keep the assets local to the webview and inherit theme colors.
 const paths = {
+	versions: 'M3 11a9 9 0 1 1 2 7M3 4v7h7M12 7v5l3 2',
+	properties: 'M4 5h16M4 10h10M4 15h10M4 20h16M18 9v7m-3-3 3 3 3-3',
+	color: 'm6 17 6-14 6 14M8 12h8M4 21h16',
+	highlight: 'm8 15 9-11 4 4-9 11-4-4Zm0 0-4 4h8M3 22h18',
+	clear: 'm4 14 9-11 8 7-9 11H9l-5-5v-2Zm5-6 8 7M14 21h8',
 	undo: 'M9 5 4 10l5 5M4 10h10a6 6 0 0 1 0 12',
 	redo: 'm15 5 5 5-5 5m5-5H10a6 6 0 0 0 0 12',
 	save: 'M5 3h12l4 4v14H3V3h2m2 0v6h10V3M7 21v-8h10v8',
@@ -60,18 +69,6 @@ function iconButton(button: HTMLButtonElement, name: keyof typeof paths): HTMLBu
 	button.classList.add('word-icon-button');
 	button.replaceChildren(icon(name, button.ownerDocument), label);
 	return button;
-}
-
-function iconSelect(select: HTMLSelectElement, name: 'align' | 'list' | 'spacing'): HTMLElement {
-	const ownerDocument = select.ownerDocument;
-	const wrapper = ownerDocument.createElement('span');
-	wrapper.className = 'word-icon-select';
-	const label = ownerDocument.createElement('span');
-	label.className = 'word-action-label';
-	label.textContent = select.title;
-	// The real select stays focusable and retains native keyboard/menu behavior.
-	wrapper.append(icon(name, select.ownerDocument), label, select);
-	return wrapper;
 }
 
 /** Reorganize the existing controls without duplicating document commands or selection state. */
@@ -114,13 +111,18 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 		controls.emphasis[index].classList.add('word-emphasis-button');
 	}
 	controls.save.classList.add('word-save-button');
-	const history = group('Document', [iconButton(controls.undo, 'undo'), iconButton(controls.redo, 'redo'), iconButton(controls.save, 'save'), ...(controls.versions ? [controls.versions] : [])]);
+	const history = group('Document', [iconButton(controls.undo, 'undo'), iconButton(controls.redo, 'redo'), iconButton(controls.save, 'save'), ...(controls.versions ? [iconButton(controls.versions, 'versions')] : [])]);
 	const host = toolbar.closest<HTMLElement>('.monaco-workbench') || ownerDocument.body;
 	const menus = wordMenus(controls.style, controls.table, insertTable, focusDocument, host, () => more.focus());
 	const style = group('Styles', [menus.style]);
-	const font = group('Font', [controls.font, controls.size]);
-	const emphasis = group('Text Formatting', controls.emphasis);
-	const paragraph = group('Paragraph', [iconSelect(controls.align, 'align'), iconSelect(controls.spacing, 'spacing'), iconSelect(controls.list, 'list'), ...(controls.properties ? [controls.properties] : [])]);
+	const dropdowns = [menus.selector(controls.font, 'Font'), menus.selector(controls.size, 'Size'), menus.selector(controls.align, icon('align', ownerDocument)), menus.selector(controls.spacing, icon('spacing', ownerDocument)), menus.selector(controls.list, icon('list', ownerDocument))];
+	const font = group('Font', dropdowns.slice(0, 2).map(item => item.element));
+	const emphasis = group('Text Formatting', [...controls.emphasis, ...(controls.strike ? [controls.strike] : [])]);
+	if (controls.strike) { controls.strike.classList.add('word-emphasis-button'); controls.strike.style.textDecoration = 'line-through'; }
+	const colors = [controls.color, controls.highlight].filter((item): item is HTMLSelectElement => !!item).map(select => { select.dataset.palette = 'true'; return menus.selector(select, icon(select === controls.color ? 'color' : 'highlight', ownerDocument)); });
+	dropdowns.push(...colors);
+	emphasis.append(...colors.map(item => item.element));
+	const paragraph = group('Paragraph', [...dropdowns.slice(2, 5).map(item => item.element), ...(controls.properties ? [iconButton(controls.properties, 'properties')] : [])]);
 	const insert = group('Insert', [iconButton(controls.link, 'link'), iconButton(controls.comment, 'comment'), iconButton(controls.image, 'image')]);
 	const table = group('Insert', [...(controls.text ? [controls.text] : []), iconButton(controls.table, 'table')]);
 	const groups = [history, style, font, emphasis, paragraph, insert];
@@ -140,8 +142,9 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	overflow.setAttribute('aria-label', 'More Formatting');
 	more.setAttribute('aria-controls', overflow.id);
 	more.popoverTargetElement = overflow;
+	if (controls.clear) { table.append(iconButton(controls.clear, 'clear')); }
 	overflow.append(table);
-	const allControls = [controls.undo, controls.redo, controls.save, controls.versions, controls.properties, controls.text, menus.styleButton, controls.font, controls.size, ...controls.emphasis, controls.align, controls.list, controls.spacing, controls.table, controls.image, controls.link, controls.comment, more].filter((control): control is HTMLButtonElement | HTMLSelectElement => !!control);
+	const allControls = [controls.undo, controls.redo, controls.save, controls.versions, controls.properties, controls.text, menus.styleButton, ...dropdowns.map(item => item.button), ...controls.emphasis, controls.strike, controls.clear, controls.table, controls.image, controls.link, controls.comment, more].filter((control): control is HTMLButtonElement => !!control);
 	row.append(...groups, more);
 	toolbar.replaceChildren(row);
 	host.append(overflow);

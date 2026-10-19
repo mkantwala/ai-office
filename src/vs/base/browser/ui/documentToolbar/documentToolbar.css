@@ -277,3 +277,21 @@
 .sangam-document-toolbar > .word-toolbar { position: relative; top: 0; margin: 0; height: 42px; padding: 4px 8px; font: 12px var(--vscode-font-family); color: var(--vscode-foreground); }
 /* The editor-part header is flex; allow the compact row to shrink into its overflow menu. */
 .sangam-document-toolbar > .word-toolbar { box-sizing: border-box; flex: 1; min-width: 0; width: 100%; }
+
+/* Compact button strip: option lists appear only after an explicit click. */
+#toolbar.word-toolbar, .sangam-document-toolbar > .word-toolbar {
+	border-radius: 8px; box-shadow: none; background: var(--vscode-editor-background); border-color: var(--vscode-widget-border, transparent);
+}
+.word-toolbar-row { gap: 6px; }
+.word-toolbar .word-style-select { width: 48px; font-size: 17px; }
+.word-button-control { display: inline-flex; flex: 0 0 auto; }
+.word-toolbar .word-dropdown-button, .word-toolbar-overflow .word-dropdown-button { display: inline-flex; align-items: center; gap: 8px; min-width: 42px; padding: 5px 8px; }
+.word-dropdown-button::after, .word-style-select::after { content: ''; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); }
+.word-toolbar button.word-style-select { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.word-toolbar .word-emphasis-button { font-size: 17px; }
+.word-option-menu { min-width: 170px; max-height: min(360px, 70vh); overflow-y: auto; padding: 6px; }
+.word-option-menu button { background: transparent; border-radius: 4px; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; text-align: left; padding: 6px 10px; color: var(--vscode-foreground); }
+.word-color-swatch { display: inline-block; width: 16px; height: 16px; border: 1px solid var(--vscode-widget-border, #888); border-radius: 3px; }
+.word-toolbar select[hidden], .word-toolbar-overflow select[hidden] { display: none; }
+
+.word-option-menu button:hover, .word-option-menu button:focus-visible { background: var(--vscode-list-hoverBackground, #8882); }

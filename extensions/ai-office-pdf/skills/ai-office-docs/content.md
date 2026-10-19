@@ -6,7 +6,7 @@ Read results contain `uri`, `version`, and paginated blocks with `id`, `kind`, `
 
 Prefer `office_document_format` for formatting: `{query:"literal text",scope:"all",format:{underline:true,sizeFromStyle:"Heading 1"}}`. Queries are literal and case-insensitive; `scope:"first"` selects only the first occurrence. One call resolves paginated targets, Unicode ranges and actual style sizes, then commits every property atomically. No preliminary read is needed for a query. `target:"matches"` formats matching text; `target:"paragraphs"` formats containing paragraphs. Current block `ids` can narrow targets but require a fresh version.
 
-Supported properties: `bold`, `italic`, `underline` (explicit booleans), `font`, `size` (points), `sizeFromStyle`, `paragraphStyle`, `alignment`, `lineSpacing`, and `paragraph`. Use either size or sizeFromStyle. Copying size does not apply the paragraph style. Successful receipts verify scope; do not repeat formatting or reread unchanged targets. Unsupported or oversized plans fail before editing.
+Supported properties: `bold`, `italic`, `underline`, `strikethrough` (explicit booleans), `color` (six hex digits or `auto`), `highlight` (named Word color or `none`), `clear:true` (use alone), `font`, `size` (points), `sizeFromStyle`, `paragraphStyle`, `alignment`, `lineSpacing`, and `paragraph`. Use either size or sizeFromStyle. Copying size does not apply the paragraph style. Successful receipts verify scope; do not repeat formatting or reread unchanged targets. Unsupported or oversized plans fail before editing.
 
 ## Paragraph properties
 
