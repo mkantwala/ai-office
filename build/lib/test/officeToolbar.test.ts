@@ -219,6 +219,36 @@ suite('Office toolbar in a browser', () => {
 		} finally { await page.close(); }
 	});
 
+	test('Ruler matches the page at narrow widths and high DPI, uses inch graduations and retains point-based edits', async () => {
+		const page = await browser.newPage({ viewport: { width: 1280, height: 1000 }, deviceScaleFactor: 2 });
+		try {
+			await page.goto(address); await page.getByRole('button', { name: 'More Formatting' }).waitFor();
+			await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: {
+				type: 'state', kind: 'word', name: 'Ruler.docx', pages: [[612, 792]], state: { revision: 4, selection: { anchor: 1, focus: 1 }, caret: { page: 0, x: 72, y: 72, height: 12 }, paragraph: { id: 'p1', properties: { indents: { left: 0, right: 0, firstLine: 0 }, tabs: [] }, mixed: [], ruler: { left: 72, width: 468 } } }
+			} })));
+			const ruler = page.getByRole('group', { name: 'Paragraph Ruler · Inches', exact: true });
+			for (const width of [1280, 420, 800]) {
+				await page.setViewportSize({ width, height: 1000 });
+				await page.waitForFunction(() => Math.abs(document.querySelector('.word-ruler')!.getBoundingClientRect().width - document.querySelector('.page')!.getBoundingClientRect().width) < 1);
+				const bounds = await ruler.boundingBox(); const paper = await page.locator('.page').boundingBox();
+				assert.ok(bounds && paper && Math.abs(bounds.x - paper.x) < 1 && bounds.height <= 30);
+				assert.ok(await ruler.locator('.word-ruler-tick').count() > 20);
+				assert.doesNotMatch((await ruler.locator('.word-ruler-number').allTextContents()).join(','), /72|144|216/);
+				const first = await ruler.getByRole('slider', { name: 'First-Line Indent · Arrow Keys Adjust', exact: true }).boundingBox();
+				assert.ok(first && bounds && Math.abs(first.x + first.width / 2 - (bounds.x + 72 * bounds.width / 612)) < 1);
+			}
+			const left = ruler.getByRole('slider', { name: 'Left Indent · Arrow Keys Adjust', exact: true });
+			const handle = await left.boundingBox(); const bounds = await ruler.boundingBox(); assert.ok(handle && bounds);
+			await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2); await page.mouse.down();
+			await page.mouse.move(handle.x + handle.width / 2 + 36 * bounds.width / 612, handle.y + handle.height / 2);
+			assert.equal(await left.getAttribute('aria-valuetext'), '0.5 in (36 points)');
+			await page.mouse.up();
+			const edits = await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((message: { command?: string }) => message.command === 'para.properties'));
+			assert.equal(edits.at(-1).args.indents.left, 36);
+			assert.equal(edits.at(-1).args.ifRevision, 4);
+		} finally { await page.close(); }
+	});
+
 	test('Word button palettes and tooltips dispatch native formatting commands', async () => {
 		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 		page.setDefaultTimeout(10000);

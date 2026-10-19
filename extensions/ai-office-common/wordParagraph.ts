@@ -21,7 +21,7 @@ export class WordParagraph {
 
 	constructor(private readonly pages: HTMLElement, private readonly apply: (patch: ParagraphProperties, state: State) => void, private readonly focusDocument: () => void) {
 		this.dialog.className = 'word-paragraph-dialog'; this.dialog.setAttribute('aria-label', 'Paragraph Properties'); document.body.append(this.dialog);
-		this.ruler.className = 'word-ruler'; this.ruler.title = 'Drag indents or tab stops. Click to add a tab; drag it away to remove it. Arrow keys adjust the focused marker.'; this.ruler.hidden = true; this.ruler.setAttribute('aria-label', 'Paragraph Ruler · Points'); this.ruler.setAttribute('role', 'group'); pages.before(this.ruler);
+		this.ruler.className = 'word-ruler'; this.ruler.title = 'Drag indents or tab stops. Click to add a tab; drag it away to remove it. Arrow keys adjust the focused marker.'; this.ruler.hidden = true; this.ruler.setAttribute('aria-label', 'Paragraph Ruler · Inches'); this.ruler.setAttribute('role', 'group'); pages.before(this.ruler);
 		const signal = this.controller.signal;
 		this.dialog.addEventListener('close', () => { this.formController?.abort(); this.origin = undefined; this.focusDocument(); }, { signal });
 		this.ruler.addEventListener('pointerdown', event => this.pointerDown(event), { signal });
@@ -123,18 +123,49 @@ export class WordParagraph {
 		const paragraph = this.state.paragraph; const page = this.state.caret?.page ?? 0;
 		const node = this.pages.children[page] as HTMLElement | undefined; const width = this.dimensions[page]?.[0]; const body = paragraph?.ruler;
 		this.ruler.hidden = !body || !node || !width || paragraph!.mixed.includes('indents'); if (this.ruler.hidden) { return; }
-		const key = JSON.stringify([paragraph, node!.clientWidth, width]); if (key === this.key) { return; } this.key = key;
+		const key = JSON.stringify([paragraph, node!.clientWidth, width, page]); if (key === this.key) { return; } this.key = key;
 		const focus = document.activeElement instanceof HTMLElement && this.ruler.contains(document.activeElement) ? document.activeElement.dataset.marker : undefined;
 		const scale = node!.clientWidth / width; this.ruler.style.width = node!.clientWidth + 'px'; this.ruler.replaceChildren();
-		for (let pos = 0; pos <= width; pos += 36) { const tick = document.createElement('span'); tick.className = 'word-ruler-tick'; tick.style.left = pos * scale + 'px'; tick.textContent = String(pos); this.ruler.append(tick); }
 		const track = document.createElement('div'); track.className = 'word-ruler-body'; track.style.left = body!.left * scale + 'px'; track.style.width = body!.width * scale + 'px'; this.ruler.append(track);
+		const unit = document.createElement('span'); unit.className = 'word-ruler-unit'; unit.textContent = 'in'; unit.setAttribute('aria-hidden', 'true'); this.ruler.append(unit);
 		const indent = paragraph!.properties.indents ?? {};
-		const marker = (key: string, name: string, pos: number, value: number) => { const b = document.createElement('button'); b.type = 'button'; b.dataset.marker = key; b.title = name; b.setAttribute('aria-label', name); b.setAttribute('role', 'slider'); b.setAttribute('aria-valuenow', String(value)); b.setAttribute('aria-valuemin', key.startsWith('tab:') ? '0' : '-1584'); b.setAttribute('aria-valuemax', '1584'); b.style.left = (body!.left + pos) * scale + 'px'; b.textContent = key.startsWith('tab:') ? '└' : key === 'firstLine' ? '▼' : '▲'; this.ruler.append(b); };
+		// Match the upstream ruler: zero is the text margin, and graduations follow page scale.
+		// Omit fine divisions and crowded labels at small widths; never rescale the document units.
+		const subdivision = scale * 9 >= 5 ? 9 : 18;
+		const labelStep = scale * 72 >= 44 ? 72 : 144;
+		const handles = [indent.left || 0, (indent.left || 0) + (indent.firstLine || 0), body!.width - (indent.right || 0), ...(paragraph!.properties.tabs || []).map(tab => tab.pos)];
+		for (let pos = Math.ceil(-body!.left / subdivision) * subdivision; pos <= width - body!.left; pos += subdivision) {
+			const x = (body!.left + pos) * scale;
+			if (x < 3 || x > node!.clientWidth - 3) { continue; }
+			const tick = document.createElement('span'); tick.className = 'word-ruler-tick'; tick.setAttribute('aria-hidden', 'true'); tick.style.left = x + 'px';
+			tick.dataset.kind = pos % 72 === 0 ? 'major' : pos % 36 === 0 ? 'half' : 'minor'; this.ruler.append(tick);
+			if (pos > 0 && pos < body!.width && pos % labelStep === 0 && handles.every(handle => Math.abs(handle - pos) * scale > 12)) {
+				const label = document.createElement('span'); label.className = 'word-ruler-number'; label.style.left = x + 'px'; label.textContent = String(pos / 72); label.setAttribute('aria-hidden', 'true'); this.ruler.append(label);
+			}
+		}
+		const marker = (key: string, name: string, pos: number, value: number, align = 'left') => {
+			const b = document.createElement('button'); b.type = 'button'; b.dataset.marker = key; b.title = name;
+			b.setAttribute('aria-label', name); b.setAttribute('role', 'slider'); b.setAttribute('aria-orientation', 'horizontal');
+			b.setAttribute('aria-valuemin', key.startsWith('tab:') ? '0' : '-1584'); b.setAttribute('aria-valuemax', '1584');
+			b.style.left = (body!.left + pos) * scale + 'px';
+			const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 12 10'); svg.setAttribute('aria-hidden', 'true');
+			const path = document.createElementNS(svg.namespaceURI, 'path');
+			const tabPaths: Record<string, string> = { left: 'M3 1v7h7', right: 'M9 1v7H2', center: 'M6 1v7M2 8h8', decimal: 'M6 1v7M2 8h8M10 4h.01', bar: 'M6 1v8' };
+			path.setAttribute('d', key.startsWith('tab:') ? tabPaths[align] || tabPaths.left : key === 'firstLine' ? 'M1 1h10L6 7Z' : 'M1 7 6 1l5 6ZM1 8h10'); svg.append(path); b.append(svg);
+			const hint = document.createElement('span'); hint.className = 'word-ruler-value'; b.append(hint); this.markerValue(b, value);
+			this.ruler.append(b);
+		};
 		marker('left', 'Left Indent · Arrow Keys Adjust', indent.left || 0, indent.left || 0);
 		marker('firstLine', 'First-Line Indent · Arrow Keys Adjust', (indent.left || 0) + (indent.firstLine || 0), indent.firstLine || 0);
 		marker('right', 'Right Indent · Arrow Keys Adjust', body!.width - (indent.right || 0), indent.right || 0);
-		if (!paragraph!.mixed.includes('tabs')) { for (const [index, stop] of (paragraph!.properties.tabs || []).entries()) { marker(`tab:${index}`, `Tab Stop ${index + 1} · Delete Removes`, stop.pos, stop.pos); } }
+		if (!paragraph!.mixed.includes('tabs')) { for (const [index, stop] of (paragraph!.properties.tabs || []).entries()) { marker(`tab:${index}`, `Tab Stop ${index + 1} · Delete Removes`, stop.pos, stop.pos, stop.align); } }
 		if (focus) { Array.from(this.ruler.querySelectorAll<HTMLElement>('[data-marker]')).find(e => e.dataset.marker === focus)?.focus(); }
+	}
+
+	private markerValue(marker: HTMLElement, value: number) {
+		const inches = `${Number((value / 72).toFixed(2))} in`;
+		marker.setAttribute('aria-valuenow', String(value)); marker.setAttribute('aria-valuetext', `${inches} (${value} points)`);
+		const hint = marker.querySelector('.word-ruler-value'); if (hint) { hint.textContent = inches; }
 	}
 
 	private pointerDown(event: PointerEvent) {
@@ -147,7 +178,7 @@ export class WordParagraph {
 				if (pos >= 0 && pos <= body.width && !this.state.paragraph.mixed.includes('tabs')) { const tabs = this.state.paragraph.properties.tabs || []; if (tabs.length < 64 && !tabs.some(t => Math.abs(t.pos - pos) < .01)) { this.apply({ tabs: [...tabs, { pos, align: 'left', leader: 'none' }] }, this.state); } }
 			} return;
 		}
-		event.preventDefault(); marker.focus(); const key = marker.dataset.marker!;
+		event.preventDefault(); marker.focus({ preventScroll: true }); marker.dataset.dragging = 'true'; const key = marker.dataset.marker!;
 		this.gesture = { pointer: event.pointerId, x: rect.left, width: rect.width, scale, start: this.state, marker, value: Number(marker.getAttribute('aria-valuenow')), ...(key.startsWith('tab:') ? { tab: Number(key.slice(4)) } : { property: key as 'left' | 'right' | 'firstLine' }) };
 		this.ruler.setPointerCapture(event.pointerId);
 	}
@@ -158,7 +189,7 @@ export class WordParagraph {
 		const raw = g.property === 'right' ? body.width - pos : g.property === 'firstLine' ? pos - (indents.left || 0) : pos;
 		g.value = Math.max(g.tab === undefined ? -1584 : 0, Math.min(1584, event.altKey ? Math.round(raw * 4) / 4 : Math.round(raw / 6) * 6));
 		const rect = this.ruler.getBoundingClientRect(); g.remove = g.tab !== undefined && (event.clientY < rect.top - 20 || event.clientY > rect.bottom + 20);
-		g.marker.style.opacity = g.remove ? '.3' : '1'; g.marker.setAttribute('aria-valuenow', String(g.value));
+		g.marker.style.opacity = g.remove ? '.3' : '1'; this.markerValue(g.marker, g.value);
 		g.marker.style.left = (body.left + (g.property === 'right' ? body.width - g.value : g.property === 'firstLine' ? (indents.left || 0) + g.value : g.value)) * g.scale + 'px';
 	}
 	private pointerUp(event: PointerEvent) {
