@@ -76,7 +76,7 @@ class DocumentToolbarContribution extends Disposable implements IWorkbenchContri
 		this.target = undefined; this.interaction = undefined; this.shape = '';
 		this.controls?.dispose(); this.controls = undefined; this.toolbar.replaceChildren();
 		if (!input) { this.registration.clear(); return; }
-		if (!this.registration.value) { this.registration.value = this.groups.mainPart.registerToolbar(this.host, 48); }
+		if (!this.registration.value) { this.registration.value = this.groups.mainPart.registerToolbar(this.host, 54); }
 		this.host.setAttribute('aria-busy', 'true');
 		this.toolbar.setAttribute('aria-label', localize('documentToolbar.loading', "Loading Document Formatting"));
 		void this.commands.executeCommand(`_aiOffice.${input.viewType.slice('aiOffice.'.length)}.requestToolbar`, input.resource).catch(() => { /* The document extension publishes its controls when ready. */ });

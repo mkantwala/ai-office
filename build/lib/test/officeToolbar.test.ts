@@ -398,6 +398,45 @@ suite('Office toolbar in a browser', () => {
 		} finally { await page.close(); }
 	});
 
+	test('Word starts ready to type and keeps its ruler when selection formatting is mixed', async () => {
+		const page = await browser.newPage({ viewport: { width: 1200, height: 600 } });
+		try {
+			await page.goto(address + '/?hosted=1');
+			await page.waitForFunction(() => document.activeElement?.id === 'keyboard');
+			assert.equal(await page.locator('#hint').innerText(), '');
+			await page.keyboard.type('Ready');
+			await page.waitForFunction(() => Reflect.get(window, 'officeMessages').some((m: { command?: string }) => m.command === 'text.insert'));
+			await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: {
+				type: 'state', kind: 'word', name: 'Mixed.docx', pages: [[612, 792]], state: { revision: 2, selection: { anchor: 0, focus: 100 }, paragraph: { properties: {}, mixed: ['indents'], ruler: { left: 72, width: 468 } } }
+			} })));
+			const ruler = page.locator('.word-ruler');
+			assert.equal(await ruler.isVisible(), true);
+			assert.equal(await ruler.getByRole('slider').count(), 0);
+			await page.evaluate(() => window.scrollTo(0, 180));
+			await page.waitForFunction(() => document.querySelector('.word-ruler')!.getBoundingClientRect().top <= 7);
+		} finally { await page.close(); }
+	});
+
+	test('App color palette applies custom hex colors and returns focus to typing', async () => {
+		const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+		try {
+			await page.goto(address + '/?hosted=1');
+			await page.waitForFunction(() => Reflect.get(window, 'officeMessages').some((m: { type: string }) => m.type === 'toolbarState'));
+			await page.addScriptTag({ content: appScript });
+			await page.evaluate(() => {
+				const snapshot = Reflect.get(window, 'officeMessages').findLast((m: { type: string }) => m.type === 'toolbarState');
+				const host = document.createElement('div'); host.className = 'sangam-document-toolbar'; const bar = document.createElement('header'); host.append(bar); document.body.prepend(host);
+				Reflect.get(window, 'AppDocumentToolbar').createDocumentToolbar(bar, snapshot.controls, (action: object) => window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: { type: 'toolbarAction', context: snapshot.context, action } })), () => {});
+			});
+			await page.getByRole('button', { name: 'Text Color', exact: true }).click();
+			assert.ok(await page.locator('.word-color-menu:popover-open .word-color-swatch').count() >= 80);
+			if (process.env.OFFICE_UI_SCREENSHOT) { await page.screenshot({ path: process.env.OFFICE_UI_SCREENSHOT }); }
+			await page.getByLabel('Custom Text Color', { exact: true }).evaluate((element: HTMLInputElement) => { element.value = '#123456'; element.dispatchEvent(new Event('change')); });
+			assert.equal(await page.locator('#keyboard').evaluate(element => element === document.activeElement), true);
+			assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((m: { command?: string }) => m.command === 'format.color').map((m: { args: object }) => m.args)), [{ color: '123456' }]);
+		} finally { await page.close(); }
+	});
+
 	test('Font size steppers retain selection commands and Save/History stay out of the toolbar', async () => {
 		const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 		page.setDefaultTimeout(10000);

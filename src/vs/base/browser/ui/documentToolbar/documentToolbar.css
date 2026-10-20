@@ -273,7 +273,7 @@
 .word-toolbar button:disabled, .word-toolbar select:disabled, .word-toolbar-overflow button:disabled, .word-toolbar-overflow select:disabled { opacity: .35; cursor: default; }
 .word-toolbar button:focus-visible, .word-toolbar select:focus-visible, .word-toolbar-overflow button:focus-visible, .word-toolbar-overflow select:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 .word-toolbar button[aria-pressed="true"], .word-toolbar-overflow button[aria-pressed="true"] { background: color-mix(in srgb, var(--vscode-focusBorder) 22%, transparent); border-color: var(--vscode-focusBorder); }
-.sangam-document-toolbar { display: flex; box-sizing: border-box; padding: 0 8px 6px; background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background)); }
+.sangam-document-toolbar { display: flex; box-sizing: border-box; padding: 6px 8px; background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background)); }
 .sangam-document-toolbar > .word-toolbar { position: relative; top: 0; margin: 0; height: 42px; padding: 4px 8px; font: 12px var(--vscode-font-family); color: var(--vscode-foreground); }
 /* The editor-part header is flex; allow the compact row to shrink into its overflow menu. */
 .sangam-document-toolbar > .word-toolbar { box-sizing: border-box; flex: 1; min-width: 0; width: 100%; }
@@ -313,3 +313,14 @@
 @keyframes word-menu-open { from { opacity: 0; transform: translateY(-5px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @media (prefers-reduced-motion: reduce) { .word-visual-menu:popover-open, .word-toolbar-overflow:popover-open { animation: none; } }
 .monaco-workbench.reduce-motion .word-visual-menu:popover-open, .monaco-workbench.reduce-motion .word-toolbar-overflow:popover-open { animation: none; }
+
+/* A compact palette keeps colors scannable without long menu labels. */
+.word-color-menu { width: 304px; min-width: 0; max-height: min(420px, 80vh); padding: 10px; }
+.word-color-menu:popover-open { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
+.word-color-menu button { min-height: 0; width: 100%; aspect-ratio: 1; padding: 2px; border-radius: 50%; justify-content: center; }
+.word-color-menu .word-color-swatch { width: 100%; height: 100%; box-sizing: border-box; border-radius: 50%; border-color: #8886; }
+.word-color-menu button:hover, .word-color-menu button:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 0; }
+.word-color-menu .word-color-reset { grid-column: 1 / -1; aspect-ratio: auto; min-height: 28px; border-radius: 4px; justify-content: flex-start; }
+.word-color-reset .word-color-swatch { width: 18px; height: 18px; flex-shrink: 0; }
+.word-custom-color { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; margin-top: 6px; padding: 6px 8px; border-radius: 4px; background: var(--vscode-toolbar-hoverBackground, #8882); font-size: 11px; text-transform: uppercase; }
+.word-custom-color input { width: 32px; height: 26px; padding: 0; border: 0; background: transparent; cursor: pointer; }

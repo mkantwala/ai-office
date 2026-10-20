@@ -41,6 +41,7 @@ function toolbarAction(action: DocumentToolbarAction, context: string, instance?
 	if (document.body.dataset.documentInstance && instance !== document.body.dataset.documentInstance || context !== toolbarContext) { publishToolbar(); message('The document selection changed. Choose the formatting action again.'); return; }
 	if (action.control === 'table' && kind === 'word' && Number.isInteger(action.rows) && Number.isInteger(action.cols) && action.rows! >= 1 && action.rows! <= 20 && action.cols! >= 1 && action.cols! <= 10) { execute('insert.table', { rows: action.rows, cols: action.cols, borders: true }); focusWordInput(); return; }
 	if (action.control === 'size' && kind === 'word' && typeof action.value === 'string' && /^\d+(?:\.\d+)?$/.test(action.value) && Number(action.value) >= 1 && Number(action.value) <= 400 && !toolbarControls.size?.disabled) { execute('format.size', { size: Number(action.value) }); focusWordInput(); return; }
+	if (action.control === 'color' && kind === 'word' && typeof action.value === 'string' && /^[0-9a-f]{6}$/i.test(action.value) && !toolbarControls.color?.disabled) { execute('format.color', { color: action.value }); focusWordInput(); return; }
 	const control = toolbarControls[action.control]; if (!control || control.disabled) { return; }
 	if (control instanceof HTMLSelectElement) { if (!Array.from(control.options).some(option => option.value === action.value && option.value)) { return; } control.value = action.value!; control.dispatchEvent(new Event('change')); }
 	else { control.click(); }
@@ -55,6 +56,9 @@ function focusWordInput() {
 	if (dialog) { if (!dialog.contains(document.activeElement)) { dialog.querySelector<HTMLElement>('input, select, textarea, button')?.focus({ preventScroll: true }); } return; }
 	if (!document.querySelector('.word-table-context:popover-open')) { keyboard.focus({ preventScroll: true }); }
 }
+window.addEventListener('focus', () => {
+	if (initialized && (document.activeElement === document.body || document.activeElement === keyboard)) { focusWordInput(); }
+});
 const wordTable = new WordTable(pages, point, place, execute, ask, focusWordInput,
 	page => page.getBoundingClientRect().width / dimensions[Number(page.dataset.page)][0],
 	(request, args) => send('tablePreview', { request, args }),
@@ -313,7 +317,7 @@ function overlay() {
 		}
 	}
 }
-function defaultHint() { el('hint').textContent = kind === 'word' ? 'Click to type · Ctrl+S to save' : 'Click text to edit · Ctrl+Enter to finish · Ctrl+S to save'; }
+function defaultHint() { el('hint').textContent = kind === 'word' ? '' : 'Click text to edit · Ctrl+Enter to finish · Ctrl+S to save'; }
 let agentTimer: ReturnType<typeof setTimeout> | undefined;
 function clearAgent() {
 	clearTimeout(agentTimer); agentTimer = undefined;
@@ -372,6 +376,7 @@ window.addEventListener('message', event => {
 	if (data.type === 'saved') { el('hint').textContent = data.pendingSections ? `Saved · ${data.pendingSections} pending sections are editor-only` : 'Saved'; return; }
 	if (data.type === 'agent') { if (data.region) { showAgent(data.region, data.label); } return; }
 	if (data.type === 'state') {
+		const firstState = !initialized;
 		kind = data.kind; const changed = state.revision !== data.state.revision;
 		const repaginated = JSON.stringify(dimensions) !== JSON.stringify(data.pages);
 		state = data.state; dimensions = data.pages; wordTable.update(state.revision);
@@ -393,6 +398,7 @@ window.addEventListener('message', event => {
 		if (changed) { rendered.clear(); renderNext(); }
 		if (kind === 'word') { wordReview.layout(dimensions); wordParagraph?.update(state, dimensions); }
 		overlay(); agentOverlay(); publishToolbar();
+		if (firstState && document.hasFocus()) { focusWordInput(); }
 	} else if (data.type === 'rendered') {
 		renderBusy = false;
 		const request = pendingRender.get(data.request); pendingRender.delete(data.request);

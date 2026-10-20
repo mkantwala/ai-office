@@ -127,3 +127,6 @@ dialog::backdrop{background:#0005}dialog label{display:block;margin-bottom:12px;
 
 .word-table-context:popover-open { animation: word-menu-open 180ms cubic-bezier(.2,.8,.2,1); transform-origin: top left; }
 @media (prefers-reduced-motion: reduce) { .word-table-context:popover-open { animation: none; } }
+
+.word-document #info:has(#hint:empty):not(:has(.agent-status:not(:empty))) { display: none; }
+.word-document .word-ruler { position: sticky; top: 6px; z-index: 8; background: var(--vscode-editor-background, #fff); }

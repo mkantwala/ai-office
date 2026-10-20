@@ -13,6 +13,7 @@ export class WordParagraph {
 	private readonly ruler = document.createElement('div');
 	private readonly observer: ResizeObserver;
 	private state: State = { revision: -1 };
+	private lastParagraph?: State['paragraph'];
 	private dimensions: number[][] = [];
 	private key = '';
 	private origin?: { revision: number; selection: string };
@@ -34,6 +35,7 @@ export class WordParagraph {
 
 	update(state: State, dimensions: number[][]) {
 		this.state = state; this.dimensions = dimensions;
+		if (state.paragraph?.ruler) { this.lastParagraph = state.paragraph; }
 		if (this.origin && (state.revision !== this.origin.revision || JSON.stringify(state.selection) !== this.origin.selection)) {
 			const error = this.dialog.querySelector<HTMLElement>('[role="alert"]'); if (error) { error.textContent = 'Document or selection changed. Close and reopen Paragraph Properties.'; }
 			const apply = this.dialog.querySelector<HTMLButtonElement>('[type="submit"]'); if (apply) { apply.disabled = true; }
@@ -120,10 +122,11 @@ export class WordParagraph {
 
 	private layout() {
 		if (this.gesture) { return; }
-		const paragraph = this.state.paragraph; const page = this.state.caret?.page ?? 0;
+		const paragraph = this.state.paragraph ?? this.lastParagraph; const page = this.state.caret?.page ?? 0;
 		const node = this.pages.children[page] as HTMLElement | undefined; const width = this.dimensions[page]?.[0]; const body = paragraph?.ruler;
-		this.ruler.hidden = !body || !node || !width || paragraph!.mixed.includes('indents'); if (this.ruler.hidden) { return; }
-		const key = JSON.stringify([paragraph, node!.clientWidth, width, page]); if (key === this.key) { return; } this.key = key;
+		this.ruler.hidden = !body || !node || !width; if (this.ruler.hidden) { return; }
+		const mixed = !this.state.paragraph || paragraph!.mixed.includes('indents');
+		const key = JSON.stringify([paragraph, mixed, node!.clientWidth, width, page]); if (key === this.key) { return; } this.key = key;
 		const focus = document.activeElement instanceof HTMLElement && this.ruler.contains(document.activeElement) ? document.activeElement.dataset.marker : undefined;
 		const scale = node!.clientWidth / width; this.ruler.style.width = node!.clientWidth + 'px'; this.ruler.replaceChildren();
 		const track = document.createElement('div'); track.className = 'word-ruler-body'; track.style.left = body!.left * scale + 'px'; track.style.width = body!.width * scale + 'px'; this.ruler.append(track);
@@ -155,6 +158,7 @@ export class WordParagraph {
 			const hint = document.createElement('span'); hint.className = 'word-ruler-value'; b.append(hint); this.markerValue(b, value);
 			this.ruler.append(b);
 		};
+		if (mixed) { return; } // Keep the page scale visible without suggesting a shared indent.
 		marker('left', 'Left Indent · Arrow Keys Adjust', indent.left || 0, indent.left || 0);
 		marker('firstLine', 'First-Line Indent · Arrow Keys Adjust', (indent.left || 0) + (indent.firstLine || 0), indent.firstLine || 0);
 		marker('right', 'Right Indent · Arrow Keys Adjust', body!.width - (indent.right || 0), indent.right || 0);
@@ -169,7 +173,7 @@ export class WordParagraph {
 	}
 
 	private pointerDown(event: PointerEvent) {
-		if (event.button !== 0 || !this.state.paragraph?.ruler) { return; }
+		if (event.button !== 0 || !this.state.paragraph?.ruler || this.state.paragraph.mixed.includes('indents')) { return; }
 		const marker = (event.target as HTMLElement).closest<HTMLElement>('[data-marker]');
 		const rect = this.ruler.getBoundingClientRect(); const page = this.state.caret?.page ?? 0; const scale = rect.width / this.dimensions[page][0]; const body = this.state.paragraph.ruler;
 		if (!marker) {
