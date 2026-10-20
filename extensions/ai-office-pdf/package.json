@@ -946,7 +946,7 @@
 				"toolReferenceName": "officeDocumentActivity",
 				"displayName": "Show Word Agent Activity",
 				"userDescription": "Show Word Agent Activity in the live Word editor.",
-				"modelDescription": "Start a temporary shimmer on a target block while planning its edit; stop when done. Automatically expires in 30 seconds and clears after edits. IDs remain internal.",
+				"modelDescription": "Before preparing an edit, start an in-place preview on its target block with a short plain-text intent describing the change. The preview shimmers without modifying the document; stop when done. Automatically expires in 30 seconds and clears after edits. IDs remain internal.",
 				"canBeReferencedInPrompt": true,
 				"inputSchema": {
 					"type": "object",
@@ -965,6 +965,12 @@
 						"id": {
 							"type": "string",
 							"description": "Internal block ID returned by read. Never invent it or show it to the user."
+						},
+						"intent": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 240,
+							"description": "Short user-facing description of the intended edit, e.g. Tightening this paragraph and checking its figures. Plain text; never include internal IDs."
 						},
 						"version": {
 							"type": "string",

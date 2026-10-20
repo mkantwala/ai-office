@@ -86,14 +86,16 @@ let initialized = false;
 let wordPageSetup: WordPageSetup | undefined;
 let disposeToolbar: (() => void) | undefined;
 let agentLabel = 'Agent';
+let agentIntent: string | undefined;
+let activityTimer: ReturnType<typeof setTimeout> | undefined;
 let agentRects: NonNullable<State['rects']> = [];
 let legacyAgentRects: NonNullable<State['rects']> = [];
 const agentStatus = document.createElement('span');
 agentStatus.className = 'agent-status'; agentStatus.setAttribute('role', 'status'); agentStatus.setAttribute('aria-live', 'polite');
 el('info').append(agentStatus);
 function agentOverlay() {
-	const active = renderAgentActivity(pages, agentRects.length ? agentRects : legacyAgentRects, place, agentLabel);
-	agentStatus.textContent = active ? 'Agent is working on this content' : '';
+	const active = renderAgentActivity(pages, agentRects.length ? agentRects : legacyAgentRects, place, agentLabel, agentRects.length ? agentIntent : undefined);
+	agentStatus.textContent = active ? agentLabel + ': ' + (agentIntent || 'Working on this content') : '';
 	pages.setAttribute('aria-busy', String(active));
 }
 
@@ -110,9 +112,13 @@ function typeWordText(text: string) {
 	wordText += text;
 	if (!wordTextTimer) { wordTextTimer = setTimeout(flushWordInput, 0); }
 }
-window.addEventListener('pagehide', () => { flushWordInput(); disposeToolbar?.(); wordParagraph?.dispose(); wordPageSetup?.dispose(); wordReview.dispose(); wordTable.dispose(); agentReveal.clear(); clearAgent(); }, { once: true });
+window.addEventListener('pagehide', () => { flushWordInput(); disposeToolbar?.(); wordParagraph?.dispose(); wordPageSetup?.dispose(); wordReview.dispose(); wordTable.dispose(); clearTimeout(activityTimer); agentReveal.clear(); clearAgent(); }, { once: true });
 window.addEventListener('blur', flushWordInput);
-window.addEventListener('pointerdown', () => agentReveal.clear());
+function clearActivityPreview() {
+	if (!agentRects.length && agentIntent === undefined && activityTimer === undefined) { return; }
+	clearTimeout(activityTimer); activityTimer = undefined; agentIntent = undefined; agentRects = []; agentOverlay();
+}
+window.addEventListener('pointerdown', () => { agentReveal.clear(); clearActivityPreview(); });
 window.addEventListener('focus', () => { if (initialized && (document.activeElement === document.body || document.activeElement === keyboard)) { focusWordInput(); } });
 function send(type: string, data: Record<string, unknown> = {}) { if (type !== 'render' && type !== 'ready') { flushWordInput(); } api.postMessage({ type, ...data }); }
 function execute(command: string, args: Record<string, unknown> = {}) {
@@ -373,10 +379,10 @@ function showAgent(region: { page: number; rects: { x: number; y: number; width:
 	el('hint').textContent = 'Agent: ' + label;
 	agentTimer = setTimeout(() => { clearAgent(); defaultHint(); }, 2000);
 }
-keyboard.addEventListener('compositionstart', () => { agentReveal.clear(); composing = true; });
+keyboard.addEventListener('compositionstart', () => { agentReveal.clear(); clearActivityPreview(); composing = true; });
 keyboard.addEventListener('compositionend', event => { composing = false; if (event.data) { typeWordText(event.data); } keyboard.value = ''; });
 keyboard.addEventListener('input', event => {
-	agentReveal.clear();
+	agentReveal.clear(); clearActivityPreview();
 	if (composing || (event as InputEvent).inputType === 'insertCompositionText') { return; }
 	if (keyboard.value) { typeWordText(keyboard.value); } keyboard.value = '';
 });
@@ -384,7 +390,7 @@ keyboard.addEventListener('paste', event => { event.preventDefault(); const text
 document.addEventListener('copy', event => { if (document.activeElement === keyboard && state.selectedText) { event.preventDefault(); event.clipboardData?.setData('text/plain', state.selectedText); } });
 document.addEventListener('cut', event => { if (document.activeElement === keyboard && state.selectedText) { event.preventDefault(); event.clipboardData?.setData('text/plain', state.selectedText); execute('text.delete'); } });
 document.addEventListener('keydown', event => {
-	agentReveal.clear();
+	agentReveal.clear(); clearActivityPreview();
 	if (document.querySelector('dialog[open]') || (event.target instanceof HTMLElement && event.target.closest('.word-ruler')) || composing) { return; }
 	// The webview forwards bubbling keys to workbench keybindings even after preventDefault.
 	const consume = () => { event.preventDefault(); event.stopPropagation(); };
@@ -410,7 +416,13 @@ window.addEventListener('message', event => {
 	if (data.type === 'publishToolbar') { publishToolbar(); return; }
 	if (data.type === 'toolbarAction') { toolbarAction(data.action, data.context, data.instance); return; }
 	if (data.type === 'agentCommit') { agentReveal.queue(data.revision, Array.isArray(data.rects) ? data.rects : []); return; }
-	if (data.type === 'agentActivity') { agentLabel = typeof data.label === 'string' ? data.label.slice(0, 40) : 'Agent'; agentRects = Array.isArray(data.rects) ? data.rects : []; agentOverlay(); return; }
+	if (data.type === 'agentActivity') {
+		clearTimeout(activityTimer); activityTimer = undefined; agentLabel = typeof data.label === 'string' ? data.label.slice(0, 40) : 'Agent';
+		agentIntent = typeof data.intent === 'string' ? data.intent.slice(0, 240) : undefined;
+		agentRects = Array.isArray(data.rects) ? data.rects : [];
+		if (agentRects.length) { activityTimer = setTimeout(clearActivityPreview, Math.max(0, Math.min(30000, (data.expiresAt || Date.now() + 30000) - Date.now()))); }
+		agentOverlay(); return;
+	}
 	if (data.type === 'draft') { wordReview.updateDrafts(data.sections, data.label, data.workingId, data.expiresAt); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
 	if (data.type === 'review') { wordReview.update(data.review); showReviewSummary(); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
 	if (data.type === 'error') { message(data.error); renderBusy = false; return; }
@@ -420,7 +432,7 @@ window.addEventListener('message', event => {
 		const firstState = !initialized;
 		kind = data.kind; const changed = state.revision !== data.state.revision;
 		const regionChanged = state.editingRegion !== data.state.editingRegion;
-		if (changed) { agentReveal.clear(); }
+		if (changed) { agentReveal.clear(); clearActivityPreview(); }
 		const repaginated = JSON.stringify(dimensions) !== JSON.stringify(data.pages);
 		state = data.state; dimensions = data.pages; wordTable.update(state.revision);
 		revealWordCaret = kind === 'word' && (data.command?.startsWith('text.') || data.command === 'insert.table' || data.command === 'insert.editHeader' || data.command === 'insert.editFooter');

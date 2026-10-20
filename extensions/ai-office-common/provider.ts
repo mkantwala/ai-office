@@ -40,7 +40,7 @@ class Document implements vscode.CustomDocument {
 	saving = false;
 	serial = Promise.resolve();
 	instance = randomUUID();
-	activity?: { id: string; label: string; rects: State['rects']; timer: ReturnType<typeof setTimeout> };
+	activity?: { id: string; label: string; intent: string; expiresAt: number; rects: State['rects']; timer: ReturnType<typeof setTimeout> };
 	constructor(readonly uri: vscode.Uri, readonly kind: Kind, readonly context: vscode.ExtensionContext, private readonly onDispose: () => void) {
 		this.client = new EngineClient(vscode.Uri.joinPath(context.extensionUri, 'out', 'engineWorker.cjs').fsPath);
 		if (kind === 'word' && context.globalStorageUri) { this.versions = new DocumentVersions(context.globalStorageUri.fsPath, uri.toString()); }
@@ -80,13 +80,14 @@ class Document implements vscode.CustomDocument {
 		if (this.activity) { await this.sendActivity(this.activity.rects); }
 	}
 	async sendActivity(rects: State['rects']) {
-		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'agentActivity', rects: rects || [], label: this.activity?.label || activeAgentLabel() })));
+		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'agentActivity', rects: rects || [], label: this.activity?.label || activeAgentLabel(), ...(this.activity ? { intent: this.activity.intent, expiresAt: this.activity.expiresAt } : {}) })));
 	}
 	async stopActivity() { if (this.activity) { clearTimeout(this.activity.timer); this.activity = undefined; } await this.sendActivity([]); }
-	async startActivity(id: string) {
+	async startActivity(id: string, intent?: string) {
+		const preview = intent ?? (this.activity?.id === id ? this.activity.intent : 'Updating this block…');
 		const rects = await this.client.request<State['rects']>('agentRects', { blockId: id });
 		await this.stopActivity();
-		this.activity = { id, label: activeAgentLabel(), rects, timer: setTimeout(() => { void this.stopActivity(); }, 30000) };
+		this.activity = { id, label: activeAgentLabel(), intent: preview, expiresAt: Date.now() + 30000, rects, timer: setTimeout(() => { void this.stopActivity(); }, 30000) };
 		await this.sendActivity(rects);
 	}
 	get version() { return `${this.instance}:${this.view.state.revision}`; }
@@ -246,10 +247,8 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 					doc.dirty = true;
 					recordEdit(doc, beforeState, 'Agent document edit', request);
 				}
-				if (input.operation !== 'delete' && doc.activity) {
-					// Some text commands merge/remove the target; the edit still succeeded.
-					doc.activity.rects = await doc.client.request<State['rects']>('agentRects', { blockId: targetId }).catch(() => []);
-				}
+				// Remove the editor-only preview before publishing committed content and its reveal.
+				await doc.stopActivity().catch(() => {});
 				// The native mutation is committed. Optional UI/read failures must not invite a duplicate edit.
 				const warnings: string[] = [];
 				try { await doc.broadcast(); } catch { warnings.push('Content was applied, but the editor display could not refresh. Reopen the view before continuing.'); }
@@ -657,7 +656,8 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 						if (input.operation === 'stop') { doc.draftWorkingUntil = 0; await doc.stopActivity(); if (doc.drafts.pending().length) { await doc.broadcast(); } }
 						else {
 							if (input.version !== doc.version || typeof input.id !== 'string') { throw new Error('Read the target again before starting work.'); }
-							await doc.startActivity(input.id);
+							if (input.intent !== undefined && (typeof input.intent !== 'string' || !input.intent.trim() || input.intent.length > 240)) { throw new Error('Activity intent must be 1–240 characters of plain text.'); }
+							await doc.startActivity(input.id, typeof input.intent === 'string' ? input.intent.trim() : undefined);
 						}
 						return { uri: doc.uri.toString(), active: !!doc.activity, expiresInSeconds: doc.activity ? 30 : 0 };
 					}

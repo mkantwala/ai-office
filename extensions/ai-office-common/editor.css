@@ -172,3 +172,8 @@ html::-webkit-scrollbar-track, html::-webkit-scrollbar-corner { background: var(
 
 @media (prefers-reduced-motion: reduce) { .word-draft-zone[data-working="true"] strong, .word-draft-zone[data-working="true"] p { animation: none; background: none; color: #777; } }
 @media (forced-colors: active) { .word-draft-zone[data-working="true"] strong, .word-draft-zone[data-working="true"] p { background: none; color: CanvasText; } }
+
+.agent-edit-preview { background: #fff; z-index: 4; overflow: hidden; }
+.agent-edit-preview p { margin: 0; font: 14px/19px system-ui; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; background: linear-gradient(100deg, #333 10%, #aaa 40%, #ddd 50%, #888 65%, #333 90%); background-size: 250% 100%; background-clip: text; -webkit-background-clip: text; color: transparent; animation: agent-shimmer 1.8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .agent-edit-preview p { animation: none; background: none; color: #777; } }
+@media (forced-colors: active) { .agent-edit-preview { background: Canvas; } .agent-edit-preview p { background: none; color: CanvasText; } }

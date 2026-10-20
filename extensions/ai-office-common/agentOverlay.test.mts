@@ -28,14 +28,25 @@ test('Word activity labels, bounded reveals and reduced motion never change docu
 			return {label:document.querySelector('.agent-cursor span').textContent,shimmer:document.querySelectorAll('.agent-shimmer-text').length,masks:document.querySelectorAll('.agent-reveal').length,text:document.querySelector('p').textContent};
 		})()`);
 		assert.deepEqual(active, { label: 'OpenCode', shimmer: 1, masks: 1, text: 'Native document content' });
+		const preview = await page.evaluate(`(() => {
+			OfficeActivity.renderAgentActivity(document.getElementById('pages'),[activityRect],activityPlace,'OpenCode','Clarifying <img src=x> and checking figures');
+			const preview=document.querySelector('.agent-edit-preview');
+			return {text:preview.textContent,images:preview.querySelectorAll('img').length,background:getComputedStyle(preview).backgroundColor,label:document.querySelector('.agent-cursor span').textContent,original:document.querySelector('p').textContent};
+		})()`);
+		assert.deepEqual(preview, { text: '[Clarifying <img src=x> and checking figures]', images: 0, background: 'rgb(255, 255, 255)', label: 'OpenCode', original: 'Native document content' });
+		await page.evaluate(`OfficeActivity.renderAgentActivity(document.getElementById('pages'),[activityRect],activityPlace,'OpenCode','Shortening the paragraph')`);
+		assert.equal(await page.locator('.agent-edit-preview').count(), 1, 'Repainting replaces the preview without stacking masks');
+
 		await page.waitForTimeout(450);
 		assert.equal(await page.locator('.agent-reveal').count(), 0, 'The fast reveal removes its mask');
 		assert.equal(await page.evaluate(`(() => { activityReveal.queue(3,[activityRect]); activityRevision=4;activityReveal.paint();return document.querySelectorAll('.agent-reveal').length; })()`), 0, 'A later edit cancels stale masks');
 		await page.emulateMedia({ reducedMotion: 'reduce' });
 		assert.equal(await page.evaluate(`(() => { activityRevision=3;activityReveal.queue(3,[activityRect]);return document.querySelectorAll('.agent-reveal').length; })()`), 0);
-		assert.equal(await page.locator('p').textContent(), 'Native document content');
+		assert.equal(await page.locator('.agent-edit-preview p').evaluate(node => getComputedStyle(node).animationName), 'none');
+		assert.equal(await page.locator('#pages > section > p').textContent(), 'Native document content');
 		await page.evaluate(`OfficeActivity.renderAgentActivity(document.getElementById('pages'),[],activityPlace);activityReveal.clear()`);
-		assert.equal(await page.locator('.agent-shimmer,.agent-reveal').count(), 0);
+		assert.equal(await page.locator('.agent-shimmer,.agent-reveal,.agent-edit-preview').count(), 0);
+		assert.equal(await page.locator('#pages > section > p').textContent(), 'Native document content', 'Stopping restores the original display without editing content');
 	} finally { await browser.close(); }
 });
 
