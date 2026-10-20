@@ -62,6 +62,22 @@ test('Word caret follows the active font rather than line spacing or a neighbori
 	} finally { engine.dispose(); }
 });
 
+test('Word page ruler remains available in lists, tables and after select-all', async () => {
+	const engine = await openEngine('word', 'ruler.docx', docx, root);
+	try {
+		const original = engine.state().pageRuler;
+		assert.ok(original && original.width > 0);
+		await engine.execute('para.bullets', {});
+		assert.deepEqual({ page: engine.state().pageRuler, handles: engine.state().paragraph?.ruler }, { page: original, handles: null });
+		await engine.execute('select.all', {});
+		assert.deepEqual(engine.state().pageRuler, original);
+		await engine.execute('caret.docEnd', {});
+		await engine.execute('text.newParagraph', {});
+		await engine.execute('insert.table', { rows: 2, cols: 2 });
+		assert.deepEqual(engine.state().pageRuler, original);
+	} finally { engine.dispose(); }
+});
+
 test('Word: native editing, toolbar operations, undo, export and reopen', async () => {
 	await mkdir(demo, { recursive: true }); await writeFile(resolve(demo, 'Memo.docx'), docx);
 	const engine = await openEngine('word', 'Memo.docx', docx, root);

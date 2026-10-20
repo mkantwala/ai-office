@@ -35,15 +35,14 @@ import { IExtensionService } from '../../../services/extensions/common/extension
 import { ContributedCustomEditors } from '../common/contributedCustomEditors.js';
 import { CustomEditorDiffInput, CustomEditorSideBySideDiffInput } from './customEditorDiffInput.js';
 import { CustomEditorInput } from './customEditorInput.js';
+import { runCustomEditorUndoRedo } from '../common/customEditorUndoRedo.js';
 
 // Document tools and webview buttons address the document explicitly, even when chat has focus.
 CommandsRegistry.registerCommand('_aiOffice.documentHistory', async (accessor, resource: URI | string, action: string) => {
 	const service = accessor.get(IUndoRedoService);
 	const uri = URI.isUri(resource) ? resource : URI.parse(resource);
 	if (action !== 'undo' && action !== 'redo') { throw new Error('Unknown document history action'); }
-	if (action === 'undo' ? !service.canUndo(uri) : !service.canRedo(uri)) { return false; }
-	if (action === 'undo') { await service.undo(uri); } else { await service.redo(uri); }
-	return true;
+	return runCustomEditorUndoRedo(service, uri, action);
 });
 
 interface CustomEditorDiffInputInfo {

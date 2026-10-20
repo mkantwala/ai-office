@@ -12,6 +12,7 @@ export interface TablePreview { kind: 'column' | 'row' | 'corner' | 'move'; rect
 export interface State {
 	formatting?: { font: string | null; size: number | null; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean };
 	paragraph?: { id: string; properties: ParagraphProperties; mixed: string[]; ruler?: { left: number; width: number } | null };
+	pageRuler?: { left: number; width: number } | null;
 	undoDepth?: number;
 	agentAppliedEdits?: { id: string; operation: string; command?: string; params?: unknown }[];
 	agentCreatedBlocks?: { id: string; kind: string; parentId: string }[];

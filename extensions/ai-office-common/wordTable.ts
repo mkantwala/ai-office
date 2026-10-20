@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type { TableGeometry, TablePreview } from './types.js';
+import { wordCursor } from './wordCursor.js';
 
 type Point = { page: number; x: number; y: number };
 type Edge = { kind: 'column' | 'row' | 'corner'; index: number; distance: number };
@@ -104,7 +105,7 @@ export class WordTable {
 		if ((event.target as HTMLElement).closest('.word-table-handles') || this.menu.matches(':popover-open')) { return; }
 		const target = this.target(event); if (!target) { this.clearHover(); return; }
 		const { table, page, at, row, col } = target; const edge = this.edge(target);
-		page.style.cursor = edge?.kind === 'column' ? 'col-resize' : edge?.kind === 'row' ? 'row-resize' : '';
+		page.style.cursor = edge ? wordCursor(edge.kind) : '';
 		const left = table.cols[0], right = table.cols.at(-1)!, top = table.rows[0].top, bottom = table.rows.at(-1)!.bottom;
 		const insertRow = at.x < left && [row.top, row.bottom].find(y => Math.abs(y - at.y) < 4);
 		const insertCol = at.y < top && table.cols.find(x => Math.abs(x - at.x) < 4);
@@ -139,7 +140,7 @@ export class WordTable {
 		if (!command) { return; }
 		event.preventDefault(); event.stopPropagation(); this.close(); this.focus();
 		this.gesture = { page: target.page, pointer: event.pointerId, from, start: target.at, command, reach: 4 / this.scale(target.page), revision: this.revision, table: target.table, moved: false };
-		target.page.setPointerCapture(event.pointerId); target.page.style.cursor = command === 'table.moveDrag' ? 'grabbing' : button ? 'nwse-resize' : edge?.kind === 'column' ? 'col-resize' : 'row-resize';
+		target.page.setPointerCapture(event.pointerId); target.page.style.cursor = command === 'table.moveDrag' ? 'grabbing' : wordCursor(button ? 'corner' : edge?.kind === 'column' ? 'column' : 'row');
 		this.pages.style.cursor = target.page.style.cursor;
 		if (command === 'table.moveDrag') { this.makeGhost(target.page, target.table); }
 	}

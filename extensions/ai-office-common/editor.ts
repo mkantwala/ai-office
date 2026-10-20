@@ -11,10 +11,13 @@ import type { DocumentToolbarAction, DocumentToolbarControl } from '../../src/vs
 import { WordTable } from './wordTable.js';
 import { WordParagraph } from './wordParagraph.js';
 import { WordReview } from './wordReview.js';
+import { wordCursor } from './wordCursor.js';
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 const api = acquireVsCodeApi();
 const el = (id: string) => document.getElementById(id)!;
 const pages = el('pages');
+pages.style.setProperty('--word-text-cursor', wordCursor('text'));
+pages.style.setProperty('--word-corner-cursor', wordCursor('corner'));
 const wordReview = new WordReview(pages, (data, action, ids) => send('reviewDecide', { version: data.version, reviewVersion: data.reviewVersion, action, ids }), () => { overlay(); agentOverlay(); }, id => send('draftDiscard', { id }));
 const reviewSummary = document.createElement('div'); reviewSummary.className = 'word-review-summary'; reviewSummary.hidden = true; pages.before(reviewSummary);
 function showReviewSummary() {
@@ -56,9 +59,6 @@ function focusWordInput() {
 	if (dialog) { if (!dialog.contains(document.activeElement)) { dialog.querySelector<HTMLElement>('input, select, textarea, button')?.focus({ preventScroll: true }); } return; }
 	if (!document.querySelector('.word-table-context:popover-open')) { keyboard.focus({ preventScroll: true }); }
 }
-window.addEventListener('focus', () => {
-	if (initialized && (document.activeElement === document.body || document.activeElement === keyboard)) { focusWordInput(); }
-});
 const wordTable = new WordTable(pages, point, place, execute, ask, focusWordInput,
 	page => page.getBoundingClientRect().width / dimensions[Number(page.dataset.page)][0],
 	(request, args) => send('tablePreview', { request, args }),
@@ -108,7 +108,7 @@ function typeWordText(text: string) {
 }
 window.addEventListener('pagehide', () => { flushWordInput(); disposeToolbar?.(); wordParagraph?.dispose(); wordTable.dispose(); clearAgent(); }, { once: true });
 window.addEventListener('blur', flushWordInput);
-window.addEventListener('focus', () => { if (document.activeElement === document.body || document.activeElement === keyboard) { focusWordInput(); } });
+window.addEventListener('focus', () => { if (initialized && (document.activeElement === document.body || document.activeElement === keyboard)) { focusWordInput(); } });
 function send(type: string, data: Record<string, unknown> = {}) { if (type !== 'render' && type !== 'ready') { flushWordInput(); } api.postMessage({ type, ...data }); }
 function execute(command: string, args: Record<string, unknown> = {}) {
 	el('error').hidden = true;
@@ -349,19 +349,21 @@ document.addEventListener('copy', event => { if (document.activeElement === keyb
 document.addEventListener('cut', event => { if (document.activeElement === keyboard && state.selectedText) { event.preventDefault(); event.clipboardData?.setData('text/plain', state.selectedText); execute('text.delete'); } });
 document.addEventListener('keydown', event => {
 	if (document.querySelector('dialog[open]') || (event.target instanceof HTMLElement && event.target.closest('.word-ruler')) || composing) { return; }
+	// The webview forwards bubbling keys to workbench keybindings even after preventDefault.
+	const consume = () => { event.preventDefault(); event.stopPropagation(); };
 	const mod = event.ctrlKey || event.metaKey;
-	if (mod && event.key.toLowerCase() === 's') { event.preventDefault(); flushText(); send('save'); return; }
-	if (mod && event.key.toLowerCase() === 'z') { event.preventDefault(); closeText(); send(event.shiftKey ? 'redo' : 'undo'); return; }
-	if (mod && event.key.toLowerCase() === 'y') { event.preventDefault(); closeText(); send('redo'); return; }
+	if (mod && event.key.toLowerCase() === 's') { consume(); flushText(); send('save'); return; }
+	if (mod && event.key.toLowerCase() === 'z') { consume(); closeText(); send(event.shiftKey ? 'redo' : 'undo'); return; }
+	if (mod && event.key.toLowerCase() === 'y') { consume(); closeText(); send('redo'); return; }
 	if (kind !== 'word' || document.activeElement !== keyboard) { return; }
 	const nav: Record<string, string> = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', Home: mod ? 'docStart' : 'home', End: mod ? 'docEnd' : 'end' };
-	if (nav[event.key]) { event.preventDefault(); execute('caret.' + nav[event.key], { extend: event.shiftKey }); return; }
+	if (nav[event.key]) { consume(); execute('caret.' + nav[event.key], { extend: event.shiftKey }); return; }
 	if (mod) {
 		const command: Record<string, string> = { a: 'select.all', b: 'format.bold', i: 'format.italic', u: 'format.underline' };
-		if (command[event.key.toLowerCase()]) { event.preventDefault(); execute(command[event.key.toLowerCase()]); } return;
+		if (command[event.key.toLowerCase()]) { consume(); execute(command[event.key.toLowerCase()]); } return;
 	}
 	const commands: Record<string, string> = { Enter: event.shiftKey ? 'text.lineBreak' : 'text.newParagraph', Backspace: 'text.backspace', Delete: 'text.delete', Tab: event.shiftKey ? 'text.backTab' : 'text.tab' };
-	if (commands[event.key]) { event.preventDefault(); execute(commands[event.key]); }
+	if (commands[event.key]) { consume(); execute(commands[event.key]); }
 });
 window.addEventListener('message', event => {
 	if (event.origin !== location.origin) { return; } const data = event.data;

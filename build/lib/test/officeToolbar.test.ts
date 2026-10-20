@@ -398,6 +398,28 @@ suite('Office toolbar in a browser', () => {
 		} finally { await page.close(); }
 	});
 
+	test('Document shortcuts are handled once without forwarding a second undo to the workbench', async () => {
+		const page = await browser.newPage();
+		try {
+			await page.goto(address);
+			await page.waitForFunction(() => document.activeElement?.id === 'keyboard');
+			await page.evaluate(() => {
+				Reflect.set(window, 'forwardedKeys', []);
+				// The real webview bridge forwards keys at window, including prevented events.
+				window.addEventListener('keydown', event => Reflect.get(window, 'forwardedKeys').push(event.key));
+			});
+			await page.keyboard.press('Control+z');
+			await page.keyboard.press('Control+Shift+z');
+			await page.keyboard.press('Control+y');
+			await page.keyboard.press('Control+s');
+			await page.keyboard.press('Control+b');
+			await page.keyboard.press('Control+a');
+			const actions = await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((m: { type: string }) => ['undo', 'redo', 'save', 'execute'].includes(m.type)).map((m: { type: string; command?: string }) => m.command || m.type));
+			const forwarded = await page.evaluate(() => Reflect.get(window, 'forwardedKeys').filter((key: string) => ['z', 'y', 's', 'b', 'a'].includes(key.toLowerCase())));
+			assert.deepEqual({ actions, forwarded }, { actions: ['undo', 'redo', 'redo', 'save', 'format.bold', 'select.all'], forwarded: [] });
+		} finally { await page.close(); }
+	});
+
 	test('Word starts ready to type and keeps its ruler when selection formatting is mixed', async () => {
 		const page = await browser.newPage({ viewport: { width: 1200, height: 600 } });
 		try {
@@ -412,6 +434,13 @@ suite('Office toolbar in a browser', () => {
 			const ruler = page.locator('.word-ruler');
 			assert.equal(await ruler.isVisible(), true);
 			assert.equal(await ruler.getByRole('slider').count(), 0);
+			await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { origin: location.origin, data: {
+				type: 'state', kind: 'word', name: 'Mixed.docx', pages: [[612, 792]], state: { revision: 3, selection: { anchor: 1, focus: 1 }, paragraph: { properties: {}, mixed: [], ruler: null }, pageRuler: { left: 36, width: 540 } }
+			} })));
+			assert.equal(await ruler.isVisible(), true, 'List/table selections retain page measurements');
+			assert.equal(await ruler.getByRole('slider').count(), 0, 'Unsupported paragraph handles remain unavailable');
+			await page.emulateMedia({ colorScheme: 'dark' });
+			assert.match(await page.locator('.page.word').evaluate(e => getComputedStyle(e).cursor), /stroke%3D%22%23171b26/);
 			await page.evaluate(() => window.scrollTo(0, 180));
 			await page.waitForFunction(() => document.querySelector('.word-ruler')!.getBoundingClientRect().top <= 7);
 		} finally { await page.close(); }
@@ -476,9 +505,9 @@ suite('Office toolbar in a browser', () => {
 			let commands = await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((m: { type: string }) => m.type === 'execute'));
 			assert.deepEqual(commands.at(-1), { type: 'execute', command: 'table.sort', args: { column: 1, descending: true } });
 			await page.mouse.move(paper.x + 250 * scale, paper.y + 120 * scale);
-			assert.equal(await page.locator('.page.word').evaluate(e => getComputedStyle(e).cursor), 'text', 'Merged cells have no internal resize edge');
+			assert.match(await page.locator('.page.word').evaluate(e => getComputedStyle(e).cursor), /, text$/, 'Merged cells have no internal resize edge');
 			await page.mouse.move(paper.x + 250 * scale, paper.y + 160 * scale);
-			assert.equal(await page.locator('.page.word').evaluate(e => getComputedStyle(e).cursor), 'col-resize');
+			assert.match(await page.locator('.page.word').evaluate(e => getComputedStyle(e).cursor), /^url\(.*col-resize$/);
 			await page.mouse.down(); assert.equal(await page.locator('#keyboard').evaluate(e => e === document.activeElement), true); await page.mouse.move(paper.x + 280 * scale, paper.y + 160 * scale);
 			await page.waitForFunction(() => Reflect.get(window, 'officeMessages').some((m: { type: string }) => m.type === 'tablePreview'));
 			await page.evaluate(() => {
@@ -491,7 +520,7 @@ suite('Office toolbar in a browser', () => {
 			assert.equal(await page.locator('.word-table-preview').count(), 0);
 			assert.equal(await page.locator('#keyboard').evaluate(e => e === document.activeElement), true);
 			await page.mouse.move(paper.x + 400 * scale, paper.y + 140 * scale);
-			assert.equal(await page.locator('.page.word').evaluate(e => getComputedStyle(e).cursor), 'row-resize');
+			assert.match(await page.locator('.page.word').evaluate(e => getComputedStyle(e).cursor), /^url\(.*row-resize$/);
 			commands = await page.evaluate(() => Reflect.get(window, 'officeMessages').filter((m: { type: string }) => m.type === 'execute'));
 			assert.equal(commands.at(-1).command, 'table.resizeDrag'); assert.ok(Math.abs(commands.at(-1).args.toX - 280) < 1);
 			await page.mouse.move(paper.x + 250 * scale, paper.y + 160 * scale); await page.mouse.down(); await page.mouse.move(paper.x + 300 * scale, paper.y + 160 * scale);

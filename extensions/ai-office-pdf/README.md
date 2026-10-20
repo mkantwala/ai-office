@@ -34,3 +34,17 @@ Agent edits appear in the standard chat changed-file list, with native **Keep**,
 Run `node extensions/ai-office-common/test.mts --word` from the repository root for the Word/provider/Cloudflare checks without requiring the PDF engine bundle.
 
 Validation: synthetic DOCX integration tests cover CRUD, identity persistence, atomic rollback, stale requests and Unicode ranges; provider tests cover cancellation, workspace trust and undo; browser tests cover shimmer geometry and reduced motion. Cloudflare transport and tool-loop tests inject local fake responses and never use real credentials or the network.
+
+## OpenCode agent sessions
+
+Select **OpenCode** in the agent/session picker, or run **OpenCode: New Agent Session** from the Command Palette. OpenCode runs through its official [Agent Client Protocol](https://opencode.ai/docs/acp/) (`opencode acp`) in the existing chat UI. The removed terminal panel is not required.
+
+Install OpenCode on the machine hosting the extension. It uses your existing OpenCode providers, authentication and default model; configure those once with OpenCode itself (`opencode auth login` in a system terminal when needed). Sangam One/GitHub login is optional. **OpenCode: Configure Connection** sets `aiOffice.opencode.path` if the executable is not on PATH. The executable setting is machine-scoped and cannot be supplied by a workspace.
+
+Responses, reasoning and tool activity stream into chat. OpenCode's permission requests show the actual options and tool input; cancellation dismisses pending permission choices and stops the turn. A process that fails to stop is terminated. Model and agent-mode choices come from OpenCode's session configuration after connecting, including its configured model providers. Workspace trust is required before starting the local agent.
+
+The `sangam-docs` MCP bridge exposes the eight existing document tools. Calls carry the current chat request's opaque tool token, preserving guarded block edits, native history, request-level Keep/Undo and agent shimmer. Tools cannot run through the bridge while the chat is idle or cancelled. The bridge binds only to loopback and uses an ephemeral credential passed through the child environment. No model credentials are copied into this extension or persisted by it.
+
+OpenCode owns durable conversation history. Sangam One stores only its session ID, folder and display metadata, then reloads the conversation through ACP. Empty sessions start no process; idle processes and tool bridges shut down after two minutes and reconnect on the next request. Session metadata is bounded to the latest 200 entries.
+
+Build the extension with `node extensions/ai-office-pdf/build.mts --ui-only` from the repository root, or through the normal built-in extension esbuild pipeline. The build includes the small stdio MCP adapter and dependency licenses. Run offline integration checks with `node extensions/ai-office-pdf/opencode/test.mts`; they cover the wire protocol, approvals, cancellation, failures, native session registration, document-tool routing, model selection and restoration.

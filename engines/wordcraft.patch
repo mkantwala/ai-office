@@ -687,10 +687,10 @@ index 0000000..c2cf796
 +}
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..de8bce7
+index 0000000..62d3fc2
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,412 @@
+@@ -0,0 +1,417 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -825,8 +825,13 @@ index 0000000..de8bce7
 +                .map(|page| json!({"left":page.body.x,"width":page.body.w}));
 +            json!({"id":p.props.office_id,"properties":properties,"mixed":mixed,"ruler":ruler})
 +        });
++        // Page measurements stay available even when paragraph handles are unsupported.
++        let page_ruler = self.layout.caret_on(&sel.focus, self.session.page_hint)
++            .and_then(|c| self.layout.pages.get(c.page))
++            .or_else(|| self.layout.pages.get(self.session.page_hint))
++            .map(|page| json!({"left":page.body.x,"width":page.body.w}));
 +        let style = self.session.doc.para(sel.focus.story, &sel.focus.path).and_then(|p| p.props.style.as_deref()).unwrap_or("Normal");
-+        serde_json::to_string(&json!({"formatting":wordcraft_engine::cmd::format::state(&self.session),"paragraph":paragraph,"undoDepth":self.session.undo_depth(),"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
++        serde_json::to_string(&json!({"formatting":wordcraft_engine::cmd::format::state(&self.session),"paragraph":paragraph,"pageRuler":page_ruler,"undoDepth":self.session.undo_depth(),"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
 +    }
 +
 +    /// Geometry only for the page being rendered; no document-wide scan on typing.

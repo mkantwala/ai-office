@@ -12,6 +12,7 @@ import { IFileDialogService } from '../../../../platform/dialogs/common/dialogs.
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
 import { IUndoRedoService } from '../../../../platform/undoRedo/common/undoRedo.js';
+import { runCustomEditorUndoRedo } from '../common/customEditorUndoRedo.js';
 import { EditorInputCapabilities, GroupIdentifier, IEditorInputWithDiffResources, IResourceDiffEditorInput, IRevertOptions, ISaveOptions, IUntypedEditorInput, isEditorInput, isResourceEditorInput, isResourceDiffEditorInput, Verbosity } from '../../../common/editor.js';
 import { EditorInput, IUntypedEditorOptions } from '../../../common/editor/editorInput.js';
 import { IEditorGroup } from '../../../services/editor/common/editorGroupsService.js';
@@ -250,11 +251,11 @@ export class CustomEditorDiffInput extends LazilyResolvedWebviewEditorInput impl
 	}
 
 	public undo(): void | Promise<void> {
-		return this.undoRedoService.undo(this.modifiedResource);
+		return runCustomEditorUndoRedo(this.undoRedoService, this.modifiedResource, 'undo').then(() => {});
 	}
 
 	public redo(): void | Promise<void> {
-		return this.undoRedoService.redo(this.modifiedResource);
+		return runCustomEditorUndoRedo(this.undoRedoService, this.modifiedResource, 'redo').then(() => {});
 	}
 
 	override toUntyped(_options?: IUntypedEditorOptions): IResourceDiffEditorInput {
@@ -485,11 +486,11 @@ export class CustomEditorSideBySideDiffInput extends LazilyResolvedWebviewEditor
 	}
 
 	public undo(): void | Promise<void> {
-		return this.undoRedoService.undo(this.modifiedResource);
+		return runCustomEditorUndoRedo(this.undoRedoService, this.modifiedResource, 'undo').then(() => {});
 	}
 
 	public redo(): void | Promise<void> {
-		return this.undoRedoService.redo(this.modifiedResource);
+		return runCustomEditorUndoRedo(this.undoRedoService, this.modifiedResource, 'redo').then(() => {});
 	}
 
 	override toUntyped(_options?: IUntypedEditorOptions): IUntypedEditorInput {

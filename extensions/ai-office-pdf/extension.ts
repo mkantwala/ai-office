@@ -6,7 +6,9 @@
 import * as vscode from 'vscode';
 import { registerEditors } from '../ai-office-common/provider.js';
 import { registerCloudflareAgent } from '../ai-office-common/cloudflareAgent.js';
+import { registerOpenCodeAgent } from './opencode/provider.js';
 export function activate(context: vscode.ExtensionContext) {
 	registerEditors(context, ['pdf', 'word']);
 	registerCloudflareAgent(context);
+	registerOpenCodeAgent(context);
 }

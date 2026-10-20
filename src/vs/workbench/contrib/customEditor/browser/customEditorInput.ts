@@ -30,6 +30,7 @@ import { EditorInputCapabilities, GroupIdentifier, IMoveResult, IRevertOptions, 
 import { EditorInput } from '../../../common/editor/editorInput.js';
 import { ICustomEditorLabelService } from '../../../services/editor/common/customEditorLabelService.js';
 import { ICustomEditorModel, ICustomEditorService } from '../common/customEditor.js';
+import { runCustomEditorUndoRedo } from '../common/customEditorUndoRedo.js';
 import { IOverlayWebview, IWebviewService } from '../../webview/browser/webview.js';
 import { IWebviewWorkbenchService, LazilyResolvedWebviewEditorInput } from '../../webviewPanel/browser/webviewWorkbenchService.js';
 import { IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
@@ -391,12 +392,12 @@ export class CustomEditorInput extends LazilyResolvedWebviewEditorInput {
 
 	public undo(): void | Promise<void> {
 		assertReturnsDefined(this._modelRef);
-		return this.undoRedoService.undo(this.resource);
+		return runCustomEditorUndoRedo(this.undoRedoService, this.resource, 'undo').then(() => {});
 	}
 
 	public redo(): void | Promise<void> {
 		assertReturnsDefined(this._modelRef);
-		return this.undoRedoService.redo(this.resource);
+		return runCustomEditorUndoRedo(this.undoRedoService, this.resource, 'redo').then(() => {});
 	}
 
 	private _moveHandler?: (newResource: URI) => void;

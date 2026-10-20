@@ -123,20 +123,21 @@ export class WordParagraph {
 	private layout() {
 		if (this.gesture) { return; }
 		const paragraph = this.state.paragraph ?? this.lastParagraph; const page = this.state.caret?.page ?? 0;
-		const node = this.pages.children[page] as HTMLElement | undefined; const width = this.dimensions[page]?.[0]; const body = paragraph?.ruler;
+		const node = this.pages.children[page] as HTMLElement | undefined; const width = this.dimensions[page]?.[0];
+		const body = this.state.paragraph?.ruler ?? this.state.pageRuler ?? this.lastParagraph?.ruler;
 		this.ruler.hidden = !body || !node || !width; if (this.ruler.hidden) { return; }
-		const mixed = !this.state.paragraph || paragraph!.mixed.includes('indents');
-		const key = JSON.stringify([paragraph, mixed, node!.clientWidth, width, page]); if (key === this.key) { return; } this.key = key;
+		const mixed = !this.state.paragraph?.ruler || paragraph!.mixed.includes('indents');
+		const key = JSON.stringify([paragraph, body, mixed, node!.clientWidth, width, page]); if (key === this.key) { return; } this.key = key;
 		const focus = document.activeElement instanceof HTMLElement && this.ruler.contains(document.activeElement) ? document.activeElement.dataset.marker : undefined;
 		const scale = node!.clientWidth / width; this.ruler.style.width = node!.clientWidth + 'px'; this.ruler.replaceChildren();
 		const track = document.createElement('div'); track.className = 'word-ruler-body'; track.style.left = body!.left * scale + 'px'; track.style.width = body!.width * scale + 'px'; this.ruler.append(track);
 		const unit = document.createElement('span'); unit.className = 'word-ruler-unit'; unit.textContent = 'in'; unit.setAttribute('aria-hidden', 'true'); this.ruler.append(unit);
-		const indent = paragraph!.properties.indents ?? {};
+		const indent = paragraph?.properties.indents ?? {};
 		// Match the upstream ruler: zero is the text margin, and graduations follow page scale.
 		// Omit fine divisions and crowded labels at small widths; never rescale the document units.
 		const subdivision = scale * 9 >= 5 ? 9 : 18;
 		const labelStep = scale * 72 >= 44 ? 72 : 144;
-		const handles = [indent.left || 0, (indent.left || 0) + (indent.firstLine || 0), body!.width - (indent.right || 0), ...(paragraph!.properties.tabs || []).map(tab => tab.pos)];
+		const handles = mixed ? [] : [indent.left || 0, (indent.left || 0) + (indent.firstLine || 0), body!.width - (indent.right || 0), ...(paragraph?.properties.tabs || []).map(tab => tab.pos)];
 		for (let pos = Math.ceil(-body!.left / subdivision) * subdivision; pos <= width - body!.left; pos += subdivision) {
 			const x = (body!.left + pos) * scale;
 			if (x < 3 || x > node!.clientWidth - 3) { continue; }
