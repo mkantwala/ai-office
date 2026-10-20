@@ -1,8 +1,8 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index ae82a38..c8f0bd9 100644
+index ae82a38..0d07c4a 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -5311,6 +5311,19 @@ dependencies = [
+@@ -5311,6 +5311,20 @@ dependencies = [
   "wordcraft-metafile",
  ]
  
@@ -15,6 +15,7 @@ index ae82a38..c8f0bd9 100644
 + "wasm-bindgen",
 + "wordcraft-doc",
 + "wordcraft-engine",
++ "wordcraft-geom",
 + "wordcraft-layout",
 + "wordcraft-render",
 +]
@@ -37,10 +38,10 @@ index 4e4f699..b853495 100644
 +incremental = false
 diff --git a/apps/ai-office-preview/Cargo.toml b/apps/ai-office-preview/Cargo.toml
 new file mode 100644
-index 0000000..c26334e
+index 0000000..d390497
 --- /dev/null
 +++ b/apps/ai-office-preview/Cargo.toml
-@@ -0,0 +1,21 @@
+@@ -0,0 +1,22 @@
 +[package]
 +name = "wordcraft-preview"
 +version.workspace = true
@@ -55,6 +56,7 @@ index 0000000..c26334e
 +workspace = true
 +
 +[dependencies]
++wordcraft-geom = { workspace = true }
 +wordcraft-doc = { workspace = true }
 +wordcraft-engine = { workspace = true }
 +wordcraft-layout = { workspace = true }
@@ -64,14 +66,14 @@ index 0000000..c26334e
 +wasm-bindgen = "0.2"
 diff --git a/apps/ai-office-preview/src/agent.rs b/apps/ai-office-preview/src/agent.rs
 new file mode 100644
-index 0000000..c2cf796
+index 0000000..2aba2ce
 --- /dev/null
 +++ b/apps/ai-office-preview/src/agent.rs
-@@ -0,0 +1,617 @@
+@@ -0,0 +1,643 @@
 +//! Internal, revision-checked block editing for the AI Office agent.
 +use serde_json::{Value, json};
 +use sha2::{Digest, Sha256};
-+use std::collections::HashSet;
++use std::collections::{HashMap, HashSet};
 +use std::sync::Arc;
 +use wordcraft_doc::para::InlineObject;
 +use wordcraft_doc::{Block, Blocks, Document, Paragraph, Path, Pos, StoryRef, Table};
@@ -222,14 +224,32 @@ index 0000000..c2cf796
 +    }
 +    let mut out = Vec::new();
 +    walk(doc, &doc.body, StoryRef::Body, &[], "body", &mut out);
-+    for (id, part) in &doc.parts {
-+        walk(doc, &part.blocks, StoryRef::Part(*id), &[], &format!("part-{id}"), &mut out);
++    let mut parts: Vec<_> = doc.parts.iter().collect();
++    parts.sort_by_key(|(id, _)| story_key(doc, StoryRef::Part(**id)));
++    for (id, part) in parts {
++        walk(doc, &part.blocks, StoryRef::Part(*id), &[], &format!("part-{}", story_key(doc, StoryRef::Part(*id))), &mut out);
 +    }
 +    out
 +}
 +
++// DOCX can renumber parts when serializing default/first/even references.
++// Address headers and footers by their section and slot, not a transient part number.
++fn story_key(doc: &Document, story: StoryRef) -> String {
++    if let StoryRef::Part(id) = story {
++        for (section, (_, props)) in doc.sections().iter().enumerate() {
++            for (kind, set) in [("header", props.headers), ("footer", props.footers)] {
++                for (slot, target) in [("default", set.default), ("first", set.first), ("even", set.even)] {
++                    if target == Some(id) { return format!("{kind}-{section}-{slot}"); }
++                }
++            }
++        }
++        return id.to_string();
++    }
++    "body".into()
++}
++
 +pub fn metadata(doc: &Document) -> Value {
-+    Value::Array(nodes(doc).iter().map(|n| json!({"id":n.id,"story":n.story,"path":n.path,"kind":n.kind})).collect())
++    Value::Array(nodes(doc).iter().map(|n| json!({"id":n.id,"story":n.story,"storyKey":story_key(doc,n.story),"path":n.path,"kind":n.kind})).collect())
 +}
 +
 +pub fn restore_ids(doc: &mut Document, values: &Value) -> Result<(), String> {
@@ -238,20 +258,28 @@ index 0000000..c2cf796
 +    if current.len() != items.len() {
 +        return Err("Identity metadata no longer matches the document".into());
 +    }
++    let keyed = items.iter().all(|item| item["storyKey"].is_string());
++    let key = |story: &str, path: &Value, kind: &str| format!("{story}:{}:{kind}", path);
++    let index: HashMap<_, _> = items.iter().map(|item| (key(item["storyKey"].as_str().unwrap_or_default(), &item["path"], item["kind"].as_str().unwrap_or_default()), item)).collect();
++    if keyed && index.len() != items.len() { return Err("Duplicate identity location".into()); }
++    let matched: Vec<_> = current.iter().enumerate().map(|(i, node)| {
++        if keyed { index.get(&key(&story_key(doc, node.story), &json!(node.path), node.kind)).copied().ok_or("Identity location no longer matches") }
++        else { Ok(&items[i]) }
++    }).collect::<Result<_, _>>()?;
 +    let mut seen = HashSet::new();
-+    for (node, item) in current.iter().zip(items) {
++    for (node, item) in current.iter().zip(&matched) {
 +        let id = item["id"].as_str().ok_or("Missing identity")?;
 +        if id.len() > 100
 +            || id.is_empty()
 +            || !seen.insert(id)
-+            || item["story"] != json!(node.story)
++            || (!keyed && item["story"] != json!(node.story))
 +            || item["path"] != json!(node.path)
 +            || item["kind"] != node.kind
 +        {
 +            return Err("Identity metadata no longer matches the document".into());
 +        }
 +    }
-+    for (node, item) in current.iter().zip(items) {
++    for (node, item) in current.iter().zip(matched) {
 +        let id = item["id"].as_str().unwrap_or_default().to_string();
 +        match node.kind {
 +            "table" => doc.table_mut(node.story, &node.path).map_err(|e| e.to_string())?.props.office_id = id,
@@ -687,10 +715,10 @@ index 0000000..c2cf796
 +}
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..62d3fc2
+index 0000000..aeca50a
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,417 @@
+@@ -0,0 +1,481 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -744,7 +772,7 @@ index 0000000..62d3fc2
 +    }
 +
 +    pub fn pages(&self) -> Result<String, JsValue> {
-+        let sizes: Vec<_> = self.layout.pages.iter().map(|page| [page.w, page.h]).collect();
++        let sizes: Vec<_> = self.layout.pages.iter().map(display_size).collect();
 +        serde_json::to_string(&sizes).map_err(|e| JsValue::from_str(&e.to_string()))
 +    }
 +
@@ -830,8 +858,22 @@ index 0000000..62d3fc2
 +            .and_then(|c| self.layout.pages.get(c.page))
 +            .or_else(|| self.layout.pages.get(self.session.page_hint))
 +            .map(|page| json!({"left":page.body.x,"width":page.body.w}));
++        let active_page = self.layout.caret_on(&sel.focus, self.session.page_hint).map(|c| c.page).unwrap_or(self.session.page_hint);
++        let page_setup = self.layout.pages.get(active_page).and_then(|page| self.session.doc.sections().get(page.section).map(|(_, props)| {
++            let mut value = wordcraft_engine::cmd::page_properties::read(props);
++            value["page"] = json!(active_page); value["section"] = json!(page.section); value
++        }));
++        let regions: Vec<_> = self.layout.pages.iter().map(|p| json!({"top":p.body.y,"bottom":p.body.bottom(),"width":p.w,"height":p.h})).collect();
++        let editing_region = match sel.focus.story {
++            wordcraft_doc::StoryRef::Part(id) => match self.session.doc.parts.get(&id).map(|p| &p.kind) {
++                Some(wordcraft_doc::PartKind::Header) => "header",
++                Some(wordcraft_doc::PartKind::Footer) => "footer",
++                _ => "body",
++            },
++            _ => "body",
++        };
 +        let style = self.session.doc.para(sel.focus.story, &sel.focus.path).and_then(|p| p.props.style.as_deref()).unwrap_or("Normal");
-+        serde_json::to_string(&json!({"formatting":wordcraft_engine::cmd::format::state(&self.session),"paragraph":paragraph,"pageRuler":page_ruler,"undoDepth":self.session.undo_depth(),"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
++        serde_json::to_string(&json!({"pageSetup":page_setup,"pageRegions":regions,"editingRegion":editing_region,"formatting":wordcraft_engine::cmd::format::state(&self.session),"paragraph":paragraph,"pageRuler":page_ruler,"undoDepth":self.session.undo_depth(),"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
 +    }
 +
 +    /// Geometry only for the page being rendered; no document-wide scan on typing.
@@ -1014,8 +1056,21 @@ index 0000000..62d3fc2
 +        if !scale.is_finite() || scale <= 0.0 {
 +            return Err(JsValue::from_str("Invalid page scale"));
 +        }
++        let size = display_size(page);
++        let expanded;
++        let page = if size != [page.w, page.h] {
++            expanded = { let mut p = page.clone(); p.w = size[0]; p.h = size[1]; p };
++            &expanded
++        } else { page };
 +        let scale = scale.min(4096.0 / page.w).min(4096.0 / page.h).min((8_000_000.0 / (page.w * page.h)).sqrt());
-+        let result = self.raster.render(&self.session.doc, page, index, scale);
++        let mut opts = wordcraft_render::RenderOptions::default();
++        let editing_hf = match self.session.sel.focus.story {
++            wordcraft_doc::StoryRef::Part(id) => self.session.doc.parts.get(&id).is_some_and(|p| matches!(p.kind, wordcraft_doc::PartKind::Header | wordcraft_doc::PartKind::Footer)),
++            _ => false,
++        };
++        opts.display.dim_header = !editing_hf;
++        opts.display.dim_body = editing_hf;
++        let result = self.raster.render_with_options(&self.session.doc, page, index, scale, &opts);
 +        self.width = result.width;
 +        self.height = result.height;
 +        Ok(result.to_straight())
@@ -1035,6 +1090,11 @@ index 0000000..62d3fc2
 +    matches!(
 +        command,
 +        "text.insert"
++            | "layout.pageProperties"
++            | "insert.editHeader"
++            | "insert.editFooter"
++            | "insert.closeHeader"
++            | "edit.pasteText"
 +            | "text.newParagraph"
 +            | "text.lineBreak"
 +            | "text.tab"
@@ -1107,6 +1167,38 @@ index 0000000..62d3fc2
 +            | "edit.undo"
 +            | "edit.redo"
 +    )
++}
++
++/// Grow only the editor surface to include laid-out overflow. The document's page
++/// settings and native layout stay unchanged, including table wrapping and export.
++fn display_size(page: &wordcraft_layout::Page) -> [f32; 2] {
++    use wordcraft_layout::Placed;
++    let mut width = page.w;
++    let mut height = page.h;
++    let mut include = |right: f32, bottom: f32| {
++        if right.is_finite() && right > page.w { width = width.max((right + 16.0).min(14400.0)); }
++        if bottom.is_finite() && bottom > page.h { height = height.max((bottom + 16.0).min(14400.0)); }
++    };
++    for item in page.items.iter().chain(&page.header).chain(&page.footer) {
++        match item {
++            Placed::Fill { rect, .. } | Placed::Image { rect, .. } | Placed::Shape { rect, .. }
++            | Placed::Graphic { rect, .. } | Placed::Cell { rect, .. } | Placed::Object { rect, .. }
++            | Placed::Clip { rect, .. } => include(rect.right(), rect.bottom()),
++            Placed::Rule { x0, y0, x1, y1, .. } => include(x0.max(*x1), y0.max(*y1)),
++            Placed::Lines { para, l0, l1, x, y, turn, .. } => {
++                if let Some(first) = para.lines.get(*l0) {
++                    for line in para.lines.iter().take(*l1).skip(*l0) {
++                        let r = wordcraft_layout::turn_rect(*turn, *x, *y, wordcraft_geom::Rect {
++                            x: line.left, y: line.top - first.top,
++                            w: line.right.max(line.visual_end_x()) - line.left, h: line.height,
++                        });
++                        include(r.right(), r.bottom());
++                    }
++                }
++            }
++        }
++    }
++    [width, height]
 +}
 diff --git a/apps/ai-office-preview/src/review.rs b/apps/ai-office-preview/src/review.rs
 new file mode 100644
@@ -1586,6 +1678,20 @@ index e341618..bf36563 100644
                  height: info.height,
                  height_rule: info.height_rule,
                  header: info.header,
+diff --git a/crates/docx/src/write/story.rs b/crates/docx/src/write/story.rs
+index 8d87d61..4c95556 100644
+--- a/crates/docx/src/write/story.rs
++++ b/crates/docx/src/write/story.rs
+@@ -1258,7 +1258,8 @@ fn sectpr_body(w: &mut W, s: &SectionProps) {
+             ],
+         );
+         if let Some(b) = &s.page_borders {
+-            borders(w, "w:pgBorders", b, None, &[("w:offsetFrom", "text")]);
++            // Layout stores page-border distances from the page edge.
++            borders(w, "w:pgBorders", b, None, &[("w:offsetFrom", "page")]);
+         }
+         if let Some(l) = &s.line_numbers {
+             let restart = match l.restart {
 diff --git a/crates/docx/tests/roundtrip.rs b/crates/docx/tests/roundtrip.rs
 index 791cf20..88f560b 100644
 --- a/crates/docx/tests/roundtrip.rs
@@ -1609,7 +1715,7 @@ index 791cf20..88f560b 100644
      t.merge(0, 0, 0, 1); // horizontal
      t.merge(1, 2, 2, 2); // vertical
 diff --git a/crates/engine/src/cmd/insert.rs b/crates/engine/src/cmd/insert.rs
-index 1bc36b0..83e77a6 100644
+index 1bc36b0..a7b7f50 100644
 --- a/crates/engine/src/cmd/insert.rs
 +++ b/crates/engine/src/cmd/insert.rs
 @@ -23,7 +23,7 @@ pub fn specs() -> Vec<CommandSpec> {
@@ -1621,7 +1727,20 @@ index 1bc36b0..83e77a6 100644
          CommandSpec::new("insert.picture", "Pictures", "Insert › Illustrations", picture).params(r#"{"path"?: string, "data"?: base64, "width"?: pt, "alt"?: string}"#),
          CommandSpec::new("insert.icon", "Icons", "Insert › Illustrations", icon)
              .params(r#"{"id"?: string (omit to list the library), "color"?: "RRGGBB", "size"?: pt, "query"?: string, "category"?: string}"#),
-@@ -128,6 +128,11 @@ fn table(s: &mut Session, v: &Value) -> CmdResult {
+@@ -47,8 +47,10 @@ pub fn specs() -> Vec<CommandSpec> {
+         CommandSpec::new("insert.header", "Header", "Insert › Header & Footer", |s, v| header_footer(s, v, true)).params(r#"{"text"?: string, "preset"?: "blank|blankThree|title"}"#),
+         CommandSpec::new("insert.footer", "Footer", "Insert › Header & Footer", |s, v| header_footer(s, v, false)).params(r#"{"text"?: string, "preset"?: "blank|blankThree|pageNumber"}"#),
+         CommandSpec::new("insert.pageNumber", "Page Number", "Insert › Header & Footer", page_number).params(r#"{"position"?: "top|bottom|current", "align"?: "left|center|right", "format"?: "x of y"}"#),
+-        CommandSpec::new("insert.editHeader", "Edit Header", "Insert › Header & Footer › Header", |s, _| edit_hf(s, true)).pure(),
+-        CommandSpec::new("insert.editFooter", "Edit Footer", "Insert › Header & Footer › Footer", |s, _| edit_hf(s, false)).pure(),
++        CommandSpec::new("insert.editHeader", "Edit Header", "Insert › Header & Footer › Header", |s, v| edit_hf(s, v, true)).params(r#"{"page"?: number (0-based)}"#).pure(),
++        CommandSpec::new("insert.editFooter", "Edit Footer", "Insert › Header & Footer › Footer", |s, v| edit_hf(s, v, false)).params(r#"{"page"?: number (0-based)}"#).pure(),
++        CommandSpec::new("insert.createHeader", "Create Header", "Header & Footer", |s, v| create_hf(s, v, true)),
++        CommandSpec::new("insert.createFooter", "Create Footer", "Header & Footer", |s, v| create_hf(s, v, false)),
+         CommandSpec::new("insert.closeHeader", "Close Header and Footer", "Header & Footer", |s, _| {
+             s.sel = Selection::caret(s.doc.start_of(StoryRef::Body));
+             sel_result(s)
+@@ -128,6 +130,11 @@ fn table(s: &mut Session, v: &Value) -> CmdResult {
      let cols = p::u64(v, "cols").unwrap_or(2).clamp(1, 63) as usize;
      let width = s.doc.sections().first().map(|(_, sp)| sp.text_width()).unwrap_or(468.0);
      let mut t = Table::new(rows, cols, width);
@@ -1633,18 +1752,186 @@ index 1bc36b0..83e77a6 100644
      if let Some(st) = p::str(v, "style") {
          let id = s.doc.styles.find(st).map(|x| x.id.clone()).ok_or_else(|| CmdError::Params(format!("no table style `{st}`")))?;
          t.props.style = Some(id);
+@@ -445,11 +452,51 @@ fn header_footer(s: &mut Session, v: &Value, header: bool) -> CmdResult {
+     Ok(json!({"story": id}))
+ }
+ 
+-fn edit_hf(s: &mut Session, header: bool) -> CmdResult {
+-    let id = hf_part(s, header);
+-    s.touch();
++// Adapted from upstream's page-aware header/footer entry: navigation is pure,
++// while creating a missing story goes through an undoable, protected command.
++fn hf_page(s: &mut Session, v: &Value) -> Result<usize, CmdError> {
++    let page = match v.get("page") {
++        Some(page) => usize::try_from(page.as_u64().ok_or_else(|| CmdError::Params("page must be a non-negative integer".into()))?).map_err(|_| CmdError::Params("invalid page".into()))?,
++        None => s.layout().caret_on(&s.sel.focus, s.page_hint).map(|c| c.page).unwrap_or(s.page_hint),
++    };
++    if page >= s.layout().pages.len() { return Err(CmdError::Params("no such page".into())); }
++    Ok(page)
++}
++
++fn edit_hf(s: &mut Session, v: &Value, header: bool) -> CmdResult {
++    let page = hf_page(s, v)?;
++    let layout = s.layout();
++    let shown = if header { layout.pages[page].header_story } else { layout.pages[page].footer_story };
++    let Some(id) = shown.filter(|id| s.doc.parts.contains_key(id)) else {
++        return s.run(if header { "insert.createHeader" } else { "insert.createFooter" }, &json!({"page":page}));
++    };
++    s.page_hint = page;
+     s.sel = Selection::caret(s.doc.end_of(StoryRef::Part(id)));
+-    Ok(json!({"story": id}))
++    sel_result(s)
++}
++
++fn create_hf(s: &mut Session, v: &Value, header: bool) -> CmdResult {
++    let page = hf_page(s, v)?;
++    let layout = s.layout();
++    let pg = &layout.pages[page];
++    let shown = if header { pg.header_story } else { pg.footer_story };
++    let id = if let Some(id) = shown.filter(|id| s.doc.parts.contains_key(id)) { id } else {
++        let sections = s.doc.sections();
++        let first = sections.get(pg.section).is_some_and(|(_, section)| section.title_page)
++            && !layout.pages[..page].iter().any(|p| p.section == pg.section);
++        let even = s.doc.settings.even_odd_headers && pg.number % 2 == 0;
++        // Missing references inherit from the first section, as in upstream.
++        let block = sections.first().map(|(end, _)| *end).unwrap_or(0);
++        let style = if header { "Header" } else { "Footer" };
++        let id = s.doc.add_part(if header { PartKind::Header } else { PartKind::Footer }, vec![para_block(Paragraph::new().styled(style))]);
++        let section = s.doc.section_mut(block);
++        let set = if header { &mut section.headers } else { &mut section.footers };
++        if first { set.first = Some(id); } else if even { set.even = Some(id); } else { set.default = Some(id); }
++        id
++    };
++    s.page_hint = page;
++    s.sel = Selection::caret(s.doc.end_of(StoryRef::Part(id)));
++    sel_result(s)
+ }
+ 
+ fn page_number(s: &mut Session, v: &Value) -> CmdResult {
 diff --git a/crates/engine/src/cmd/mod.rs b/crates/engine/src/cmd/mod.rs
-index 33dffa5..9bf8d07 100644
+index 33dffa5..a69135c 100644
 --- a/crates/engine/src/cmd/mod.rs
 +++ b/crates/engine/src/cmd/mod.rs
-@@ -30,6 +30,7 @@ pub mod options;
+@@ -30,6 +30,8 @@ pub mod options;
  pub mod outline;
  pub mod page;
  pub mod para;
 +pub mod paragraph_properties;
++pub mod page_properties;
  pub mod paste;
  pub mod phonetic;
  pub mod protect;
+diff --git a/crates/engine/src/cmd/page.rs b/crates/engine/src/cmd/page.rs
+index 2e9b7f4..8c8ef43 100644
+--- a/crates/engine/src/cmd/page.rs
++++ b/crates/engine/src/cmd/page.rs
+@@ -11,6 +11,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Selection, Session, p};
+ 
+ pub fn specs() -> Vec<CommandSpec> {
+     vec![
++        CommandSpec::new("layout.pageProperties", "Page Settings", "Layout › Page Setup", super::page_properties::apply).params(r#"{page?: zero-based, applyTo?: section|document, margins?: {top?,bottom?,left?,right?,gutter?}, borders?: {top?,bottom?,left?,right?}|null}. Border side: {style?,width?,color?: RRGGBB|null,space?}|null. Distances in points. Omitted fields are preserved; borders null clears them. Optional ifRevision/ifSelection guards."#),
+         CommandSpec::new("layout.margins", "Margins", "Layout › Page Setup", margins).params(
+             r#"{"preset"?: "normal|narrow|moderate|wide|mirrored|office2003", "top"?: pt, "bottom"?: pt, "left"?: pt, "right"?: pt, "gutter"?: pt}"#,
+         ),
+diff --git a/crates/engine/src/cmd/page_properties.rs b/crates/engine/src/cmd/page_properties.rs
+new file mode 100644
+index 0000000..3288d9a
+--- /dev/null
++++ b/crates/engine/src/cmd/page_properties.rs
+@@ -0,0 +1,93 @@
++//! Guarded page property patches over native section settings. Omitted values stay intact.
++use crate::{CmdError, CmdResult, Session};
++use serde_json::{Value, json};
++use wordcraft_doc::props::{Border, BorderStyle, Borders, Rgb};
++use wordcraft_doc::section::SectionProps;
++
++fn object<'a>(v: &'a Value, keys: &[&str]) -> Result<&'a serde_json::Map<String, Value>, CmdError> {
++    let value = v.as_object().ok_or_else(|| CmdError::Params("Expected a page property object".into()))?;
++    if let Some(key) = value.keys().find(|key| !keys.contains(&key.as_str())) {
++        return Err(CmdError::Params(format!("Unsupported page property: {key}")));
++    }
++    Ok(value)
++}
++fn number(v: &Value, lo: f32, hi: f32) -> Result<f32, CmdError> {
++    v.as_f64().filter(|n| n.is_finite() && *n >= lo as f64 && *n <= hi as f64).map(|n| n as f32)
++        .ok_or_else(|| CmdError::Params(format!("Expected a number between {lo} and {hi}")))
++}
++
++pub fn read(section: &SectionProps) -> Value {
++    let side = |b: Option<Border>| b.filter(Border::is_visible).map(|b| json!({"style":b.style,"width":b.width,"color":b.color.map(Rgb::hex),"space":b.space}));
++    let borders = section.page_borders.unwrap_or_default();
++    json!({"width":section.page_w,"height":section.page_h,
++        "margins":{"top":section.margin_top,"bottom":section.margin_bottom,"left":section.margin_left,"right":section.margin_right,"gutter":section.gutter},
++        "borders":{"top":side(borders.top),"bottom":side(borders.bottom),"left":side(borders.left),"right":side(borders.right)}})
++}
++
++pub fn apply(s: &mut Session, v: &Value) -> CmdResult {
++    object(v, &["ifRevision","ifSelection","page","applyTo","margins","borders"])?;
++    if v.get("ifRevision").is_some_and(|r| r.as_u64() != Some(s.rev()))
++        || v.get("ifSelection").is_some_and(|sel| serde_json::to_value(&s.sel).ok().as_ref() != Some(sel)) {
++        return Err(CmdError::Params("Document or selection changed. Reopen Page Settings.".into()));
++    }
++    if v.get("margins").is_none() && v.get("borders").is_none() { return Err(CmdError::Params("A margins or borders patch is required".into())); }
++    let layout = s.layout();
++    let page = match v.get("page") {
++        Some(page) => page.as_u64().and_then(|p| usize::try_from(p).ok()).ok_or_else(|| CmdError::Params("page must be a non-negative integer".into()))?,
++        None => layout.caret_on(&s.sel.focus, s.page_hint).map(|c| c.page).unwrap_or(s.page_hint),
++    };
++    let section = layout.pages.get(page).ok_or_else(|| CmdError::Params("no such page".into()))?.section;
++    let sections = s.doc.sections();
++    let targets: Vec<_> = match v.get("applyTo").map_or(Some("section"), Value::as_str) {
++        Some("section") => sections.get(section).into_iter().map(|(end, props)| (*end, (*props).clone())).collect(),
++        Some("document") => sections.iter().map(|(end, props)| (*end, (*props).clone())).collect(),
++        _ => return Err(CmdError::Params("applyTo must be section or document".into())),
++    };
++    let mut updated = Vec::new();
++    for (end, mut props) in targets {
++        if let Some(margins) = v.get("margins") {
++            object(margins, &["top","bottom","left","right","gutter"])?;
++            for (name, value) in [("top", &mut props.margin_top),("bottom", &mut props.margin_bottom),("left", &mut props.margin_left),("right", &mut props.margin_right),("gutter", &mut props.gutter)] {
++                if let Some(n) = margins.get(name) { *value = number(n, 0.0, 1584.0)?; }
++            }
++            // Match upstream's margin fit rule; validate every selected section before writing any.
++            if props.margin_left + props.margin_right + props.gutter > props.page_w - 36.0
++                || props.margin_top + props.margin_bottom > props.page_h - 36.0 {
++                return Err(CmdError::Params("Margins leave no room for text".into()));
++            }
++        }
++        if let Some(patch) = v.get("borders") {
++            if patch.is_null() { props.page_borders = None; }
++            else {
++                object(patch, &["top","bottom","left","right"])?;
++                let mut borders = props.page_borders.unwrap_or_default();
++                for (name, target) in [("top", &mut borders.top),("bottom", &mut borders.bottom),("left", &mut borders.left),("right", &mut borders.right)] {
++                    if let Some(value) = patch.get(name) {
++                        if value.is_null() { *target = None; continue; }
++                        object(value, &["style","width","color","space"])?;
++                        let mut border = target.unwrap_or(Border { style: BorderStyle::Single, width: 1.0, color: None, space: 24.0 });
++                        if let Some(style) = value.get("style") {
++                            border.style = match style.as_str() {
++                                Some("single") => BorderStyle::Single, Some("double") => BorderStyle::Double,
++                                Some("dotted") => BorderStyle::Dotted, Some("dashed") => BorderStyle::Dashed,
++                                Some("thick") => BorderStyle::Thick, Some("triple") => BorderStyle::Triple,
++                                Some("dotDash") => BorderStyle::DotDash, Some("wave") => BorderStyle::Wave,
++                                _ => return Err(CmdError::Params("Unsupported page border style".into())),
++                            };
++                        }
++                        if let Some(n) = value.get("width") { border.width = number(n, 0.25, 6.0)?; }
++                        if let Some(n) = value.get("space") { border.space = number(n, 0.0, 31.0)?; }
++                        if let Some(color) = value.get("color") {
++                            border.color = if color.is_null() { None } else { Some(color.as_str().filter(|s| s.len() == 6 && s.bytes().all(|c| c.is_ascii_hexdigit())).and_then(Rgb::parse).ok_or_else(|| CmdError::Params("Color must be six hexadecimal digits".into()))?) };
++                        }
++                        *target = Some(border);
++                    }
++                }
++                props.page_borders = Some(borders).filter(Borders::any_visible);
++            }
++        }
++        updated.push((end, props));
++    }
++    for (end, props) in updated { *s.doc.section_mut(end) = props; }
++    super::sel_result(s)
++}
 diff --git a/crates/engine/src/cmd/para.rs b/crates/engine/src/cmd/para.rs
 index cdbe790..f8b1798 100644
 --- a/crates/engine/src/cmd/para.rs
@@ -2048,10 +2335,10 @@ index 31c8d88..689b1ad 100644
      let mut pixels = vec![0u8; w16 as usize * h16 as usize * 4];
 diff --git a/crates/render/src/typing_cache.rs b/crates/render/src/typing_cache.rs
 new file mode 100644
-index 0000000..83b83e8
+index 0000000..ac19bc4
 --- /dev/null
 +++ b/crates/render/src/typing_cache.rs
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,171 @@
 +//! Bounded, sharp page rasters for the embedded Word editor.
 +//!
 +//! Ordinary typing changes glyph draws in a small band. Reuse the rest of the
@@ -2134,7 +2421,11 @@ index 0000000..83b83e8
 +impl TypingCache {
 +    /// At most two pages and 32 MiB of pixel storage. Never retain whole documents.
 +    pub fn render(&mut self, doc: &Document, page: &Page, index: usize, scale: f32) -> &Rendered {
-+        let opts = RenderOptions::default();
++        self.render_with_options(doc, page, index, scale, &RenderOptions::default())
++    }
++
++    /// Reuse the same bounded raster cache when switching between body and header editing.
++    pub fn render_with_options(&mut self, doc: &Document, page: &Page, index: usize, scale: f32, opts: &RenderOptions) -> &Rendered {
 +        let draws = page_display(doc, page, &opts.display);
 +        let eligible =
 +            doc.settings.watermark.is_none() && draws.iter().all(|d| matches!(d, Draw::Glyphs { .. } | Draw::Fill { .. } | Draw::Line { .. }));
@@ -2166,7 +2457,7 @@ index 0000000..83b83e8
 +                        let view = Affine::translate((0.0, -(top as f64))) * Affine::scale(scale as f64);
 +                        let visible = kurbo::Rect::new(0.0, 0.0, old.image.width as f64 / scale as f64, old.image.height as f64 / scale as f64)
 +                            .inflate(40.0, 40.0);
-+                        let patch = render_draws(doc, page, old.image.width, bottom - top, view, &opts, &draws, &visible);
++                        let patch = render_draws(doc, page, old.image.width, bottom - top, view, opts, &draws, &visible);
 +                        let start = top as usize * old.image.width as usize * 4;
 +                        old.image.pixels[start..start + patch.pixels.len()].copy_from_slice(&patch.pixels);
 +                    }
@@ -2174,7 +2465,7 @@ index 0000000..83b83e8
 +                }
 +            }
 +        }
-+        let image = image.unwrap_or_else(|| render_page(doc, page, scale, &opts));
++        let image = image.unwrap_or_else(|| render_page(doc, page, scale, opts));
 +        // Ineligible pages keep no draw baseline, so the next request repaints them.
 +        self.pages.push_front(Entry {
 +            index,

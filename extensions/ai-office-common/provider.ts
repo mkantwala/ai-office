@@ -11,7 +11,7 @@ import { EngineClient } from './client.js';
 import { activityRegion, type ActivityRegion } from './agentActivity.js';
 import type { Kind, State, Command, DocumentReview, DocumentReviewChanges } from './types.js';
 import { registerDocumentTools, type DocumentToolInput } from './documentTools.js';
-import { activeAgentRequest, DocumentHistory, withAgentToolRequest } from './agentRequest.js';
+import { activeAgentRequest, activeAgentLabel, DocumentHistory, withAgentToolRequest } from './agentRequest.js';
 import { prepareWordFormatting, canRebaseTextEdits } from './wordFormatting.js';
 import { DocumentVersions } from './documentVersions.js';
 import { DocumentDrafts } from './documentDrafts.js';
@@ -22,6 +22,9 @@ class Document implements vscode.CustomDocument {
 	readonly panels = new Set<vscode.WebviewPanel>();
 	readonly history = new DocumentHistory();
 	readonly drafts = new DocumentDrafts();
+	draftAgentLabel = 'Agent';
+	draftWorkingId?: string;
+	draftWorkingUntil = 0;
 	reviewRequest?: string;
 	reviewVersion = 0;
 	review?: DocumentReview;
@@ -37,7 +40,7 @@ class Document implements vscode.CustomDocument {
 	saving = false;
 	serial = Promise.resolve();
 	instance = randomUUID();
-	activity?: { id: string; rects: State['rects']; timer: ReturnType<typeof setTimeout> };
+	activity?: { id: string; label: string; rects: State['rects']; timer: ReturnType<typeof setTimeout> };
 	constructor(readonly uri: vscode.Uri, readonly kind: Kind, readonly context: vscode.ExtensionContext, private readonly onDispose: () => void) {
 		this.client = new EngineClient(vscode.Uri.joinPath(context.extensionUri, 'out', 'engineWorker.cjs').fsPath);
 		if (kind === 'word' && context.globalStorageUri) { this.versions = new DocumentVersions(context.globalStorageUri.fsPath, uri.toString()); }
@@ -72,18 +75,18 @@ class Document implements vscode.CustomDocument {
 			const changes = this.review?.changes.length ? await this.client.request<DocumentReview['changes']>('reviewLayout', { changes: this.review.changes }) : [];
 			await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'review', review: { ...this.review, version: this.version, reviewVersion: this.reviewVersion, changes } })));
 			const drafts = await Promise.all(this.drafts.pending().map(async section => ({ ...section, anchorRects: await this.client.request<State['rects']>('agentRects', { blockId: section.anchor.id }).catch(() => []) })));
-			await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'draft', sections: drafts })));
+			await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'draft', sections: drafts, label: this.draftAgentLabel, workingId: this.draftWorkingUntil > Date.now() ? this.draftWorkingId || drafts[0]?.id : undefined, expiresAt: this.draftWorkingUntil })));
 		}
 		if (this.activity) { await this.sendActivity(this.activity.rects); }
 	}
 	async sendActivity(rects: State['rects']) {
-		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'agentActivity', rects: rects || [] })));
+		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'agentActivity', rects: rects || [], label: this.activity?.label || activeAgentLabel() })));
 	}
 	async stopActivity() { if (this.activity) { clearTimeout(this.activity.timer); this.activity = undefined; } await this.sendActivity([]); }
 	async startActivity(id: string) {
 		const rects = await this.client.request<State['rects']>('agentRects', { blockId: id });
 		await this.stopActivity();
-		this.activity = { id, rects, timer: setTimeout(() => { void this.stopActivity(); }, 30000) };
+		this.activity = { id, label: activeAgentLabel(), rects, timer: setTimeout(() => { void this.stopActivity(); }, 30000) };
 		await this.sendActivity(rects);
 	}
 	get version() { return `${this.instance}:${this.view.state.revision}`; }
@@ -256,6 +259,12 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				catch { warnings.push('Content was applied; its preview could not be read. Request a small read to inspect it, without repeating the edit.'); }
 				const commandResult = JSON.stringify(result.state.agentCommandResult ?? null).length <= 8000 ? result.state.agentCommandResult : { truncated: true, guidance: 'Read the relevant document/comment blocks in pages.' };
 				const created = result.state.agentCreatedBlocks || [];
+				if (result.state.revision !== before) {
+					const ids = [...new Set([...created.map(block => block.id), ...edits.filter(edit => edit.operation !== 'delete' && typeof edit.id === 'string').map(edit => String(edit.id))])].slice(0, 30);
+					const rects = (await Promise.all(ids.map(blockId => doc.client.request<NonNullable<State['rects']>>('agentRects', { blockId }).catch(() => [])))).flat().slice(0, 200);
+					await Promise.all([...doc.panels].map(panel => panel.webview.postMessage({ type: 'agentCommit', revision: doc.view.state.revision, rects, label: activeAgentLabel() }))).catch(() => {});
+				}
+
 				const structuralPlaceholders = edits.every(edit => edit.operation === 'delete') ? created : [];
 				return { uri: doc.uri.toString(), version: doc.version, completed: true, ...(warnings.length ? { warnings } : {}), rebased, ...content, created: structuralPlaceholders.length ? [] : created, ...(structuralPlaceholders.length ? { retainedStructuralParagraphs: structuralPlaceholders.length, guidance: 'The requested deletion completed. The document engine retained required empty structural paragraphs (after tables or in empty containers). These are not unfinished deletions; do not delete them again.' } : {}), commandResult, appliedEdits: result.state.agentAppliedEdits || edits.map(edit => ({ id: edit.id, operation: edit.operation, command: edit.command, params: edit.params })), saved: false, undoable: result.state.revision !== before };
 			} finally {
@@ -377,6 +386,8 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				});
 			},
 			async saveCustomDocumentAs(doc, destination) {
+				const extension = { word: 'docx', pdf: 'pdf', slides: 'pptx' }[kind];
+				if (!destination.path.toLowerCase().endsWith('.' + extension)) { throw new Error(`Save this document with the .${extension} extension.`); }
 				await doc.enqueue(async () => writeAtomic(destination, await doc.snapshot()));
 			},
 			async revertCustomDocument(doc) {
@@ -619,14 +630,16 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 							const read = await doc.client.request<{ blocks: { id: string; kind: string }[] }>('agentRead', { args: { id: input.id } });
 							if (!read.blocks.length || ['row', 'cell'].includes(read.blocks[0].kind)) { throw new Error('Plan sections relative to a current paragraph or table.'); }
 							checkAgentAccess(token);
+							doc.draftAgentLabel = activeAgentLabel(); doc.draftWorkingUntil = Date.now() + 30000; doc.draftWorkingId = undefined;
 							doc.drafts.plan({ id: input.id, position: input.position === 'before' ? 'before' : 'after' }, input.sections as { title: string; intent: string; level?: number }[]);
 							await doc.broadcast(); return { uri: doc.uri.toString(), version: doc.version, ...doc.drafts.status() };
 						}
 						if (operation !== 'fill' || typeof input.sectionId !== 'string') { throw new Error('Use plan, status, fill or discard for drafting.'); }
 						const section = doc.drafts.section(input.sectionId), anchor = doc.drafts.location(input.sectionId);
+						doc.draftWorkingId = section.id; doc.draftWorkingUntil = Date.now() + 30000; await doc.broadcast();
 						if (!Array.isArray(input.blocks) || !input.blocks.length || input.blocks.length > 49) { throw new Error('Fill a section with 1-49 content blocks; its heading is added automatically.'); }
 						const result = await agentEdits.get('word')!(doc, { operation: 'insert', id: anchor.id, position: anchor.position, version: input.version, blocks: [{ kind: 'heading', text: section.title, style: 'Heading' + section.level }, ...input.blocks] }, token) as { created: { id: string }[] };
-						doc.drafts.complete(section.id, result.created.map(block => block.id)); await doc.broadcast();
+						doc.drafts.complete(section.id, result.created.map(block => block.id)); doc.draftWorkingId = undefined; doc.draftWorkingUntil = Date.now() + 30000; await doc.broadcast();
 						return { ...result, filledSectionId: section.id, draft: doc.drafts.status() };
 					}
 					if (tool === 'format') {
@@ -641,7 +654,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 					}
 					if (tool === 'edit') { return agentEdits.get('word')!(doc, input, token); }
 					if (tool === 'activity') {
-						if (input.operation === 'stop') { await doc.stopActivity(); }
+						if (input.operation === 'stop') { doc.draftWorkingUntil = 0; await doc.stopActivity(); if (doc.drafts.pending().length) { await doc.broadcast(); } }
 						else {
 							if (input.version !== doc.version || typeof input.id !== 'string') { throw new Error('Read the target again before starting work.'); }
 							await doc.startActivity(input.id);

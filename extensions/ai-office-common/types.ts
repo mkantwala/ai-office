@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import type { PageSetupState } from './pageProperties.js';
 import type { ParagraphProperties } from './paragraphProperties.js';
 
 export type Kind = 'word' | 'pdf' | 'slides';
@@ -10,6 +11,9 @@ export interface Block { id: number; text: string; rect: number[]; font?: string
 export interface TableGeometry { cols: number[]; rows: { row: number; top: number; bottom: number; edges?: number[] }[]; endsHere: boolean; movable?: boolean }
 export interface TablePreview { kind: 'column' | 'row' | 'corner' | 'move'; rects: { x: number; y: number; width: number; height: number }[] }
 export interface State {
+	pageSetup?: PageSetupState;
+	editingRegion?: 'body' | 'header' | 'footer';
+	pageRegions?: { top: number; bottom: number; width: number; height: number }[];
 	formatting?: { font: string | null; size: number | null; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean };
 	paragraph?: { id: string; properties: ParagraphProperties; mixed: string[]; ruler?: { left: number; width: number } | null };
 	pageRuler?: { left: number; width: number } | null;

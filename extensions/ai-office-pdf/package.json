@@ -1299,6 +1299,16 @@
 			{
 				"command": "aiOffice.opencode.settings",
 				"title": "OpenCode: Configure Connection"
+			},
+			{
+				"command": "aiOffice.agents.switch",
+				"title": "Sangam One: Switch Agent",
+				"icon": "$(hubot)"
+			},
+			{
+				"command": "aiOffice.opencode.returnToAgent",
+				"title": "Return to Built-in Agent",
+				"icon": "$(arrow-left)"
 			}
 		],
 		"chatSessions": [
@@ -1330,6 +1340,15 @@
 					"description": "OpenCode executable name or absolute path. Uses your existing OpenCode provider authentication."
 				}
 			}
+		},
+		"menus": {
+			"view/title": [
+				{
+					"command": "aiOffice.opencode.returnToAgent",
+					"when": "view == workbench.panel.chat.view.copilot && chatSessionType == opencode",
+					"group": "navigation@0"
+				}
+			]
 		}
 	},
 	"enabledApiProposals": [

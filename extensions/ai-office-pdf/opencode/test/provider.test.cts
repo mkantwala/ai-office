@@ -41,7 +41,7 @@ function harness(saved = [], trusted = true) {
 		StatusBarAlignment: { Right: 2 },
 		workspace: { isTrusted: trusted, workspaceFolders: [{ uri: Uri.file('/workspace/example') }], getConfiguration: () => ({ get: () => 'opencode' }) },
 		window: { createStatusBarItem: (id, alignment, priority) => Object.assign(statusButton, { id, alignment, priority }), tabGroups: { activeTabGroup: {} }, showQuickPick: async options => options.find(option => option.id === 'allow') },
-		commands: { registerCommand: (id, handler) => { commands.set(id, handler); return { dispose() {} }; }, executeCommand: async (id, ...args) => calls.push({ command: id, args }) },
+		commands: { getCommands: async () => ['workbench.action.chat.openNewSessionSidebar.opencode', 'workbench.action.chat.openNewSessionSidebar.codex', 'workbench.action.chat.openNewSessionSidebar.claude-code'], registerCommand: (id, handler) => { commands.set(id, handler); return { dispose() {} }; }, executeCommand: async (id, ...args) => calls.push({ command: id, args }) },
 		lm: {
 			tools: documentTools.map(tool => ({ name: tool.name, description: tool.modelDescription, inputSchema: tool.inputSchema })),
 			invokeTool: async (name, options, token) => { assert.ok(!token?.isCancellationRequested); calls.push({ name, options }); return { content: [new Text(JSON.stringify(name === 'office_document_activity' ? { uri: 'file:/document.docx' } : { appliedEdits: [{ id: 'paragraph-1' }], version: 'updated' }))] }; }
@@ -112,6 +112,22 @@ function harness(saved = [], trusted = true) {
 	return { vscode, statusButton, provider, participant, controller, newSession, input, token, stream, connections, calls, items, commands, saved: () => stored, dispose: () => disposables.reverse().forEach(value => value.dispose()) };
 }
 
+test('OpenCode switches back to the original agent explicitly and lists installed native agents', async () => {
+	const h = harness();
+	try {
+		let options;
+		h.vscode.window.showQuickPick = async items => { options = items; return items.find(item => item.label === 'Built-in Agent'); };
+		await h.commands.get('aiOffice.agents.switch')();
+		assert.deepEqual(options.map(item => item.label), ['Built-in Agent', 'OpenCode', 'Codex', 'Claude Code']);
+		assert.equal(h.calls.at(-1).command, 'aiOffice.opencode.returnToAgent');
+		await h.commands.get('aiOffice.opencode.returnToAgent')();
+		assert.deepEqual(h.calls.at(-1), { command: 'workbench.action.chat.newLocalChat', args: [{ agentMode: true }] });
+		assert.equal(h.connections.length, 0, 'Switching must not start a CLI or delete an existing conversation');
+		h.vscode.window.showQuickPick = async () => undefined;
+		const count = h.calls.length; await h.commands.get('aiOffice.agents.switch')(); assert.equal(h.calls.length, count, 'Escape leaves the agent unchanged');
+	} finally { h.dispose(); }
+});
+
 test('OpenCode manifest enables native session creation commands', () => {
 	const manifest = JSON.parse(fs.readFileSync('extensions/ai-office-pdf/package.json', 'utf8'));
 	const contribution = manifest.contributes.chatSessions.find(session => session.type === 'opencode');
@@ -128,7 +144,7 @@ test('OpenCode registers in the native picker and keeps empty sessions lightweig
 		await h.commands.get('aiOffice.opencode.newSession')();
 		assert.equal(h.calls[0].command, 'workbench.action.chat.openNewSessionSidebar.opencode');
 		assert.equal(h.statusButton.alignment, h.vscode.StatusBarAlignment.Right);
-		assert.equal(h.statusButton.command, 'aiOffice.opencode.newSession');
+		assert.equal(h.statusButton.command, 'aiOffice.agents.switch');
 		assert.equal(h.statusButton.visible, true);
 		assert.equal(h.participant.id, 'opencode', 'Native sessions invoke their session type as the agent ID');
 		const previousInputState = { groups: [{ id: 'model', items: [{ id: 'selected-model' }], selected: { id: 'selected-model' } }] };

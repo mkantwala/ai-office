@@ -6,10 +6,10 @@
 .agent-status{color:var(--vscode-descriptionForeground);margin-left:auto}
 .agent-status:empty{display:none}
 .agent-shimmer{position:absolute;pointer-events:none;z-index:3}
-.agent-shimmer-text{mix-blend-mode:screen;background:linear-gradient(100deg,transparent 25%,#597cdd 43%,#b9a6ee 50%,#597cdd 57%,transparent 75%);background-size:250% 100%;animation:agent-shimmer 1.8s linear infinite}
-.agent-shimmer-border{border:1px solid #6487cc99;border-radius:4px;box-shadow:0 0 0 1px #6487cc0a}
+.agent-shimmer-text{mix-blend-mode:screen;background:linear-gradient(100deg,transparent 25%,#777 43%,#e0e0e0 50%,#777 57%,transparent 75%);background-size:250% 100%;animation:agent-shimmer 1.8s linear infinite}
+.agent-shimmer-border{border:1px solid #8885;border-radius:3px;box-shadow:none}
 @keyframes agent-shimmer{from{background-position:150% 0}to{background-position:-150% 0}}
-@media(prefers-reduced-motion:reduce){.agent-shimmer-text{animation:none;background:#597cdd55}}
+@media(prefers-reduced-motion:reduce){.agent-shimmer-text{animation:none;background:#8883}}
 @media(forced-colors:active){.agent-shimmer-text{display:none}.agent-shimmer-border{border:1px solid Highlight;box-shadow:none}}
 
 *{box-sizing:border-box}
@@ -130,3 +130,45 @@ dialog::backdrop{background:#0005}dialog label{display:block;margin-bottom:12px;
 
 .word-document #info:has(#hint:empty):not(:has(.agent-status:not(:empty))) { display: none; }
 .word-document .word-ruler { position: sticky; top: 6px; z-index: 8; background: var(--vscode-editor-background, #fff); }
+
+/* Keep document coordinates readable at normal size; the webview owns both scroll axes. */
+html { overflow: auto; scrollbar-gutter: stable; scrollbar-width: auto; scrollbar-color: var(--vscode-scrollbarSlider-background, #8888) transparent; }
+.word-document #pages { grid-template-columns: max-content; justify-content: safe center; width: max-content; min-width: 100%; }
+.page.word { max-width: none; touch-action: pan-x pan-y; }
+.page.word[data-overflow]::after { content: ""; position: absolute; top: 0; left: 0; width: var(--paper-width); height: var(--paper-height); border-right: 1px dashed #75869a; border-bottom: 1px dashed #75869a; pointer-events: none; z-index: 1; }
+.word-header-footer-controls { position: absolute; z-index: 6; display: flex; align-items: center; justify-content: space-between; gap: 12px; height: auto !important; max-width: calc(100vw - 56px); border-top: 1px dashed #7992ae; color: #33516d; font: 11px/1.4 var(--vscode-font-family, system-ui); pointer-events: none; }
+.word-header-footer-controls span, .word-header-footer-controls button { margin: 3px 8px; padding: 3px 8px; background: #f2f6fb; border: 1px solid #c7d4e2; border-radius: 4px; color: #33516d; }
+.word-header-footer-controls button { cursor: pointer; pointer-events: auto; font: inherit; min-height: 24px; }
+.word-header-footer-controls button:hover { background: #e3edf8; }
+@media (forced-colors: active) { .word-header-footer-controls { border-color: CanvasText; } .word-header-footer-controls span, .word-header-footer-controls button { color: ButtonText; background: ButtonFace; border-color: ButtonText; } }
+
+html::-webkit-scrollbar { display: block; width: 12px; height: 12px; }
+html::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background, #8888); border: 2px solid var(--vscode-editor-background, #fff); border-radius: 6px; }
+html::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground, #888b); }
+html::-webkit-scrollbar-track, html::-webkit-scrollbar-corner { background: var(--vscode-editor-background, #fff); }
+
+.word-page-dialog input[type="color"] { width: 100%; min-height: 32px; padding: 3px; }
+.word-page-border-actions { display: flex; gap: 8px; margin-block: 12px; }
+
+.word-page-dialog .word-page-scope { display: block; margin-top: 16px; }
+.word-page-dialog legend { color: var(--vscode-descriptionForeground); padding-inline: 0 8px; font-size: 12px; }
+
+.agent-cursor { border-left: 2px solid #626262; z-index: 7; }
+.agent-cursor span { position: absolute; left: -2px; bottom: 100%; padding: 1px 5px; border-radius: 3px 3px 3px 0; background: #626262; color: #fff; white-space: nowrap; font: 10px/1.4 system-ui; }
+.agent-reveal { position: absolute; z-index: 3; pointer-events: none; background: #fff; animation: agent-text-reveal 160ms steps(18, end) both; }
+@keyframes agent-text-reveal { from { clip-path: inset(0 0 0 0); } to { clip-path: inset(0 0 0 100%); } }
+.word-draft-zone { border-left: 1px solid #9996; background: #fff; color: #777; padding-block: 12px; }
+.word-draft-zone[data-working="true"] .agent-draft-cursor { display: inline-block; background: #626262; color: #fff; font: 10px/1.4 system-ui; padding: 1px 5px; border-radius: 3px; }
+.word-draft-zone[data-working="true"] strong, .word-draft-zone[data-working="true"] p { background: linear-gradient(100deg, #333 10%, #aaa 40%, #ddd 50%, #888 65%, #333 90%); background-size: 250% 100%; background-clip: text; -webkit-background-clip: text; color: transparent; animation: agent-shimmer 1.8s linear infinite; }
+.word-draft-zone button { position: absolute; top: 8px; right: 12px; opacity: 0; transition: opacity 120ms; }
+.word-draft-zone:hover button, .word-draft-zone:focus-within button { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .agent-reveal { display: none; animation: none; } .word-draft-zone strong, .word-draft-zone p { animation: none; background: none; color: #777; } }
+@media (forced-colors: active) { .agent-cursor { border-color: Highlight; } .agent-cursor span, .word-draft-zone[data-working="true"] .agent-draft-cursor { background: Highlight; color: HighlightText; } .word-draft-zone strong, .word-draft-zone p { background: none; color: CanvasText; } .agent-reveal { display: none; } }
+
+.word-draft-zone .agent-draft-cursor { font: 10px/1.4 system-ui; color: #888; }
+.word-draft-zone strong, .word-draft-zone p { color: #888; }
+.word-draft-zone[data-working="true"] .agent-draft-cursor { position: relative; }
+.word-draft-zone[data-working="true"] .agent-draft-cursor::after { content: ""; position: absolute; top: 100%; left: 0; height: 22px; border-left: 2px solid #626262; }
+
+@media (prefers-reduced-motion: reduce) { .word-draft-zone[data-working="true"] strong, .word-draft-zone[data-working="true"] p { animation: none; background: none; color: #777; } }
+@media (forced-colors: active) { .word-draft-zone[data-working="true"] strong, .word-draft-zone[data-working="true"] p { background: none; color: CanvasText; } }

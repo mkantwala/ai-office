@@ -45,7 +45,7 @@ export function createDocumentToolbar(element: HTMLElement, descriptors: Documen
 	const emphasis = ['bold', 'italic', 'underline'].map(key => button(key));
 	for (const [index, control] of emphasis.entries()) { control.textContent = ['B', 'I', 'U'][index]; control.style.fontWeight = index === 0 ? '700' : ''; control.style.fontStyle = index === 1 ? 'italic' : ''; control.style.textDecoration = index === 2 ? 'underline' : ''; }
 	const dispose = arrangeWordToolbar(element, {
-		text: button('text'), undo: button('undo'), redo: button('redo'), save: button('save'), versions: button('versions'), properties: button('properties'),
+		text: button('text'), margins: button('margins'), pageBorders: button('pageBorders'), header: button('header'), footer: button('footer'), undo: button('undo'), redo: button('redo'), save: button('save'), versions: button('versions'), properties: button('properties'),
 		strike: button('strike'), clear: button('clear'), color: select('color'), highlight: select('highlight'),
 		style: select('style'), font: select('font'), size: select('size'), emphasis,
 		align: select('align'), list: select('list'), spacing: select('spacing'), table: button('table'), image: button('image'), link: button('link'), comment: button('comment')
@@ -72,7 +72,7 @@ export function isDocumentToolbarSnapshot(value: unknown): value is DocumentTool
 	if (snapshot.paragraphStyle !== undefined && (typeof snapshot.paragraphStyle !== 'string' || snapshot.paragraphStyle.length > 200)) { return false; }
 	if (!Array.isArray(snapshot.controls) || snapshot.controls.length > 28) { return false; }
 	const selectKeys = ['style', 'font', 'size', 'align', 'list', 'spacing', 'color', 'highlight'];
-	const buttonKeys = ['text', 'bold', 'italic', 'underline', 'table', 'image', 'link', 'comment', 'undo', 'redo', 'save', 'properties', 'versions', 'strike', 'clear'];
+	const buttonKeys = ['margins', 'pageBorders', 'header', 'footer', 'text', 'bold', 'italic', 'underline', 'table', 'image', 'link', 'comment', 'undo', 'redo', 'save', 'properties', 'versions', 'strike', 'clear'];
 	const seen = new Set<string>();
 	for (const control of snapshot.controls) {
 		if (!control || seen.has(control.key) || ![...selectKeys, ...buttonKeys].includes(control.key) || control.type !== (selectKeys.includes(control.key) ? 'select' : 'button') || typeof control.label !== 'string' || control.label.length > 160 || typeof control.disabled !== 'boolean') { return false; }
@@ -80,5 +80,5 @@ export function isDocumentToolbarSnapshot(value: unknown): value is DocumentTool
 		if (control.currentValue !== undefined && (!['font', 'size'].includes(control.key) || typeof control.currentValue !== 'string' || control.currentValue.length > 200)) { return false; }
 		seen.add(control.key);
 	}
-	return [...selectKeys.filter(key => !['color', 'highlight'].includes(key)), ...buttonKeys.filter(key => !['text', 'properties', 'versions', 'strike', 'clear'].includes(key))].every(key => seen.has(key));
+	return [...selectKeys.filter(key => !['color', 'highlight'].includes(key)), ...buttonKeys.filter(key => !['margins', 'pageBorders', 'header', 'footer', 'text', 'properties', 'versions', 'strike', 'clear'].includes(key))].every(key => seen.has(key));
 }

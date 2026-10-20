@@ -85,6 +85,9 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 	assert.equal(exports, 2, 'Recovery captures the latest engine state');
 	files.set('/memo.docx', Buffer.from('external agent changed it'));
 	await assert.rejects(provider.saveCustomDocument(doc), /changed on disk/);
+	await assert.rejects(provider.saveCustomDocumentAs(doc, uri('/copy.js')), /\.docx extension/);
+	await assert.rejects(provider.saveCustomDocumentAs(doc, uri('/copy.pdf')), /\.docx extension/);
+	assert.equal(files.has('/copy.pdf'), false, 'Save As must not write DOCX bytes under another format');
 	await provider.saveCustomDocumentAs(doc, uri('/copy.docx'));
 	assert.equal(exports, 2, 'An unchanged snapshot is reused');
 	assert.equal(Buffer.from(files.get('/copy.docx')).toString(), 'second edit');
@@ -210,7 +213,8 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		assert.equal((await invoke('read', {})).blocks[0].text, 'First change');
 		assert.equal(Buffer.from(await doc.enqueue(() => doc.snapshot())).toString(), 'First change');
 		assert.ok(messages.some(message => message.type === 'agentActivity' && message.rects.length));
-		assert.deepEqual(messages.at(-1), { type: 'agentActivity', rects: [] });
+		assert.ok(messages.some(message => message.type === 'agentCommit' && message.rects.length && message.revision === doc.view.state.revision), 'Committed edits publish bounded geometry for visual reveal');
+		assert.deepEqual(messages.at(-1), { type: 'agentActivity', rects: [], label: 'Agent' });
 		await edits[0].undo();
 		assert.equal((await invoke('history', { operation: 'status' })).redo, true);
 		await edits[0].redo();
@@ -252,7 +256,7 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		const failure = await invoke('edit', { operation: 'update', id: 'internal-id', version: current.version, text: 'fail' });
 		assert.match(failure.error, /Invalid edit/);
 		assert.equal((await invoke('read', {})).version, current.version);
-		assert.deepEqual(messages.at(-1), { type: 'agentActivity', rects: [] });
+		assert.deepEqual(messages.at(-1), { type: 'agentActivity', rects: [], label: 'Agent' });
 		await assert.rejects(invoke('edit', { operation: 'update', id: 'internal-id', version: current.version, text: 'Cancelled edit' }, { isCancellationRequested: true }), /Cancelled/);
 		vscode.workspace.isTrusted = false;
 		assert.match((await invoke('edit', { operation: 'update', id: 'internal-id', version: current.version, text: 'Untrusted edit' })).error, /Trust this workspace/);
@@ -272,7 +276,11 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		assert.equal(plan.pending, 2); assert.equal(plan.savedInDocument, false);
 		assert.equal((await invoke('draft', { operation: 'status' })).pending, 2);
 		assert.equal(Buffer.from(await doc.enqueue(() => doc.snapshot())).toString(), exportBefore);
-		assert.ok(messages.some(message => message.type === 'draft' && message.sections.length === 2));
+		assert.ok(messages.some(message => message.type === 'draft' && message.sections.length === 2 && message.workingId === plan.sections[0].id && message.expiresAt > Date.now()));
+		await invoke('activity', { operation: 'stop' });
+		assert.equal(messages.at(-1).type, 'draft');
+		assert.equal(messages.at(-1).workingId, undefined, 'Stopping a run ends its draft shimmer');
+		assert.equal(messages.at(-1).sections.length, 2, 'Stopping keeps the planned sections available');
 		const cancelled = { isCancellationRequested: true };
 		await assert.rejects(invoke('draft', { operation: 'fill', version: current.version, sectionId: plan.sections[0].id, blocks: [{ kind: 'paragraph', text: 'Never apply' }] }, cancelled), /Cancelled/);
 		assert.equal((await invoke('draft', { operation: 'status' })).pending, 2);

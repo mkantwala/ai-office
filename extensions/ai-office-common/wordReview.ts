@@ -14,9 +14,22 @@ export class WordReview {
 	private busy = false;
 	private layoutKey = '';
 	private firstPage?: Element;
+	private draftLabel = 'Agent';
+	private draftWorkingId?: string;
+	private draftTimer?: ReturnType<typeof setTimeout>;
 	private draftKey = '';
 	constructor(private readonly pages: HTMLElement, private readonly decide: (data: DocumentReview, action: 'keep' | 'undo', ids: string[]) => void, private readonly onLayout: () => void, private readonly discardDraft: (id: string) => void) { }
-	updateDrafts(sections: DraftViewSection[]) { this.drafts = sections; this.draftKey = JSON.stringify(sections); }
+	updateDrafts(sections: DraftViewSection[], label = 'Agent', workingId?: string, expiresAt = 0) {
+		clearTimeout(this.draftTimer); this.drafts = sections; this.draftLabel = label.slice(0, 40);
+		this.draftWorkingId = expiresAt > Date.now() ? workingId : undefined;
+		this.draftKey = JSON.stringify([sections, this.draftLabel, this.draftWorkingId]);
+		if (this.draftWorkingId) { this.draftTimer = setTimeout(() => {
+			this.draftWorkingId = undefined;
+			this.pages.querySelectorAll<HTMLElement>('.word-draft-zone').forEach(zone => { zone.dataset.working = 'false'; const label = zone.querySelector('small'); if (label) { label.textContent = 'Draft preview'; } });
+		}, Math.min(30000, expiresAt - Date.now())); }
+	}
+	dispose() { clearTimeout(this.draftTimer); }
+
 	update(data: DocumentReview) { this.data = data; if (this.busy) { this.layoutKey = ''; } this.busy = false; }
 	get count() { return this.data?.changes.length || 0; }
 	decideAll(action: 'keep' | 'undo') { if (this.data && !this.busy) { this.decide(this.data, action, this.data.changes.map(change => change.id)); } }
@@ -93,12 +106,12 @@ export class WordReview {
 			if (!element || !dimensions[page]) { continue; }
 			const scale = element.clientWidth / dimensions[page][0];
 			const at = anchor ? (anchor.y + (section.anchor.position === 'after' ? anchor.height : 0)) * scale : 40 * scale;
-			const zone = document.createElement('section'); zone.className = 'word-review-zone word-draft-zone'; zone.setAttribute('aria-label', 'Pending Document Section');
+			const zone = document.createElement('section'); zone.className = 'word-review-zone word-draft-zone'; zone.dataset.working = String(section.id === this.draftWorkingId); zone.setAttribute('aria-label', 'Pending Document Section');
 			zone.style.left = '0'; zone.style.width = '100%'; zone.style.paddingInline = `${Math.max(16, (anchor?.x || 40) * scale)}px`;
 			zone.addEventListener('pointerdown', event => event.stopPropagation());
-			const label = document.createElement('small'); label.textContent = 'Pending section · Not saved in DOCX';
+			const label = document.createElement('small'); label.className = 'agent-draft-cursor'; label.textContent = section.id === this.draftWorkingId ? this.draftLabel : 'Draft preview'; label.title = 'Draft preview';
 			const title = document.createElement('strong'); title.textContent = section.title;
-			const intent = document.createElement('p'); intent.textContent = anchor ? section.intent : 'Anchor changed. Replan this section.';
+			const intent = document.createElement('p'); intent.textContent = anchor ? '[' + section.intent + ']' : 'Anchor changed. Replan this section.';
 			const discard = document.createElement('button'); discard.textContent = 'Discard'; discard.addEventListener('pointerdown', event => event.preventDefault()); discard.setAttribute('aria-label', `Discard pending section: ${section.title}`); discard.addEventListener('click', () => this.discardDraft(section.id));
 			zone.append(label, title, intent, discard); element.append(zone);
 			const zones = this.zones.get(page) || []; zones.push({ at, height: zone.offsetHeight, node: zone }); this.zones.set(page, zones);

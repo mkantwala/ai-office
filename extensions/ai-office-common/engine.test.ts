@@ -153,6 +153,209 @@ test('Word paragraph properties preserve block identity, comments, native review
 	} finally { engine.dispose(); }
 });
 
+test('Word: manual typing and multiline paste remain addressable by guarded agent edits', async () => {
+	const engine = await openEngine('word', 'Manual.docx', docx, root);
+	type Node = { id: string; kind: string; text: string; parentId: string };
+	const read = () => (engine.agent!.read({ limit: 100 }) as { blocks: Node[] }).blocks.map(({ id, kind, text, parentId }) => ({ id, kind, text, parentId }));
+	try {
+		const original = read();
+		await engine.execute('caret.docEnd', {});
+		await engine.execute('text.newParagraph', {});
+		await engine.execute('text.insert', { text: 'Manually typed 😀' });
+		const typed = read().at(-1)!;
+		const staleRevision = engine.state().revision;
+		await engine.execute('text.insert', { text: ' and continued' });
+		assert.deepEqual(read().at(-1), { ...typed, text: 'Manually typed 😀 and continued' });
+		await assert.rejects(engine.agent!.edit({ operation: 'update', id: typed.id, revision: staleRevision, text: 'Stale replacement' }), /Document changed/);
+		await engine.execute('text.lineBreak', {});
+		await engine.execute('text.insert', { text: 'Same paragraph' });
+		assert.equal(read().at(-1)!.id, typed.id, 'Shift+Enter keeps the paragraph identity');
+		const beforePaste = read();
+		await engine.execute('edit.pasteText', { text: '\r\nPasted second 😀\n\nPasted fourth\rLast' });
+		const pasted = read();
+		assert.deepEqual(pasted.slice(original.length).map(block => block.text), [
+			'Manually typed 😀 and continued\nSame paragraph', 'Pasted second 😀', '', 'Pasted fourth', 'Last'
+		]);
+		assert.equal(new Set(pasted.map(block => block.id)).size, pasted.length);
+		assert.equal(pasted[original.length].id, typed.id, 'Paste preserves the destination paragraph identity');
+		await engine.execute('edit.undo', {});
+		assert.deepEqual(read(), beforePaste, 'A multiline paste is one undo step');
+		await engine.execute('edit.redo', {});
+		assert.deepEqual(read(), pasted, 'Redo restores the paragraph identities');
+		const target = pasted.find(block => block.text === 'Pasted second 😀')!;
+		engine.agent!.reviewStart!();
+		await engine.agent!.edit({ operation: 'update', id: target.id, revision: engine.state().revision, text: 'Agent edited this paragraph' });
+		engine.agent!.reviewFinish!();
+		assert.deepEqual(read(), pasted.map(block => block.id === target.id ? { ...block, text: 'Agent edited this paragraph' } : block), 'Agent edit touches only the manually pasted paragraph');
+		const reopened = await openEngine('word', 'Manual.docx', await engine.export(), root);
+		try { assert.deepEqual((reopened.agent!.read({ limit: 100 }) as { blocks: Node[] }).blocks.map(({ id, kind, text, parentId }) => ({ id, kind, text, parentId })), read(), 'Manual and agent content retain IDs through DOCX save and reopen'); }
+		finally { reopened.dispose(); }
+		await engine.execute('select.text', { text: 'Pasted fourth' });
+		await engine.execute('edit.pasteText', { text: 'Replacement\nNew paragraph' });
+		assert.deepEqual(read().slice(-3).map(block => block.text), ['Replacement', 'New paragraph', 'Last'], 'Paste replaces the current selection and preserves following paragraphs');
+		const beforeSplit = read();
+		await engine.execute('caret.docEnd', {});
+		await engine.execute('text.newParagraph', {});
+		assert.equal(read().length, beforeSplit.length + 1);
+		await engine.execute('text.backspace', {});
+		assert.deepEqual(read(), beforeSplit, 'Backspace joins paragraphs without changing surviving IDs');
+		await engine.agent!.edit({ operation: 'insert', id: original[0].id, position: 'after', revision: engine.state().revision, blocks: [{ kind: 'table', rows: [['Cell seed', 'Neighbor cell']] }] });
+		await engine.execute('select.text', { text: 'Cell seed' });
+		await engine.execute('edit.pasteText', { text: 'Cell first\nCell second' });
+		const cellParagraphs = read().filter(block => ['Cell first', 'Cell second'].includes(block.text));
+		assert.equal(cellParagraphs.length, 2);
+		assert.equal(cellParagraphs[0].parentId, cellParagraphs[1].parentId, 'Pasted cell paragraphs stay in the same cell');
+		assert.notEqual(cellParagraphs[0].parentId, 'body');
+		await engine.agent!.edit({ operation: 'update', id: cellParagraphs[1].id, revision: engine.state().revision, text: 'Agent edited cell paragraph' });
+		assert.ok(read().some(block => block.text === 'Neighbor cell'), 'Agent edit preserves the neighboring cell');
+	} finally { engine.dispose(); }
+});
+
+test('Word headers and footers use page-specific stories, stable blocks, native undo and DOCX parts', async () => {
+	const files = unzipSync(docx);
+	files['word/document.xml'] = strToU8(strFromU8(files['word/document.xml']).replace('<w:sectPr>', '<w:p><w:r><w:br w:type="page"/></w:r><w:r><w:t>Second page</w:t></w:r></w:p><w:sectPr><w:titlePg/>'));
+	const engine = await openEngine('word', 'Headers.docx', zipSync(files), root);
+	type Node = { id: string; text: string; parentId: string };
+	const read = () => (engine.agent!.read({}) as { blocks: Node[] }).blocks;
+	try {
+		assert.equal(engine.pages().length, 2);
+		const body = read().filter(block => block.parentId === 'body');
+		await engine.execute('insert.editHeader', { page: 0 });
+		assert.equal(engine.state().editingRegion, 'header');
+		await engine.execute('text.insert', { text: 'First page header' });
+		const first = read().find(block => block.text === 'First page header')!;
+		await engine.execute('insert.closeHeader', {});
+		assert.equal(engine.state().editingRegion, 'body');
+		await engine.execute('insert.editHeader', { page: 1 });
+		await engine.execute('text.insert', { text: 'Following page header' });
+		const following = read().find(block => block.text === 'Following page header')!;
+		assert.notEqual(first.parentId, following.parentId, 'Different First Page edits the story actually shown on each page');
+		const revision = engine.state().revision;
+		await engine.execute('insert.editHeader', { page: 0 });
+		assert.equal(engine.state().revision, revision, 'Entering an existing header does not create a content revision');
+		const editingRaster = engine.render(0, 1).pixels!.slice();
+		await engine.execute('insert.closeHeader', {});
+		const bodyRaster = engine.render(0, 1).pixels!;
+		assert.notDeepEqual(bodyRaster, editingRaster, 'Header editing emphasizes the active story');
+		await engine.execute('insert.editHeader', { page: 0 });
+		assert.equal(engine.state().caret?.page, 0);
+		await engine.execute('insert.editFooter', { page: 0 });
+		await engine.execute('text.insert', { text: 'Footer text' });
+		const footer = read().find(block => block.text === 'Footer text')!;
+		assert.equal(engine.state().editingRegion, 'footer');
+		await engine.execute('edit.undo', {});
+		assert.ok(!read().some(block => block.text === 'Footer text'));
+		await engine.execute('edit.redo', {});
+		engine.agent!.reviewStart!();
+		await engine.agent!.edit({ operation: 'update', id: footer.id, revision: engine.state().revision, text: 'Agent edited footer' });
+		engine.agent!.reviewFinish!();
+		const review = engine.agent!.reviewRead!();
+		assert.equal(review.changes.length, 1, 'Footer agent edits participate in native Keep/Undo');
+		assert.deepEqual(read().filter(block => block.parentId === 'body'), body, 'Header/footer typing and agent edits preserve body blocks');
+		await engine.execute('insert.closeHeader', {});
+		await assert.rejects(engine.execute('insert.editHeader', { page: 99 }), /page/);
+		await assert.rejects(engine.execute('insert.editFooter', { page: -1 }), /page/);
+		const bytes = await engine.export();
+		const parts = unzipSync(bytes);
+		assert.ok(Object.keys(parts).some(name => /word\/header.*\.xml$/.test(name)));
+		assert.ok(Object.keys(parts).some(name => /word\/footer.*\.xml$/.test(name)));
+		const reopened = await openEngine('word', 'Headers.docx', bytes, root);
+		try { assert.deepEqual((reopened.agent!.read({}) as { blocks: Node[] }).blocks, read()); }
+		finally { reopened.dispose(); }
+	} finally { engine.dispose(); }
+});
+
+test('Word overflowing tables expand the editor raster without changing saved paper size', async () => {
+	const engine = await openEngine('word', 'Overflow.docx', docx, root);
+	try {
+		await engine.execute('caret.docEnd', {});
+		await engine.execute('text.newParagraph', {});
+		await engine.execute('insert.table', { rows: 2, cols: 2, borders: true });
+		await engine.execute('table.autofit', { mode: 'fixed' });
+		await engine.execute('table.columnWidth', { width: 900 });
+		const paper = engine.state().pageRegions![0];
+		const display = engine.pages()[0];
+		assert.ok(display[0] > paper.width, 'Wide table gets a wider scrollable editor surface');
+		const raster = engine.render(0, 1);
+		assert.equal(raster.width, Math.ceil(display[0]));
+		const tableRight = Math.max(...raster.tables!.flatMap(table => table.cols));
+		assert.ok(tableRight > paper.width && tableRight < display[0], 'The final column and resize handle fit inside the raster');
+		const documentXml = strFromU8(unzipSync(await engine.export())['word/document.xml']);
+		assert.match(documentXml, /w:pgSz[^>]*w:w="12240"/, 'Scrolling does not change the saved page width');
+		await engine.execute('edit.undo', {});
+		assert.equal(engine.pages()[0][0], paper.width, 'Undo shrinks the editor back to the physical page');
+	} finally { engine.dispose(); }
+});
+
+test('Word page margins and borders patch native sections atomically and survive DOCX export', async () => {
+	const engine = await openEngine('word', 'Page Settings.docx', docx, root);
+	try {
+		await engine.execute('insert.editHeader', { page: 0 });
+		await engine.execute('text.insert', { text: 'Preserve this header' });
+		await engine.execute('insert.closeHeader', {});
+		const original = engine.agent!.read({});
+		const before = engine.state();
+		const side = { style: 'double', width: 1.5, color: '286FB5', space: 18 };
+		await engine.execute('layout.pageProperties', { page: 0, applyTo: 'section', margins: { top: 36, bottom: 36, left: 54, right: 54, gutter: 6 }, borders: { top: side, bottom: side, left: side, right: side }, ifRevision: before.revision, ifSelection: before.selection });
+		const expected = engine.state().pageSetup!;
+		assert.deepEqual(expected.margins, { top: 36, bottom: 36, left: 54, right: 54, gutter: 6 });
+		assert.deepEqual(expected.borders.top, side);
+		assert.deepEqual(engine.agent!.read({}), original, 'Page formatting preserves body and header blocks');
+		await engine.execute('edit.undo', {});
+		assert.deepEqual(engine.state().pageSetup, before.pageSetup, 'Combined margins and borders are one undo step');
+		await engine.execute('edit.redo', {});
+		assert.deepEqual(engine.state().pageSetup, expected);
+		await engine.execute('select.text', { text: 'AI Office' });
+		await assert.rejects(engine.execute('layout.pageProperties', { margins: { top: 40 }, ifRevision: before.revision, ifSelection: before.selection }), /changed/);
+		const guarded = engine.state();
+		await engine.execute('caret.docEnd', {});
+		await assert.rejects(engine.execute('layout.pageProperties', { margins: { top: 40 }, ifRevision: guarded.revision, ifSelection: guarded.selection }), /selection changed/);
+		const projection = engine.agent!.reviewProjection!();
+		for (const patch of [
+			{ margins: { left: 600 }, borders: null }, { margins: { top: -1 } }, { margins: { typo: 10 } },
+			{ borders: { top: { color: 'red' } } }, { borders: { top: { style: 'invented' } } },
+			{ borders: { top: { width: 20 } } }, { borders: { top: { space: 32 } } }, { applyTo: true, borders: null }
+		]) {
+			await assert.rejects(engine.execute('layout.pageProperties', patch));
+			assert.equal(engine.agent!.reviewProjection!(), projection, 'Invalid page patches are atomic');
+		}
+		const target = (original as { blocks: { id: string }[] }).blocks[0];
+		await engine.agent!.edit({ operation: 'command', id: target.id, revision: engine.state().revision, command: 'layout.pageProperties', params: { borders: { top: { color: 'AA5522' }, left: null } } });
+		assert.deepEqual(engine.state().pageSetup!.borders, { top: { ...side, color: 'AA5522' }, bottom: side, left: null, right: side }, 'Agent partial border edits preserve omitted side properties');
+		const bytes = await engine.export();
+		const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+		assert.match(xml, /w:pgBorders[^>]*w:offsetFrom="page"/, 'Export uses the same page-edge distances as the renderer');
+		assert.match(xml, /w:pgMar[^>]*w:top="720"/);
+		const reopened = await openEngine('word', 'Page Settings.docx', bytes, root);
+		try {
+			assert.deepEqual(reopened.state().pageSetup, engine.state().pageSetup);
+			assert.deepEqual(reopened.agent!.read({}), original);
+		} finally { reopened.dispose(); }
+		await engine.execute('layout.pageProperties', { borders: null });
+		assert.ok(Object.values(engine.state().pageSetup!.borders).every(side => side === null));
+	} finally { engine.dispose(); }
+});
+
+test('Word whole-document page settings validate every section before applying a patch', async () => {
+	const files = unzipSync(docx);
+	let xml = strFromU8(files['word/document.xml']).replace('w:w="12240"', 'w:w="5760"');
+	xml = xml.replace('<w:p>', '<w:p><w:pPr><w:sectPr><w:type w:val="nextPage"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:pPr>');
+	files['word/document.xml'] = strToU8(xml);
+	const engine = await openEngine('word', 'Sections.docx', zipSync(files), root);
+	try {
+		assert.equal(engine.pages().length, 2);
+		const before = engine.agent!.reviewProjection!();
+		await assert.rejects(engine.execute('layout.pageProperties', { page: 0, applyTo: 'document', margins: { left: 150, right: 150 }, borders: { top: { width: 1 } } }), /Margins leave no room/);
+		assert.equal(engine.agent!.reviewProjection!(), before, 'A narrow later section cannot cause a partial update');
+		await engine.execute('layout.pageProperties', { page: 0, applyTo: 'document', margins: { left: 36, right: 36 }, borders: { top: { width: 1, color: '286FB5' } } });
+		const saved = strFromU8(unzipSync(await engine.export())['word/document.xml']);
+		assert.equal(saved.match(/<w:pgBorders/g)?.length, 2);
+		assert.equal(saved.match(/w:left="720"/g)?.length, 2);
+		await engine.execute('edit.undo', {});
+		assert.equal(engine.agent!.reviewProjection!(), before, 'One Undo restores all sections');
+	} finally { engine.dispose(); }
+});
+
 test('Word: internal IDs, atomic CRUD, Unicode ranges, revision guards and persistence', async () => {
 	const engine = await openEngine('word', 'Agent.docx', docx, root);
 	type Node = { id: string; kind: string; text: string; parentId: string; nextTextOffset?: number };

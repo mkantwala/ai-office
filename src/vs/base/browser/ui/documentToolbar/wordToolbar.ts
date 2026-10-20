@@ -8,6 +8,10 @@ import { wordToolbarFeedback } from './wordToolbarFeedback.js';
 
 interface WordToolbarControls {
 	text?: HTMLButtonElement;
+	margins?: HTMLButtonElement;
+	pageBorders?: HTMLButtonElement;
+	header?: HTMLButtonElement;
+	footer?: HTMLButtonElement;
 	undo: HTMLButtonElement;
 	redo: HTMLButtonElement;
 	save: HTMLButtonElement;
@@ -172,7 +176,9 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	more.popoverTargetElement = overflow;
 	if (controls.clear) { table.append(iconButton(controls.clear, 'clear')); }
 	overflow.append(table);
-	const allControls = [controls.undo, controls.redo, decrease, increase, controls.properties, controls.text, menus.styleButton, ...dropdowns.map(item => item.button), ...controls.emphasis, controls.strike, controls.clear, controls.table, controls.image, controls.link, controls.comment, more].filter((control): control is HTMLButtonElement => !!control);
+	const headerFooter = [controls.margins, controls.pageBorders, controls.header, controls.footer].filter((control): control is HTMLButtonElement => !!control);
+	if (headerFooter.length) { overflow.append(group('Page Layout', headerFooter)); }
+	const allControls = [...headerFooter, controls.undo, controls.redo, decrease, increase, controls.properties, controls.text, menus.styleButton, ...dropdowns.map(item => item.button), ...controls.emphasis, controls.strike, controls.clear, controls.table, controls.image, controls.link, controls.comment, more].filter((control): control is HTMLButtonElement => !!control);
 	row.append(...groups, more);
 	toolbar.replaceChildren(row);
 	host.append(overflow);

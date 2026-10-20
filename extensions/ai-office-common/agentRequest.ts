@@ -4,18 +4,22 @@
  *--------------------------------------------------------------------------------------------*/
 
 let current: string | undefined;
+let currentLabel = 'Agent';
+export function activeAgentLabel() { return currentLabel; }
 export function activeAgentRequest() { return current; }
-export async function withAgentRequest<T>(id: string, run: () => Promise<T>): Promise<T> {
+export async function withAgentRequest<T>(id: string, run: () => Promise<T>, label = 'Agent'): Promise<T> {
 	if (current) { throw new Error('A document agent request is already running. Wait for it to finish or stop it first.'); }
-	current = id;
-	try { return await run(); } finally { current = undefined; }
+	current = id; currentLabel = label;
+	try { return await run(); } finally { current = undefined; currentLabel = 'Agent'; }
 }
 
 /** This built-in fork supplies the verified request identity in its opaque tool token. Never take it from model arguments. */
 export function withAgentToolRequest<T>(token: unknown, run: () => Promise<T>): Promise<T> {
 	const id = (token as { requestId?: string } | undefined)?.requestId;
 	if (!id || id === current) { return run(); }
-	return withAgentRequest(id, run);
+	const scheme = (token as { sessionResource?: { scheme?: string } })?.sessionResource?.scheme || '';
+	const label = /opencode/i.test(scheme) ? 'OpenCode' : /claude/i.test(scheme) ? 'Claude' : /codex/i.test(scheme) ? 'Codex' : 'Agent';
+	return withAgentRequest(id, run, label);
 }
 
 export class DocumentHistory {
