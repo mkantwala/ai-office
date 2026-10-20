@@ -203,7 +203,7 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		assert.equal((await invoke('read', {})).uri, '/other.docx', 'The active review targets its source Word document even with several DOCX files open');
 		vscode.window.tabGroups = undefined;
 		other.dispose();
-		await invoke('activity', { operation: 'start', id: 'internal-id', version: initial.version, intent: 'Clarifying this paragraph' });
+		await withAgentRequest('test-request', () => invoke('activity', { operation: 'start', id: 'internal-id', version: initial.version, intent: 'Clarifying this paragraph' }));
 		const first = withAgentRequest('test-request', () => invoke('edit', { operation: 'update', id: 'internal-id', version: initial.version, text: 'First change' }));
 		const stale = invoke('edit', { operation: 'update', id: 'internal-id', version: initial.version, text: 'Stale overwrite' });
 		assert.equal((await first).saved, false);
@@ -316,6 +316,50 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		assert.deepEqual(commentEdit.appliedEdits.map(edit => edit.action), ['update', 'resolve']);
 		assert.match((await invoke('comments', { operation: 'update', version: commentEdit.version, commentId: 0, text: 'Bad', resolved: 'false' })).error, /explicit boolean/);
 		assert.match((await invoke('comments', { operation: 'reply', version: commentEdit.version, commentId: 0, text: 'Bad', find: 'ignored anchor' })).error, /does not accept find/);
+
+		const parallelDoc = await provider.openCustomDocument(uri('/other.docx'), {});
+		const panel = [...doc.panels][0];
+		try {
+			await withAgentRequest('bound-request', async () => {
+				assert.equal((await invoke('read', {})).uri, '/memo.docx');
+				panel.active = false; parallelDoc.panels.add({ active: true, webview: { postMessage: async () => {} } });
+				assert.equal((await invoke('read', {})).uri, '/memo.docx', 'Switching tabs does not redirect an existing request');
+				assert.equal((await invoke('read', { uri: '/other.docx' })).uri, '/other.docx', 'An explicit URI still supports multi-file work');
+				assert.equal((await invoke('read', {})).uri, '/memo.docx');
+			});
+			const a = await invoke('read', { uri: '/memo.docx' }), b = await invoke('read', { uri: '/other.docx' });
+			const results = await Promise.all([
+				withAgentRequest('parallel-A', () => invoke('edit', { uri: '/memo.docx', operation: 'update', id: 'internal-id', version: a.version, text: 'File A only' })),
+				withAgentRequest('parallel-B', () => invoke('edit', { uri: '/other.docx', operation: 'update', id: 'internal-id', version: b.version, text: 'File B only' }))
+			]);
+			assert.equal(results[0].uri, '/memo.docx'); assert.equal(results[1].uri, '/other.docx');
+			assert.equal((await invoke('read', { uri: '/memo.docx' })).blocks[0].text, 'File A only');
+			assert.equal((await invoke('read', { uri: '/other.docx' })).blocks[0].text, 'File B only');
+			assert.ok(doc.history.checkpoints.has('parallel-A')); assert.equal(doc.history.checkpoints.has('parallel-B'), false);
+			assert.ok(parallelDoc.history.checkpoints.has('parallel-B')); assert.equal(parallelDoc.history.checkpoints.has('parallel-A'), false);
+			const now = await invoke('read', { uri: '/memo.docx' });
+			await withAgentRequest('owner-A', () => invoke('activity', { uri: '/memo.docx', operation: 'start', id: 'internal-id', version: now.version }));
+			await withAgentRequest('owner-B', () => invoke('activity', { uri: '/memo.docx', operation: 'start', id: 'internal-id', version: now.version }));
+			await withAgentRequest('owner-A', () => invoke('activity', { uri: '/memo.docx', operation: 'stop' }));
+			assert.equal(doc.activity.request, 'owner-B', 'An older request cannot clear another request’s activity');
+			const timer = doc.activity.timer;
+			await commands.get('_aiOffice.word.renewActivity')({ requestId: 'owner-A' }, ['/memo.docx']);
+			assert.equal(doc.activity.timer, timer);
+			await commands.get('_aiOffice.word.renewActivity')({ requestId: 'owner-B' }, ['/memo.docx']);
+			assert.notEqual(doc.activity.timer, timer);
+			await withAgentRequest('owner-B', () => invoke('activity', { uri: '/memo.docx', operation: 'stop' }));
+			assert.equal(doc.activity, undefined);
+			await commands.get('_aiOffice.word.renewActivity')({ requestId: 'owner-B' }, ['/memo.docx']);
+			assert.equal(doc.activity, undefined, 'Heartbeat never resurrects a stopped preview');
+		} finally { panel.active = true; parallelDoc.dispose(); }
+
+		let opened;
+		commands.set('vscode.openWith', async (uri, viewType) => { assert.equal(viewType, 'aiOffice.word'); opened = await provider.openCustomDocument(uri, {}); });
+		try {
+			const result = await invoke('read', { operation: 'open', uri: '/new.docx' });
+			assert.equal(result.uri, '/new.docx'); assert.equal(result.blocks[0].text, 'Initial content');
+			assert.match((await invoke('read', { operation: 'open', uri: '/other.pdf' })).error, /DOCX URI/);
+		} finally { opened?.dispose(); }
 
 	} finally { doc.dispose(); }
 });

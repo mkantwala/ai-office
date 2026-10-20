@@ -10,7 +10,12 @@ export type Kind = 'word' | 'pdf' | 'slides';
 export interface Block { id: number; text: string; rect: number[]; font?: string; size?: number; row?: number; col?: number }
 export interface TableGeometry { cols: number[]; rows: { row: number; top: number; bottom: number; edges?: number[] }[]; endsHere: boolean; movable?: boolean }
 export interface TablePreview { kind: 'column' | 'row' | 'corner' | 'move'; rects: { x: number; y: number; width: number; height: number }[] }
+export interface ImageGeometry {
+	parentId: string; offset: number; page: number; x: number; y: number; width: number; height: number;
+	alt: string; title: string; decorative: boolean; crop: number[]; wrap: string; rotation: number; flipH: boolean; flipV: boolean;
+}
 export interface State {
+	image?: ImageGeometry | null;
 	pageSetup?: PageSetupState;
 	editingRegion?: 'body' | 'header' | 'footer';
 	pageRegions?: { top: number; bottom: number; width: number; height: number }[];
@@ -59,6 +64,6 @@ export interface Engine {
 	commands(): Command[];
 	execute(id: string, args: Record<string, unknown>): Promise<State>;
 	export(): Promise<Uint8Array>;
-	render(page: number, scale: number): { pixels?: Uint8Array; width?: number; height?: number; svg?: string; tables?: TableGeometry[] };
+	render(page: number, scale: number): { pixels?: Uint8Array; width?: number; height?: number; svg?: string; tables?: TableGeometry[]; images?: ImageGeometry[] };
 	dispose(): void;
 }

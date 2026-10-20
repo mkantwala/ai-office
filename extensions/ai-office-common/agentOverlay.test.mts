@@ -74,3 +74,21 @@ test('Only the current draft shimmers and an expired or stopped lease clears its
 		await page.evaluate(`draftReview.dispose()`);
 	} finally { await browser.close(); }
 });
+
+test('Review never fabricates a page-one location when geometry is missing', async () => {
+	const bundle = await build({ entryPoints: ['extensions/ai-office-common/wordReview.ts'], bundle: true, platform: 'browser', format: 'iife', globalName: 'OfficeReview', write: false });
+	const browser = await chromium.launch({ ...(process.env.OFFICE_BROWSER_PATH ? { executablePath: process.env.OFFICE_BROWSER_PATH } : {}), headless: true, args: ['--no-sandbox'] });
+	try {
+		const page = await browser.newPage();
+		await page.setContent('<main id="pages"><section data-page="0" style="position:relative;width:600px;height:800px"><canvas></canvas></section><section data-page="1" style="position:relative;width:600px;height:800px"><canvas></canvas></section></main>');
+		await page.addScriptTag({ content: bundle.outputFiles[0].text });
+		await page.evaluate(`(() => {window.review=new OfficeReview.WordReview(document.getElementById('pages'),()=>{},()=>{},()=>{});window.change={id:'body:last',label:'Paragraph change',before:'',after:'hello world',beforeText:'',afterText:'hello world',rects:[]};review.update({version:'1',reviewVersion:1,changes:[change]});review.layout([[600,800],[600,800]]);})()`);
+		assert.equal(await page.locator('#pages .word-review-zone').count(), 0);
+		assert.match(await page.locator('.word-unplaced-review').textContent(), /hello world/);
+		await page.evaluate(`review.update({version:'2',reviewVersion:2,changes:[{...change,rects:[{page:1,x:40,y:500,width:100,height:20}]}]});review.layout([[600,800],[600,800]])`);
+		assert.equal(await page.locator('[data-page="0"] .word-review-zone').count(), 0);
+		assert.equal(await page.locator('[data-page="1"] .word-review-zone').count(), 1);
+		assert.equal(await page.locator('.word-unplaced-review').isVisible(), false);
+		await page.evaluate(`review.dispose()`);
+	} finally { await browser.close(); }
+});

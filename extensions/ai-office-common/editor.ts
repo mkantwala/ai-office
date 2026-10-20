@@ -8,6 +8,7 @@ import type { Kind, State, Block } from './types.js';
 import { arrangeWordToolbar } from './wordToolbar.js';
 import { renderAgentActivity, WordAgentReveal } from './agentOverlay.js';
 import type { DocumentToolbarAction, DocumentToolbarControl } from '../../src/vs/base/browser/ui/documentToolbar/documentToolbar.js';
+import { WordImage } from './wordImage.js';
 import { WordTable } from './wordTable.js';
 import { WordParagraph } from './wordParagraph.js';
 import { WordPageSetup } from './wordPageSetup.js';
@@ -59,12 +60,13 @@ function focusWordInput() {
 	if (kind !== 'word') { return; }
 	const dialog = document.querySelector<HTMLDialogElement>('dialog[open]');
 	if (dialog) { if (!dialog.contains(document.activeElement)) { dialog.querySelector<HTMLElement>('input, select, textarea, button')?.focus({ preventScroll: true }); } return; }
-	if (!document.querySelector('.word-table-context:popover-open')) { keyboard.focus({ preventScroll: true }); }
+	if (!document.querySelector('.word-table-context:popover-open,.word-image-menu:popover-open')) { keyboard.focus({ preventScroll: true }); }
 }
 const wordTable = new WordTable(pages, point, place, execute, ask, focusWordInput,
 	page => page.getBoundingClientRect().width / dimensions[Number(page.dataset.page)][0],
 	(request, args) => send('tablePreview', { request, args }),
 	at => !!state.rects?.some(r => r.page === at.page && at.x >= r.x && at.x <= r.x + r.width && at.y >= r.y && at.y <= r.y + r.height));
+const wordImage = new WordImage(pages, point, place, execute, target => send('image', { replace: true, target }), focusWordInput, page => page.clientWidth / dimensions[Number(page.dataset.page)][0]);
 let wordParagraph: WordParagraph | undefined;
 let kind: Kind;
 let state: State = { revision: -1 };
@@ -87,6 +89,15 @@ let wordPageSetup: WordPageSetup | undefined;
 let disposeToolbar: (() => void) | undefined;
 let agentLabel = 'Agent';
 let agentIntent: string | undefined;
+let followRequest: string | undefined;
+let followAgent = true;
+function followAgentChange(request: string | undefined, selector: string) {
+	if (request && request !== followRequest) { followRequest = request; followAgent = true; }
+	if (!followAgent) { return; }
+	const target = pages.querySelector<HTMLElement>(selector); if (!target) { return; }
+	const bounds = target.getBoundingClientRect();
+	if (bounds.top < 150 || bounds.bottom > innerHeight - 40) { target.scrollIntoView({ block: 'center', behavior: 'instant' }); }
+}
 let activityTimer: ReturnType<typeof setTimeout> | undefined;
 let agentRects: NonNullable<State['rects']> = [];
 let legacyAgentRects: NonNullable<State['rects']> = [];
@@ -112,13 +123,14 @@ function typeWordText(text: string) {
 	wordText += text;
 	if (!wordTextTimer) { wordTextTimer = setTimeout(flushWordInput, 0); }
 }
-window.addEventListener('pagehide', () => { flushWordInput(); disposeToolbar?.(); wordParagraph?.dispose(); wordPageSetup?.dispose(); wordReview.dispose(); wordTable.dispose(); clearTimeout(activityTimer); agentReveal.clear(); clearAgent(); }, { once: true });
+window.addEventListener('pagehide', () => { flushWordInput(); disposeToolbar?.(); wordParagraph?.dispose(); wordPageSetup?.dispose(); wordReview.dispose(); wordTable.dispose(); wordImage.dispose(); clearTimeout(activityTimer); agentReveal.clear(); clearAgent(); }, { once: true });
 window.addEventListener('blur', flushWordInput);
 function clearActivityPreview() {
 	if (!agentRects.length && agentIntent === undefined && activityTimer === undefined) { return; }
 	clearTimeout(activityTimer); activityTimer = undefined; agentIntent = undefined; agentRects = []; agentOverlay();
 }
-window.addEventListener('pointerdown', () => { agentReveal.clear(); clearActivityPreview(); });
+window.addEventListener('pointerdown', () => { followAgent = false; agentReveal.clear(); clearActivityPreview(); });
+window.addEventListener('wheel', () => { followAgent = false; }, { passive: true });
 window.addEventListener('focus', () => { if (initialized && (document.activeElement === document.body || document.activeElement === keyboard)) { focusWordInput(); } });
 function send(type: string, data: Record<string, unknown> = {}) { if (type !== 'render' && type !== 'ready') { flushWordInput(); } api.postMessage({ type, ...data }); }
 function execute(command: string, args: Record<string, unknown> = {}) {
@@ -298,7 +310,7 @@ const observer = new IntersectionObserver(entries => {
 	for (const entry of entries) {
 		const index = Number((entry.target as HTMLElement).dataset.page);
 		if (entry.isIntersecting) { visible.add(index); }
-		else { visible.delete(index); rendered.delete(index); wordTable.forget(index); const canvas = entry.target.querySelector('canvas'); if (canvas) { canvas.width = canvas.height = 1; } entry.target.querySelectorAll('.word-review-slice').forEach(node => node.remove()); }
+		else { visible.delete(index); rendered.delete(index); wordTable.forget(index); wordImage.forget(index); const canvas = entry.target.querySelector('canvas'); if (canvas) { canvas.width = canvas.height = 1; } entry.target.querySelectorAll('.word-review-slice').forEach(node => node.remove()); }
 	}
 	renderNext();
 }, { rootMargin: '450px' });
@@ -415,13 +427,20 @@ window.addEventListener('message', event => {
 	if (data.type === 'tablePreview') { wordTable.preview(data.request, data.revision, data.result); return; }
 	if (data.type === 'publishToolbar') { publishToolbar(); return; }
 	if (data.type === 'toolbarAction') { toolbarAction(data.action, data.context, data.instance); return; }
-	if (data.type === 'agentCommit') { agentReveal.queue(data.revision, Array.isArray(data.rects) ? data.rects : []); return; }
+	if (data.type === 'agentCommit') {
+		const rects = Array.isArray(data.rects) ? data.rects : [];
+		if (rects.length && (!data.request || data.request !== followRequest || followAgent)) {
+			const marker = document.createElement('div'); marker.className = 'agent-commit-target';
+			const rect = rects[0]; if (pages.children[rect.page]) { place(marker, rect.page, rect.x, rect.y, rect.width, rect.height); followAgentChange(data.request, '.agent-commit-target'); marker.remove(); }
+		}
+		agentReveal.queue(data.revision, rects); renderNext(); return;
+	}
 	if (data.type === 'agentActivity') {
 		clearTimeout(activityTimer); activityTimer = undefined; agentLabel = typeof data.label === 'string' ? data.label.slice(0, 40) : 'Agent';
 		agentIntent = typeof data.intent === 'string' ? data.intent.slice(0, 240) : undefined;
 		agentRects = Array.isArray(data.rects) ? data.rects : [];
 		if (agentRects.length) { activityTimer = setTimeout(clearActivityPreview, Math.max(0, Math.min(30000, (data.expiresAt || Date.now() + 30000) - Date.now()))); }
-		agentOverlay(); return;
+		agentOverlay(); if (agentRects.length) { followAgentChange(data.request, '.agent-shimmer-border'); } return;
 	}
 	if (data.type === 'draft') { wordReview.updateDrafts(data.sections, data.label, data.workingId, data.expiresAt); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
 	if (data.type === 'review') { wordReview.update(data.review); showReviewSummary(); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
@@ -434,7 +453,7 @@ window.addEventListener('message', event => {
 		const regionChanged = state.editingRegion !== data.state.editingRegion;
 		if (changed) { agentReveal.clear(); clearActivityPreview(); }
 		const repaginated = JSON.stringify(dimensions) !== JSON.stringify(data.pages);
-		state = data.state; dimensions = data.pages; wordTable.update(state.revision);
+		state = data.state; dimensions = data.pages; wordTable.update(state.revision); wordImage.update(state.revision, state.image);
 		revealWordCaret = kind === 'word' && (data.command?.startsWith('text.') || data.command === 'insert.table' || data.command === 'insert.editHeader' || data.command === 'insert.editFooter');
 		const commentsOpen = comments.open;
 		comments.replaceChildren(); comments.open = commentsOpen; comments.hidden = kind === 'word' || !state.comments?.length;
@@ -477,7 +496,7 @@ window.addEventListener('message', event => {
 			canvas.dataset.frame = String(data.request);
 			canvas.dataset.revision = String(request.revision);
 			canvas.dataset.region = request.region || 'body';
-			if (kind === 'word') { wordReview.paint(data.page, dimensions); agentReveal.paint(); if (request.revision === state.revision) { wordTable.render(data.page, request.revision, result.tables || []); } }
+			if (kind === 'word') { wordReview.paint(data.page, dimensions); agentReveal.paint(); if (request.revision === state.revision) { wordTable.render(data.page, request.revision, result.tables || []); wordImage.render(data.page, request.revision, result.images || []); } }
 		}
 		// Show completed Word frames during continuous typing instead of discarding
 		// every frame until the user stops. A newer revision still requests a refresh.

@@ -4,6 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 const shapes = {
+	move: { path: 'M16 3v26M3 16h26M16 3l-4 4M16 3l4 4M16 29l-4-4M16 29l4-4M3 16l4-4M3 16l4 4M29 16l-4-4M29 16l-4 4', fallback: 'move' },
+	opposite: { path: 'M6 26L26 6M6 26h8M6 26v-8M26 6h-8M26 6v8', fallback: 'nesw-resize' },
 	text: { path: 'M11 5h10M16 5v22M11 27h10', fallback: 'text' },
 	column: { path: 'M3 16h26M3 16l5-5M3 16l5 5M29 16l-5-5M29 16l-5 5M13 7v18M19 7v18', fallback: 'col-resize' },
 	row: { path: 'M16 3v26M16 3l-5 5M16 3l5 5M16 29l-5-5M16 29l5-5M7 13h18M7 19h18', fallback: 'row-resize' },

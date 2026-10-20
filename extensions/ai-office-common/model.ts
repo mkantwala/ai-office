@@ -14,6 +14,7 @@ import type { Engine, Kind, State, Command } from './types.js';
 interface WasmDocument {
 	pages(): string; state(): string; commands(): string; execute(id: string, args: string): string;
 	tables?(page: number): string;
+	images?(page: number): string;
 	table_preview?(args: string): string;
 	export(): Uint8Array; render(page: number, scale: number): Uint8Array;
 	image?(page: number, name: string, bytes: Uint8Array): string;
@@ -251,7 +252,7 @@ export async function openEngine(kind: Kind, name: string, bytes: Uint8Array, ex
 			const bytes = doc.export();
 			return kind === 'word' && doc.agent_metadata && !password ? writeWordIdentities(bytes, JSON.parse(doc.agent_metadata())) : bytes;
 		},
-		render: (page, scale) => ({ pixels: doc.render(page, scale), width: doc.width, height: doc.height, ...(doc.tables ? { tables: JSON.parse(doc.tables(page)) } : {}) }),
+		render: (page, scale) => ({ pixels: doc.render(page, scale), width: doc.width, height: doc.height, ...(doc.tables ? { tables: JSON.parse(doc.tables(page)) } : {}), ...(doc.images ? { images: JSON.parse(doc.images(page)) } : {}) }),
 		dispose: () => doc.free()
 	};
 	return withContentCommands(kind, engine);

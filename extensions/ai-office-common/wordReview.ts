@@ -9,6 +9,7 @@ interface Zone { at: number; height: number; node: HTMLElement }
 /** Like code-editor view zones: insert deleted text without changing document layout or bytes. */
 export class WordReview {
 	private data?: DocumentReview;
+	private readonly unplaced = document.createElement('div');
 	private drafts: DraftViewSection[] = [];
 	private readonly zones = new Map<number, Zone[]>();
 	private busy = false;
@@ -18,7 +19,7 @@ export class WordReview {
 	private draftWorkingId?: string;
 	private draftTimer?: ReturnType<typeof setTimeout>;
 	private draftKey = '';
-	constructor(private readonly pages: HTMLElement, private readonly decide: (data: DocumentReview, action: 'keep' | 'undo', ids: string[]) => void, private readonly onLayout: () => void, private readonly discardDraft: (id: string) => void) { }
+	constructor(private readonly pages: HTMLElement, private readonly decide: (data: DocumentReview, action: 'keep' | 'undo', ids: string[]) => void, private readonly onLayout: () => void, private readonly discardDraft: (id: string) => void) { this.unplaced.className = 'word-unplaced-review'; this.unplaced.hidden = true; this.pages.before(this.unplaced); }
 	updateDrafts(sections: DraftViewSection[], label = 'Agent', workingId?: string, expiresAt = 0) {
 		clearTimeout(this.draftTimer); this.drafts = sections; this.draftLabel = label.slice(0, 40);
 		this.draftWorkingId = expiresAt > Date.now() ? workingId : undefined;
@@ -28,7 +29,7 @@ export class WordReview {
 			this.pages.querySelectorAll<HTMLElement>('.word-draft-zone').forEach(zone => { zone.dataset.working = 'false'; const label = zone.querySelector('small'); if (label) { label.textContent = 'Draft preview'; } });
 		}, Math.min(30000, expiresAt - Date.now())); }
 	}
-	dispose() { clearTimeout(this.draftTimer); }
+	dispose() { clearTimeout(this.draftTimer); this.unplaced.remove(); }
 
 	update(data: DocumentReview) { this.data = data; if (this.busy) { this.layoutKey = ''; } this.busy = false; }
 	get count() { return this.data?.changes.length || 0; }
@@ -64,7 +65,7 @@ export class WordReview {
 		const key = JSON.stringify([this.data?.version, this.data?.reviewVersion, this.draftKey, dimensions, this.pages.children.length, (this.pages.firstElementChild as HTMLElement | null)?.clientWidth]);
 		if (this.layoutKey === key && this.firstPage === this.pages.firstElementChild) { return; }
 		this.layoutKey = key; this.firstPage = this.pages.firstElementChild ?? undefined;
-		this.zones.clear();
+		this.zones.clear(); this.unplaced.replaceChildren(); this.unplaced.hidden = true;
 		for (const [page, element] of Array.from(this.pages.children).entries()) {
 			const node = element as HTMLElement;
 			node.querySelectorAll('.word-review-zone,.word-review-insert,.word-review-slice').forEach(child => child.remove());
@@ -75,7 +76,13 @@ export class WordReview {
 		for (const change of this.data?.changes || []) {
 			const anchors = change.anchorRects?.length ? change.anchorRects : change.rects;
 			const anchor = change.anchor?.after ? anchors?.at(-1) : anchors?.[0];
-			const page = anchor?.page ?? 0, element = this.pages.children[page] as HTMLElement | undefined;
+			if (!anchor) {
+				const card = document.createElement('section'); card.append(this.controls(change));
+				const status = document.createElement('p'); status.textContent = 'Change saved in the document; inline location unavailable.'; card.append(status);
+				for (const [text, className] of [[change.beforeText, 'word-review-deleted'], [change.afterText || change.after, 'word-review-added']] as const) { if (text) { const body = document.createElement('pre'); body.className = className; body.textContent = text; card.append(body); } }
+				this.unplaced.append(card); this.unplaced.hidden = false; continue;
+			}
+			const page = anchor.page, element = this.pages.children[page] as HTMLElement | undefined;
 			if (!element || !dimensions[page]) { continue; }
 			const scale = element.clientWidth / dimensions[page][0];
 			const at = anchor ? (anchor.y + (change.anchor?.after ? anchor.height : 0)) * scale : 40 * scale;

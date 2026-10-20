@@ -147,11 +147,12 @@ export function validateDocumentEdits(input: Record<string, unknown>) {
 	const edits = input.operation === 'batch' ? input.edits : [input];
 	if (!Array.isArray(edits)) { throw new Error('operation=batch requires an edits array.'); }
 	const common = ['operation', 'id', 'uri', 'version', 'ifHash', 'allowDetach'];
-	const properties: Record<string, string[]> = { insert: ['position', 'blocks'], update: ['text', 'start', 'end'], replaceText: ['find', 'nth', 'text'], replaceBlocks: ['blocks'], delete: [], command: ['command', 'params', 'start', 'end'] };
+	const properties: Record<string, string[]> = { append: ['blocks'], insert: ['position', 'blocks'], update: ['text', 'start', 'end'], replaceText: ['find', 'nth', 'text'], replaceBlocks: ['blocks'], delete: [], command: ['command', 'params', 'start', 'end'] };
 	for (const edit of edits) {
 		if (!edit || typeof edit !== 'object' || Array.isArray(edit)) { throw new Error('Each edit must be an object.'); }
 		const operation = edit.operation;
-		if (typeof operation !== 'string' || !Object.hasOwn(properties, operation)) { throw new Error('Use insert, update, replaceText, replaceBlocks, delete or command for each edit.'); }
+		if (operation === 'append' && (edit.id !== undefined || edit.ifHash !== undefined || edit.position !== undefined)) { throw new Error('Append resolves the document end internally. Omit id, position and ifHash.'); }
+		if (typeof operation !== 'string' || !Object.hasOwn(properties, operation)) { throw new Error('Use append, insert, update, replaceText, replaceBlocks, delete or command for each edit.'); }
 		if (edit.ifHash !== undefined && (typeof edit.ifHash !== 'string' || !/^[a-f0-9]{64}$/i.test(edit.ifHash))) { throw new Error('ifHash must be the full block hash from a read.'); }
 		if (edit.allowDetach !== undefined && typeof edit.allowDetach !== 'boolean') { throw new Error('allowDetach must be an explicit boolean.'); }
 		for (const key of Object.keys(edit)) {

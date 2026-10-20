@@ -40,7 +40,7 @@ class Document implements vscode.CustomDocument {
 	saving = false;
 	serial = Promise.resolve();
 	instance = randomUUID();
-	activity?: { id: string; label: string; intent: string; expiresAt: number; rects: State['rects']; timer: ReturnType<typeof setTimeout> };
+	activity?: { id: string; request?: string; label: string; intent: string; expiresAt: number; rects: State['rects']; timer: ReturnType<typeof setTimeout> };
 	constructor(readonly uri: vscode.Uri, readonly kind: Kind, readonly context: vscode.ExtensionContext, private readonly onDispose: () => void) {
 		this.client = new EngineClient(vscode.Uri.joinPath(context.extensionUri, 'out', 'engineWorker.cjs').fsPath);
 		if (kind === 'word' && context.globalStorageUri) { this.versions = new DocumentVersions(context.globalStorageUri.fsPath, uri.toString()); }
@@ -80,14 +80,20 @@ class Document implements vscode.CustomDocument {
 		if (this.activity) { await this.sendActivity(this.activity.rects); }
 	}
 	async sendActivity(rects: State['rects']) {
-		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'agentActivity', rects: rects || [], label: this.activity?.label || activeAgentLabel(), ...(this.activity ? { intent: this.activity.intent, expiresAt: this.activity.expiresAt } : {}) })));
+		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'agentActivity', rects: rects || [], label: this.activity?.label || activeAgentLabel(), ...(this.activity ? { intent: this.activity.intent, expiresAt: this.activity.expiresAt, request: this.activity.request } : {}) })));
 	}
-	async stopActivity() { if (this.activity) { clearTimeout(this.activity.timer); this.activity = undefined; } await this.sendActivity([]); }
+	async stopActivity(force = false) { if (!force && activeAgentRequest() && this.activity?.request && this.activity.request !== activeAgentRequest()) { return; } if (this.activity) { clearTimeout(this.activity.timer); this.activity = undefined; } await this.sendActivity([]); }
+	async renewActivity(request: string) {
+		if (this.activity?.request !== request) { return; }
+		clearTimeout(this.activity.timer); this.activity.expiresAt = Date.now() + 30000;
+		this.activity.timer = setTimeout(() => { void this.stopActivity(); }, 30000);
+		await this.sendActivity(this.activity.rects);
+	}
 	async startActivity(id: string, intent?: string) {
-		const preview = intent ?? (this.activity?.id === id ? this.activity.intent : 'Updating this block…');
+		const preview = intent ?? (this.activity?.id === id && this.activity.request === activeAgentRequest() ? this.activity.intent : 'Updating this block…');
 		const rects = await this.client.request<State['rects']>('agentRects', { blockId: id });
-		await this.stopActivity();
-		this.activity = { id, label: activeAgentLabel(), intent: preview, expiresAt: Date.now() + 30000, rects, timer: setTimeout(() => { void this.stopActivity(); }, 30000) };
+		await this.stopActivity(true);
+		this.activity = { id, request: activeAgentRequest(), label: activeAgentLabel(), intent: preview, expiresAt: Date.now() + 30000, rects, timer: setTimeout(() => { void this.stopActivity(); }, 30000) };
 		await this.sendActivity(rects);
 	}
 	get version() { return `${this.instance}:${this.view.state.revision}`; }
@@ -117,6 +123,28 @@ async function read(uri: vscode.Uri) {
 	const bytes = await vscode.workspace.fs.readFile(uri);
 	if (bytes.length > 128 * 1024 * 1024) { throw new Error('Document exceeds the 128 MB limit.'); }
 	return bytes;
+}
+/** Resolve image files in the host; binary data never needs to pass through model context. */
+async function prepareImageEdits(input: DocumentToolInput): Promise<DocumentToolInput> {
+	const edits = input.operation === 'batch' ? input.edits as Record<string, unknown>[] : [input];
+	const cache = new Map<string, string>(); let total = 0;
+	const prepared = [];
+	for (const edit of edits) {
+		const params = edit.params as Record<string, unknown> | undefined;
+		if (edit.operation !== 'command' || !['insert.picture', 'picture.change'].includes(String(edit.command)) || params?.fileUri === undefined) { prepared.push(edit); continue; }
+		if (typeof params.fileUri !== 'string' || params.data !== undefined || params.path !== undefined) { throw new Error('Use one image fileUri, without data or path.'); }
+		let data = cache.get(params.fileUri);
+		if (!data) {
+			const uri = vscode.Uri.parse(params.fileUri);
+			if (!['file', 'vscode-remote'].includes(uri.scheme)) { throw new Error('Image fileUri must identify a local or workspace file, not a web address.'); }
+			if ((await vscode.workspace.fs.stat(uri)).size > 16 * 1024 * 1024) { throw new Error('Image exceeds the 16 MB limit.'); }
+			const bytes = await vscode.workspace.fs.readFile(uri); total += bytes.length;
+			if (total > 16 * 1024 * 1024) { throw new Error('Image batch exceeds the 16 MB limit.'); }
+			data = Buffer.from(bytes).toString('base64'); cache.set(params.fileUri, data);
+		}
+		const { fileUri: _fileUri, ...rest } = params; prepared.push({ ...edit, params: { ...rest, data } });
+	}
+	return input.operation === 'batch' ? { ...input, edits: prepared } : prepared[0] as DocumentToolInput;
 }
 async function writeAtomic(uri: vscode.Uri, bytes: Uint8Array) {
 	// workspace.fs.rename(overwrite) emits a DELETE operation for the destination,
@@ -163,6 +191,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 	// The file an agent edits when none is named: the document whose editor is
 	// active, or the one most recently active among the open documents.
 	const lastActive = new Map<Kind, Document>();
+	const requestDocuments = new Map<string, string>();
 	const focusedReviewDocument = () => {
 		const input = vscode.window.tabGroups?.activeTabGroup?.activeTab?.input as { uri?: vscode.Uri; modified?: vscode.Uri } | undefined;
 		const resource = input?.uri || input?.modified;
@@ -226,11 +255,12 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			const request = activeAgentRequest();
 			if (!vscode.workspace.isTrusted) { throw new Error('Trust this workspace before allowing agent edits.'); }
 			const edits = input.operation === 'batch' ? input.edits as Record<string, unknown>[] : [input];
-			if (!Array.isArray(edits) || !edits.length || edits.length > 200 || edits.some(edit => !edit || typeof edit.id !== 'string' && !(edit.operation === 'comment' && edit.action !== 'add'))) { throw new Error('Read the document to obtain a target block ID for every edit (1-200 edits).'); }
+			if (!Array.isArray(edits) || !edits.length || edits.length > 200 || edits.some(edit => !edit || typeof edit.id !== 'string' && edit.operation !== 'append' && !(edit.operation === 'comment' && edit.action !== 'add'))) { throw new Error('Read the document to obtain a target block ID for every edit (1-200 edits).'); }
 			const observed = typeof input.version === 'string' && input.version.startsWith(doc.instance + ':') ? Number(input.version.slice(doc.instance.length + 1)) : -1;
 			const rebased = input.version !== doc.version;
 			if (rebased && (!Number.isSafeInteger(observed) || observed < 0 || observed > doc.view.state.revision || !canRebaseTextEdits(edits))) { throw new Error('Document changed. Read the target again before editing. Structural operations need a fresh version.'); }
-			const targetId = typeof edits[0].id === 'string' ? edits[0].id : undefined;
+			const tail = edits[0].operation === 'append' ? await doc.client.request<{ blocks: { id: string }[] }>('agentRead', { args: { operation: 'tail' } }) : undefined;
+			const targetId = typeof edits[0].id === 'string' ? edits[0].id : tail?.blocks[0]?.id;
 			if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
 			await beforeRequest(doc, request);
 			const beforeState = doc.view.state;
@@ -247,28 +277,28 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 					doc.dirty = true;
 					recordEdit(doc, beforeState, 'Agent document edit', request);
 				}
+				// Let the preview paint before publishing the replacement. The native edit stays atomic.
+				await new Promise(resolve => setTimeout(resolve, Math.max(0, 400 - (Date.now() - started))));
 				// Remove the editor-only preview before publishing committed content and its reveal.
 				await doc.stopActivity().catch(() => {});
 				// The native mutation is committed. Optional UI/read failures must not invite a duplicate edit.
 				const warnings: string[] = [];
 				try { await doc.broadcast(); } catch { warnings.push('Content was applied, but the editor display could not refresh. Reopen the view before continuing.'); }
 				try { await publishReview(doc, request); } catch { warnings.push('Content was applied, but change review could not refresh. Do not repeat this edit.'); }
+				const created = result.state.agentCreatedBlocks || [];
 				let content: Record<string, unknown> = {};
-				try { content = await doc.client.request<Record<string, unknown>>('agentRead', { args: input.operation === 'comment' ? { operation: 'comments' } : ['insert', 'delete', 'replaceBlocks'].includes(String(input.operation)) ? { parentId, limit: 20 } : { id: targetId } }); }
+				try { content = await doc.client.request<Record<string, unknown>>('agentRead', { args: input.operation === 'comment' ? { operation: 'comments' } : ['insert', 'append', 'replaceBlocks'].includes(String(input.operation)) && created.length ? { id: created[0].id, limit: 1 } : ['insert', 'delete', 'replaceBlocks'].includes(String(input.operation)) ? { parentId, limit: 20 } : { id: targetId } }); }
 				catch { warnings.push('Content was applied; its preview could not be read. Request a small read to inspect it, without repeating the edit.'); }
 				const commandResult = JSON.stringify(result.state.agentCommandResult ?? null).length <= 8000 ? result.state.agentCommandResult : { truncated: true, guidance: 'Read the relevant document/comment blocks in pages.' };
-				const created = result.state.agentCreatedBlocks || [];
 				if (result.state.revision !== before) {
 					const ids = [...new Set([...created.map(block => block.id), ...edits.filter(edit => edit.operation !== 'delete' && typeof edit.id === 'string').map(edit => String(edit.id))])].slice(0, 30);
 					const rects = (await Promise.all(ids.map(blockId => doc.client.request<NonNullable<State['rects']>>('agentRects', { blockId }).catch(() => [])))).flat().slice(0, 200);
-					await Promise.all([...doc.panels].map(panel => panel.webview.postMessage({ type: 'agentCommit', revision: doc.view.state.revision, rects, label: activeAgentLabel() }))).catch(() => {});
+					await Promise.all([...doc.panels].map(panel => panel.webview.postMessage({ type: 'agentCommit', revision: doc.view.state.revision, rects, label: activeAgentLabel(), request: activeAgentRequest() }))).catch(() => {});
 				}
 
 				const structuralPlaceholders = edits.every(edit => edit.operation === 'delete') ? created : [];
-				return { uri: doc.uri.toString(), version: doc.version, completed: true, ...(warnings.length ? { warnings } : {}), rebased, ...content, created: structuralPlaceholders.length ? [] : created, ...(structuralPlaceholders.length ? { retainedStructuralParagraphs: structuralPlaceholders.length, guidance: 'The requested deletion completed. The document engine retained required empty structural paragraphs (after tables or in empty containers). These are not unfinished deletions; do not delete them again.' } : {}), commandResult, appliedEdits: result.state.agentAppliedEdits || edits.map(edit => ({ id: edit.id, operation: edit.operation, command: edit.command, params: edit.params })), saved: false, undoable: result.state.revision !== before };
+				return { uri: doc.uri.toString(), name: basename(doc.uri.path), version: doc.version, completed: true, ...(input.operation === 'append' ? { placement: 'documentEnd' } : {}), ...(warnings.length ? { warnings } : {}), rebased, ...content, created: structuralPlaceholders.length ? [] : created, ...(structuralPlaceholders.length ? { retainedStructuralParagraphs: structuralPlaceholders.length, guidance: 'The requested deletion completed. The document engine retained required empty structural paragraphs (after tables or in empty containers). These are not unfinished deletions; do not delete them again.' } : {}), commandResult, appliedEdits: result.state.agentAppliedEdits || edits.map(edit => ({ id: edit.id, operation: edit.operation, command: edit.command, params: edit.params })), saved: false, undoable: result.state.revision !== before };
 			} finally {
-				// Give fast operations enough time to paint, without delaying the engine itself.
-				await new Promise(resolve => setTimeout(resolve, Math.max(0, 400 - (Date.now() - started))));
 				await doc.stopActivity().catch(() => { /* Cleanup cannot turn a committed edit into a failure. */ });
 			}
 		});
@@ -355,7 +385,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 									const bytes = await read(files[0]);
 									if (bytes.length > 16 * 1024 * 1024) { throw new Error('Image exceeds the 16 MB limit.'); }
 									const data = Buffer.from(bytes).toString('base64');
-									await execute(doc, kind === 'word' ? 'insert.picture' : kind === 'pdf' ? 'image.insert' : 'insert.image', { ...(kind === 'word' ? { width: 300 } : { page: message.page }), data, name: basename(files[0].path) });
+									await execute(doc, kind === 'word' ? message.replace ? 'picture.change' : 'insert.picture' : kind === 'pdf' ? 'image.insert' : 'insert.image', { ...(kind === 'word' ? message.replace ? { _image: message.target } : { width: 300 } : { page: message.page }), data, name: basename(files[0].path) });
 									break;
 								}
 							}
@@ -589,6 +619,15 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 		}));
 	}
 	if (kinds.includes('word')) {
+		context.subscriptions.push(vscode.commands.registerCommand('_aiOffice.word.renewActivity', (token: unknown, uris: string[]) => withAgentToolRequest(token, async () => {
+			const request = activeAgentRequest(); if (!request || !Array.isArray(uris)) { return; }
+			await Promise.all(uris.slice(0, 200).map(uri => documents.get(uri)?.renewActivity(request)));
+		})));
+		context.subscriptions.push(vscode.commands.registerCommand('_aiOffice.word.activeDocument', () => {
+			const candidates = [...documents.values()].filter(doc => doc.kind === 'word');
+			const doc = focusedReviewDocument() || candidates.find(doc => [...doc.panels].some(panel => panel.active)) || (candidates.includes(lastActive.get('word')!) ? lastActive.get('word') : undefined) || (candidates.length === 1 ? candidates[0] : undefined);
+			return doc ? { uri: doc.uri.toString(), name: basename(doc.uri.path) } : undefined;
+		}));
 		registerDocumentTools(context, {
 			async invoke(tool, input, token) {
 				if (!input || typeof input !== 'object' || JSON.stringify(input).length > 160000) { throw new Error('Document tool input is invalid or too large.'); }
@@ -596,12 +635,20 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 					if (!['content', 'commands', 'identity', 'drafting', 'comments'].includes(String(input.guide))) { throw new Error('Unknown document guide.'); }
 					return { guide: new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(context.extensionUri, 'skills/ai-office-docs', String(input.guide) + '.md'))) };
 				}
+				if (tool === 'read' && input.operation === 'open') {
+					if (typeof input.uri !== 'string') { throw new Error('Opening a document requires its full file URI.'); }
+					const uri = vscode.Uri.parse(input.uri);
+					if (!['file', 'vscode-remote'].includes(uri.scheme) || !uri.path.toLowerCase().endsWith('.docx')) { throw new Error('Open accepts a local or workspace DOCX URI.'); }
+					if (!documents.has(uri.toString())) { await vscode.commands.executeCommand('vscode.openWith', uri, 'aiOffice.word'); }
+				}
 				const wordDocuments = [...documents.values()].filter(doc => doc.kind === 'word');
 				if (tool === 'read' && input.operation === 'list') {
 					return { documents: wordDocuments.map(doc => ({ uri: doc.uri.toString(), name: basename(doc.uri.path), version: doc.version, active: [...doc.panels].some(panel => panel.active) })) };
 				}
-					const doc = input.uri ? documents.get(vscode.Uri.parse(input.uri).toString()) : focusedReviewDocument() || wordDocuments.find(doc => [...doc.panels].some(panel => panel.active)) || lastActive.get('word') || (wordDocuments.length === 1 ? wordDocuments[0] : undefined);
+				const request = activeAgentRequest(), bound = request ? requestDocuments.get(request) : undefined;
+				const doc = input.uri ? documents.get(vscode.Uri.parse(input.uri).toString()) : bound ? documents.get(bound) : focusedReviewDocument() || wordDocuments.find(doc => [...doc.panels].some(panel => panel.active)) || lastActive.get('word') || (wordDocuments.length === 1 ? wordDocuments[0] : undefined);
 				if (!doc || doc.kind !== 'word') { throw new Error('Open the Word document first. Use office_document_read with operation=list to identify open documents.'); }
+				if (request && !bound) { requestDocuments.set(request, doc.uri.toString()); if (requestDocuments.size > 256) { requestDocuments.delete(requestDocuments.keys().next().value!); } }
 				if (tool === 'history') { return history(doc, input, token); }
 				const task = doc.serial.then(async () => {
 					if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
@@ -651,7 +698,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 							guidance: 'The complete resolved formatting batch succeeded atomically. These counts verify the selected scope. Do not repeat it or reread unchanged blocks; only perform any still-missing user requirements.'
 						};
 					}
-					if (tool === 'edit') { return agentEdits.get('word')!(doc, input, token); }
+					if (tool === 'edit') { return agentEdits.get('word')!(doc, await prepareImageEdits(input), token); }
 					if (tool === 'activity') {
 						if (input.operation === 'stop') { doc.draftWorkingUntil = 0; await doc.stopActivity(); if (doc.drafts.pending().length) { await doc.broadcast(); } }
 						else {

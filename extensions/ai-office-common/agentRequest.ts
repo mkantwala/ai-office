@@ -3,20 +3,19 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-let current: string | undefined;
-let currentLabel = 'Agent';
-export function activeAgentLabel() { return currentLabel; }
-export function activeAgentRequest() { return current; }
-export async function withAgentRequest<T>(id: string, run: () => Promise<T>, label = 'Agent'): Promise<T> {
-	if (current) { throw new Error('A document agent request is already running. Wait for it to finish or stop it first.'); }
-	current = id; currentLabel = label;
-	try { return await run(); } finally { current = undefined; currentLabel = 'Agent'; }
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+const requests = new AsyncLocalStorage<{ id: string; label: string }>();
+export function activeAgentLabel() { return requests.getStore()?.label || 'Agent'; }
+export function activeAgentRequest() { return requests.getStore()?.id; }
+export function withAgentRequest<T>(id: string, run: () => Promise<T>, label = 'Agent'): Promise<T> {
+	return requests.run({ id, label }, run);
 }
 
 /** This built-in fork supplies the verified request identity in its opaque tool token. Never take it from model arguments. */
 export function withAgentToolRequest<T>(token: unknown, run: () => Promise<T>): Promise<T> {
 	const id = (token as { requestId?: string } | undefined)?.requestId;
-	if (!id || id === current) { return run(); }
+	if (!id || id === activeAgentRequest()) { return run(); }
 	const scheme = (token as { sessionResource?: { scheme?: string } })?.sessionResource?.scheme || '';
 	const label = /opencode/i.test(scheme) ? 'OpenCode' : /claude/i.test(scheme) ? 'Claude' : /codex/i.test(scheme) ? 'Codex' : 'Agent';
 	return withAgentRequest(id, run, label);

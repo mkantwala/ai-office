@@ -66,10 +66,10 @@ index 0000000..d390497
 +wasm-bindgen = "0.2"
 diff --git a/apps/ai-office-preview/src/agent.rs b/apps/ai-office-preview/src/agent.rs
 new file mode 100644
-index 0000000..2aba2ce
+index 0000000..fc07466
 --- /dev/null
 +++ b/apps/ai-office-preview/src/agent.rs
-@@ -0,0 +1,643 @@
+@@ -0,0 +1,660 @@
 +//! Internal, revision-checked block editing for the AI Office agent.
 +use serde_json::{Value, json};
 +use sha2::{Digest, Sha256};
@@ -355,6 +355,9 @@ index 0000000..2aba2ce
 +}
 +
 +pub fn read(doc: &Document, args: &Value) -> Value {
++    if args["operation"] == "tail" {
++        return read(doc, &json!({"parentId":"body","offset":doc.body.len().saturating_sub(1),"limit":1}));
++    }
 +    let all = nodes(doc);
 +    let id = args["id"].as_str();
 +    let parent = args["parentId"].as_str();
@@ -404,7 +407,7 @@ index 0000000..2aba2ce
 +        let length = n.text.chars().count();
 +        let text: String = n.text.chars().skip(text_offset).take(text_limit).collect();
 +        let end = text_offset + text.chars().count();
-+        json!({"id":n.id,"kind":n.kind,"parentId":n.parent,"style":n.style,"text":text,"textLength":length,"textOffset":text_offset,"nextTextOffset":if end < length {Some(end)}else{None},"ifHash":block_hash(doc,n),"headingLevel":heading_level(n),"paragraph":if id.is_some(){doc.para(n.story,&n.path).map(|p|wordcraft_engine::cmd::paragraph_properties::read(doc,&p.props))}else{None},"children":all.iter().filter(|c|c.parent==n.id).count()})
++        json!({"id":n.id,"kind":n.kind,"parentId":n.parent,"style":n.style,"text":text,"textLength":length,"textOffset":text_offset,"nextTextOffset":if end < length {Some(end)}else{None},"ifHash":block_hash(doc,n),"headingLevel":heading_level(n),"paragraph":if id.is_some(){doc.para(n.story,&n.path).map(|p|wordcraft_engine::cmd::paragraph_properties::read(doc,&p.props))}else{None},"images":if !outline { doc.para(n.story,&n.path).map(|p|p.object_offsets().into_iter().filter_map(|off|super::images::details(doc,&Pos::new(n.story,n.path.clone(),off),p.object_at(off)?)).collect::<Vec<_>>()) }else{None},"children":all.iter().filter(|c|c.parent==n.id).count()})
 +    }).collect();
 +    json!({"blocks":results,"total":matches.len(),"nextOffset":if offset+results.len()<matches.len(){Some(offset+results.len())}else{None},"outline":outline,"summary":if outline {json!({"headings":all.iter().filter(|n|heading_level(n).is_some()).count(),"tables":all.iter().filter(|n|n.kind=="table").count(),"blocks":all.len()})}else{Value::Null}})
 +}
@@ -494,11 +497,19 @@ index 0000000..2aba2ce
 +    if args["operation"] == "comment" {
 +        return edit_comment(session, args);
 +    }
-+    let id = args["id"].as_str().ok_or("A target block ID is required")?;
-+    let node = target(&session.doc, id)?;
++    let append = args["operation"] == "append";
++    let node = if append {
++        if args.get("id").is_some() || args.get("position").is_some() || args.get("ifHash").is_some() {
++            return Err("Append resolves the document end internally. Omit id, position and ifHash.".into());
++        }
++        Node {id:String::new(),kind:"paragraph",parent:"body".into(),story:StoryRef::Body,path:Path(vec![session.doc.body.len() as u32]),text:String::new(),style:None,level:None}
++    } else {
++        target(&session.doc, args["id"].as_str().ok_or("A target block ID is required")?)?
++    };
++    let id = node.id.as_str();
 +    let mut command_result = Value::Null;
 +    match args["operation"].as_str().ok_or("operation is required")? {
-+        "insert" => {
++        "insert" | "append" => {
 +            if matches!(node.kind, "row" | "cell") {
 +                return Err("Insert relative to a paragraph or table, including paragraphs inside cells".into());
 +            }
@@ -507,11 +518,11 @@ index 0000000..2aba2ce
 +                return Err("Insert 1-50 blocks at a time".into());
 +            }
 +            let blocks: Vec<_> = values.iter().map(new_block).collect::<Result<_, _>>()?;
-+            let after = match args["position"].as_str().unwrap_or("after") {
++            let after = if append { 0 } else { match args["position"].as_str().unwrap_or("after") {
 +                "after" => 1,
 +                "before" => 0,
 +                _ => return Err("position must be before or after".into()),
-+            };
++            }};
 +            for (i, block) in blocks.into_iter().enumerate() {
 +                let style = match &block {
 +                    Block::Para(p) => p.props.style.clone(),
@@ -581,7 +592,7 @@ index 0000000..2aba2ce
 +        }
 +        "command" => {
 +            let command = args["command"].as_str().ok_or("command is required")?;
-+            if !super::allowed(command) || command.starts_with("edit.") || command.starts_with("caret.") || command.starts_with("select.") {
++            if !super::allowed(command) || command.starts_with("edit.") || command.starts_with("caret.") || command.starts_with("select.") || command == "picture.select" {
 +                return Err("Command cannot be used as a targeted agent edit; use help for supported commands".into());
 +            }
 +            if command == "para.properties" && session.doc.para(node.story, &node.path).is_none() {
@@ -594,8 +605,8 @@ index 0000000..2aba2ce
 +            let len = session.doc.para(node.story, last).map_or(0, |p| p.text.len());
 +            session.sel = Selection { anchor: Pos::new(node.story, (*first).clone(), 0), focus: Pos::new(node.story, (*last).clone(), len) };
 +            if args.get("start").is_some() || args.get("end").is_some() {
-+                if first != last || !command.starts_with("format.") {
-+                    return Err("Character ranges require one paragraph and a character formatting command".into());
++                if first != last || !(command.starts_with("format.") || command.starts_with("picture.") || command.starts_with("arrange.") || command == "object.altText" || command == "references.caption") {
++                    return Err("Ranges require one paragraph and a formatting or image command".into());
 +                }
 +                let paragraph = session.doc.para(node.story, first).ok_or("Paragraph missing")?;
 +                let offsets: Vec<_> = paragraph.text.char_indices().map(|(i, _)| i).chain(std::iter::once(paragraph.text.len())).collect();
@@ -607,10 +618,16 @@ index 0000000..2aba2ce
 +                if start > end {
 +                    return Err("Invalid character range".into());
 +                }
++                if !command.starts_with("format.") && (end != start + wordcraft_doc::para::OBJ.len_utf8() || !matches!(paragraph.object_at(start), Some(InlineObject::Image { .. }))) {
++                    return Err("Image commands require the exact image start/end from a fresh read".into());
++                }
 +                session.sel = Selection { anchor: Pos::new(node.story, (*first).clone(), start), focus: Pos::new(node.story, (*last).clone(), end) };
 +            }
 +            if command.starts_with("insert.") || command.starts_with("text.") {
 +                session.sel = Selection::caret(session.sel.focus.clone());
++            }
++            if (command.starts_with("picture.") || command.starts_with("arrange.") || command == "object.altText") && args.get("start").is_none() {
++                return Err("Image commands require start/end from the target paragraph images in a fresh read".into());
 +            }
 +            command_result = session.run(command, args.get("params").unwrap_or(&json!({}))).map_err(|e| e.to_string())?;
 +        }
@@ -713,12 +730,45 @@ index 0000000..2aba2ce
 +    };
 +    session.run(command, &params).map_err(|error| error.to_string())
 +}
+diff --git a/apps/ai-office-preview/src/images.rs b/apps/ai-office-preview/src/images.rs
+new file mode 100644
+index 0000000..84a7a0f
+--- /dev/null
++++ b/apps/ai-office-preview/src/images.rs
+@@ -0,0 +1,27 @@
++//! Bounded, read-only image geometry. Native commands own edits and undo.
++use serde_json::{Value,json};
++use wordcraft_doc::{Pos,para::InlineObject};
++use wordcraft_engine::{Session,cmd::objects};
++use wordcraft_layout::{DocLayout,hit::ObjectHit};
++
++pub fn details(doc: &wordcraft_doc::Document, pos: &Pos, o: &InlineObject) -> Option<Value> {
++    let InlineObject::Image {w,h,alt,float,crop,..} = o else {return None};
++    let p=doc.para_at(pos)?;
++    let offset=p.text.get(..pos.off)?.chars().count();
++    Some(json!({"parentId":p.props.office_id,"offset":offset,"width":w,"height":h,"alt":alt,"title":float.alt.title,"decorative":float.alt.decorative,"crop":crop,"wrap":float.wrap,"rotation":float.rot,"flipH":float.flip_h,"flipV":float.flip_v}))
++}
++fn geometry_one(s:&Session,hit:&ObjectHit)->Option<Value>{
++    let p=s.doc.para_at(&hit.pos())?;
++    let mut v=details(&s.doc,&hit.pos(),p.object_at(hit.off)?)?;
++    let r=hit.rect;
++    v["page"]=json!(hit.page);v["x"]=json!(r.x);v["y"]=json!(r.y);
++    Some(v)
++}
++pub fn selected(s:&Session,l:&DocLayout)->Value{
++    let Some((pos,_))=objects::object_selection(s) else{return Value::Null};
++    l.object(&pos,s.page_hint).and_then(|hit|geometry_one(s,&hit)).unwrap_or(Value::Null)
++}
++pub fn geometry(s:&Session,l:&DocLayout,page:usize)->Value{
++    let Some(p)=l.pages.get(page) else{return json!([])};
++    json!(wordcraft_layout::hit::all_objects(p,page).filter(|hit|hit.story==s.sel.focus.story).filter_map(|hit|geometry_one(s,&hit)).take(200).collect::<Vec<_>>())
++}
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..aeca50a
+index 0000000..26dc9de
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,481 @@
+@@ -0,0 +1,497 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -731,6 +781,7 @@ index 0000000..aeca50a
 +mod agent;
 +mod review;
 +mod table;
++mod images;
 +
 +#[wasm_bindgen]
 +pub struct OfficeDocument {
@@ -786,6 +837,12 @@ index 0000000..aeca50a
 +        }
 +        let args: Value = serde_json::from_str(params).map_err(|e| JsValue::from_str(&e.to_string()))?;
 +        let revision = self.session.rev();
++        if let Some(target) = args.get("_image") {
++            let current = images::selected(&self.session, &self.layout);
++            if target["revision"].as_u64() != Some(revision) || current.is_null() || target["parentId"] != current["parentId"] || target["offset"] != current["offset"] {
++                return Err(JsValue::from_str("Image changed or selection moved. Select the image again."));
++            }
++        }
 +        self.session.close_typing();
 +        self.session.run(command, &args).map_err(|e| JsValue::from_str(&e.to_string()))?;
 +        if self.session.rev() != revision && !self.id_prefix.is_empty() {
@@ -873,7 +930,7 @@ index 0000000..aeca50a
 +            _ => "body",
 +        };
 +        let style = self.session.doc.para(sel.focus.story, &sel.focus.path).and_then(|p| p.props.style.as_deref()).unwrap_or("Normal");
-+        serde_json::to_string(&json!({"pageSetup":page_setup,"pageRegions":regions,"editingRegion":editing_region,"formatting":wordcraft_engine::cmd::format::state(&self.session),"paragraph":paragraph,"pageRuler":page_ruler,"undoDepth":self.session.undo_depth(),"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
++        serde_json::to_string(&json!({"image":images::selected(&self.session,&self.layout),"pageSetup":page_setup,"pageRegions":regions,"editingRegion":editing_region,"formatting":wordcraft_engine::cmd::format::state(&self.session),"paragraph":paragraph,"pageRuler":page_ruler,"undoDepth":self.session.undo_depth(),"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
 +    }
 +
 +    /// Geometry only for the page being rendered; no document-wide scan on typing.
@@ -881,6 +938,10 @@ index 0000000..aeca50a
 +        let tables: Vec<_> = wordcraft_engine::cmd::table_resize::tables_on(&self.layout, &self.session.doc, page)
 +            .iter().map(|t| json!({"cols":t.cols,"rows":t.rows.iter().map(|r| json!({"row":r.row,"top":r.top,"bottom":r.bottom,"edges":r.edges})).collect::<Vec<_>>(),"endsHere":t.ends_here,"movable":wordcraft_engine::cmd::table_mouse::movable(t)})).collect();
 +        serde_json::to_string(&tables).map_err(|e| JsValue::from_str(&e.to_string()))
++    }
++
++    pub fn images(&self, page: usize) -> Result<String, JsValue> {
++        Ok(images::geometry(&self.session, &self.layout, page).to_string())
 +    }
 +
 +    /// Pure drag feedback. Uses the same plan as the eventual native command.
@@ -1160,6 +1221,11 @@ index 0000000..aeca50a
 +            | "table.borders"
 +            | "table.selectCell"
 +            | "insert.table"
++            | "picture.select" | "picture.delete" | "picture.size" | "picture.crop" | "picture.change" | "picture.altText"
++            | "object.altText" | "picture.reset" | "picture.border" | "picture.style"
++            | "arrange.wrap" | "arrange.wrapText" | "arrange.moveWithText" | "arrange.position" | "arrange.align"
++            | "arrange.bounds" | "arrange.nudge" | "arrange.rotation" | "arrange.rotate"
++            | "arrange.bringForward" | "arrange.sendBackward" | "references.caption"
 +            | "insert.picture"
 +            | "insert.link"
 +            | "review.newComment"
@@ -1821,6 +1887,34 @@ index 33dffa5..a69135c 100644
  pub mod paste;
  pub mod phonetic;
  pub mod protect;
+diff --git a/crates/engine/src/cmd/objects.rs b/crates/engine/src/cmd/objects.rs
+index 1149330..a2c6077 100644
+--- a/crates/engine/src/cmd/objects.rs
++++ b/crates/engine/src/cmd/objects.rs
+@@ -82,6 +82,23 @@ fn has_shape(s: &Session) -> Option<&'static str> {
+ 
+ pub fn specs() -> Vec<CommandSpec> {
+     vec![
++        CommandSpec::new("picture.select", "Select Picture", "Picture Format", |s, v| {
++            if v["revision"].as_u64() != Some(s.rev()) { return Err(CmdError::Failed("Document changed. Select the picture again.".into())); }
++            let page = p::u64(v, "page").ok_or_else(|| CmdError::Params("page required".into()))? as usize;
++            let (x, y) = (p::req_f32(v, "x")?, p::req_f32(v, "y")?);
++            let layout = s.layout();
++            let hit = layout.object_at_in(page, x, y, 0.0, s.sel.focus.story).ok_or_else(|| CmdError::Failed("No picture here".into()))?;
++            let pos = hit.pos();
++            if !matches!(s.doc.para_at(&pos).and_then(|p| p.object_at(pos.off)), Some(InlineObject::Image { .. })) { return Err(CmdError::Failed("No picture here".into())); }
++            s.page_hint = page;
++            s.sel = Selection { anchor: pos.clone(), focus: Pos { off: pos.off + wordcraft_doc::para::OBJ.len_utf8(), ..pos } };
++            sel_result(s)
++        }).params(r#"{"page": zeroBasedPage, "x": pt, "y": pt, "revision": currentRevision}"#).pure(),
++        CommandSpec::new("picture.delete", "Delete Picture", "Picture Format", |s, _| {
++            let (pos, _) = object_selection(s).filter(|(_, o)| matches!(o, InlineObject::Image { .. })).ok_or_else(|| CmdError::Failed("Select exactly one picture first".into()))?;
++            let _ = pos;
++            s.run("text.delete", &json!({}))
++        }).when(has_picture),
+         CommandSpec::new("picture.size", "Size", "Picture Format › Size", size).params(r#"{"width"?: pt, "height"?: pt, "lockAspect"?: bool, "scale"?: percent}"#).when(has_sizable),
+         CommandSpec::new("picture.crop", "Crop", "Picture Format › Size", |s, v| {
+             let c = [p::f32(v, "left"), p::f32(v, "top"), p::f32(v, "right"), p::f32(v, "bottom")].map(|x| x.unwrap_or(0.0).clamp(0.0, 0.45));
 diff --git a/crates/engine/src/cmd/page.rs b/crates/engine/src/cmd/page.rs
 index 2e9b7f4..8c8ef43 100644
 --- a/crates/engine/src/cmd/page.rs
@@ -2270,9 +2364,18 @@ index 81fae1a..34f991f 100644
      let mut tables: Vec<(StoryRef, &Path)> = Vec::new();
      for b in &boxes {
 diff --git a/crates/layout/src/hit.rs b/crates/layout/src/hit.rs
-index 12b75ac..979229d 100644
+index 12b75ac..ab50e2c 100644
 --- a/crates/layout/src/hit.rs
 +++ b/crates/layout/src/hit.rs
+@@ -89,7 +89,7 @@ fn objects(page: &Page, index: usize) -> impl Iterator<Item = ObjectHit> + '_ {
+ }
+ 
+ /// A page's objects including its header's and footer's.
+-fn all_objects(page: &Page, index: usize) -> impl Iterator<Item = ObjectHit> + '_ {
++pub fn all_objects(page: &Page, index: usize) -> impl Iterator<Item = ObjectHit> + '_ {
+     objects_in(&page.items, index).chain(objects_in(&page.header, index)).chain(objects_in(&page.footer, index))
+ }
+ 
 @@ -408,8 +408,18 @@ impl DocLayout {
              // In the lines' own frame (turned text turns it onto the page).
              let top = l.top - first.top;

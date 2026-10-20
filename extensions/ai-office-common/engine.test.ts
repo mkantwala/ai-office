@@ -18,6 +18,7 @@ import { WordFrame } from './wordFrame.js';
 import { activityRegion } from './agentActivity.js';
 import { DocumentDrafts } from './documentDrafts.js';
 import { DocumentVersions } from './documentVersions.js';
+import { activeAgentRequest, activeAgentLabel, withAgentRequest } from './agentRequest.js';
 import type { Block, State } from './types.js';
 
 const root = resolve('extensions');
@@ -1135,4 +1136,79 @@ test('Word table context commands preserve block identities, native undo and DOC
 		await command('table.deleteTable'); assert.equal(engine.render(0, 1).tables!.length, 0);
 		await engine.execute('edit.undo', {}); assert.equal(engine.render(0, 1).tables!.length, 1);
 	} finally { engine.dispose(); }
+});
+
+test('Word images support exact selection, guarded agent edits, layout, crop, captions and DOCX round trips', async () => {
+	const engine = await openEngine('word', 'Images.docx', docx, root);
+	try {
+		await engine.execute('caret.docEnd', {}); await engine.execute('text.newParagraph', {});
+		await engine.execute('insert.picture', { data: imageFixture(), width: 144 });
+		const image = engine.render(0, 1).images![0]; assert.ok(image);
+		const select = async () => { const i = engine.render(0, 1).images![0]; await engine.execute('picture.select', { page: i.page, x: i.x + i.width / 2, y: i.y + i.height / 2, revision: engine.state().revision }); return engine.state().image!; };
+		const selected = await select(); assert.ok(selected.width > 0);
+		const target = { revision: engine.state().revision, parentId: selected.parentId, offset: selected.offset };
+		await engine.execute('picture.size', { width: 108, height: 72, lockAspect: false, _image: target });
+		assert.equal(engine.state().image!.width, 108); assert.equal(engine.state().image!.height, 72);
+		await assert.rejects(engine.execute('picture.size', { width: 300, _image: target }), /changed/);
+		const edit = async (command: string, params: Record<string, unknown> = {}) => {
+			const read = engine.agent!.read({ id: image.parentId }) as { blocks: { id: string; images: { offset: number }[] }[] };
+			const block = read.blocks[0], offset = block.images[0].offset;
+			await engine.agent!.edit({ operation: 'command', id: block.id, revision: engine.state().revision, start: offset, end: offset + 1, command, params });
+		};
+		await assert.rejects(engine.agent!.edit({ operation: 'command', id: image.parentId, revision: engine.state().revision, command: 'picture.size', params: { width: 300 } }), /start\/end/);
+		await edit('picture.crop', { left: .1, top: .05 });
+		await edit('arrange.wrap', { wrap: 'square' });
+		await edit('arrange.bounds', { x: 100, y: 180, page: 0 });
+		await edit('arrange.rotation', { degrees: 90 });
+		await edit('object.altText', { text: 'Blue verification square', title: 'Test image', decorative: false });
+		await edit('picture.change', { data: imageFixture() });
+		await edit('references.caption', { label: 'Figure', text: 'An editable image', position: 'below' });
+		const bytes = await engine.export(), files = unzipSync(bytes), xml = strFromU8(files['word/document.xml']);
+		assert.match(xml, /Blue verification square/); assert.match(xml, /Test image/); assert.match(xml, /SEQ.*Figure/); assert.match(xml, /An editable image/); assert.match(xml, /srcRect/); assert.match(xml, /wrapSquare/);
+		const reopened = await openEngine('word', 'Images.docx', bytes, root);
+		try {
+			const read = reopened.agent!.read({ id: image.parentId }) as { blocks: { images: { offset: number; width: number; height: number; rotation: number; alt: string; crop: number[] }[] }[] };
+			const i = read.blocks[0].images[0]; assert.equal(i.width, 108); assert.equal(i.height, 72); assert.equal(i.alt, 'Blue verification square'); assert.equal(i.rotation, 90); assert.ok(Math.abs(i.crop[0] - .1) < .0001);
+			await reopened.agent!.edit({ operation: 'command', id: image.parentId, revision: reopened.state().revision, start: i.offset, end: i.offset + 1, command: 'picture.delete', params: {} });
+			assert.equal(reopened.render(0, 1).images!.length, 0); await reopened.execute('edit.undo', {}); assert.equal(reopened.render(0, 1).images!.length, 1);
+		} finally { reopened.dispose(); }
+	} finally { engine.dispose(); }
+});
+
+test('Word append resolves the actual body end beyond pagination and remains atomic through Undo and DOCX', async () => {
+	const files = unzipSync(docx);
+	const more = Array.from({ length: 73 }, (_, i) => `<w:p><w:r><w:t>Body paragraph ${i}</w:t></w:r></w:p>`).join('');
+	files['word/document.xml'] = strToU8(strFromU8(files['word/document.xml']).replace('<w:sectPr>', more + '<w:sectPr>'));
+	const engine = await openEngine('word', 'Append.docx', zipSync(files), root);
+	type Read = { blocks: { id: string; text: string; parentId: string; ifHash: string }[]; total: number };
+	const tail = () => (engine.agent!.read({ operation: 'tail' }) as Read).blocks[0];
+	try {
+		const first = engine.agent!.read({ limit: 20 }) as Read;
+		assert.equal(first.blocks.length, 20); assert.ok(first.total > 20); assert.equal(tail().text, 'Body paragraph 72');
+		const revision = engine.state().revision;
+		await engine.agent!.edit({ operation: 'append', revision, blocks: [{ kind: 'paragraph', text: 'hello world' }] });
+		assert.equal(tail().text, 'hello world'); assert.equal(tail().parentId, 'body');
+		await assert.rejects(engine.agent!.edit({ operation: 'append', revision, blocks: [{ text: 'Stale append' }] }), /fresh/);
+		await assert.rejects(engine.agent!.edit({ operation: 'append', revision: engine.state().revision, id: first.blocks[19].id, blocks: [{ text: 'Wrong anchor' }] }), /Omit id/);
+		await engine.agent!.edit({ operation: 'batch', revision: engine.state().revision, edits: [{ operation: 'append', blocks: [{ kind: 'paragraph', text: 'second' }] }, { operation: 'append', blocks: [{ kind: 'paragraph', text: 'third' }] }] });
+		assert.equal(tail().text, 'third');
+		await engine.execute('edit.undo', {}); assert.equal(tail().text, 'hello world');
+		await engine.execute('edit.redo', {}); assert.equal(tail().text, 'third');
+		assert.deepEqual((engine.agent!.read({ limit: 20 }) as Read).blocks.map(b => b.ifHash), first.blocks.map(b => b.ifHash));
+		const final = tail(); const reopened = await openEngine('word', 'Append.docx', await engine.export(), root);
+		try { const last = (reopened.agent!.read({ operation: 'tail' }) as Read).blocks[0]; assert.equal(last.text, 'third'); assert.equal(last.id, final.id); } finally { reopened.dispose(); }
+	} finally { engine.dispose(); }
+});
+
+test('Word concurrent agent request contexts retain their own identity and label across awaits', async () => {
+	const seen: string[] = [];
+	await Promise.all(['A', 'B'].map((id, i) => withAgentRequest(id, async () => {
+		for (let n = 0; n < 4; n++) {
+			await new Promise(resolve => setTimeout(resolve, i + 1));
+			assert.equal(activeAgentRequest(), id); assert.equal(activeAgentLabel(), id + ' agent'); seen.push(id);
+		}
+		await assert.rejects(withAgentRequest('nested', async () => { assert.equal(activeAgentRequest(), 'nested'); throw new Error('nested failure'); }), /nested failure/);
+		assert.equal(activeAgentRequest(), id);
+	}, id + ' agent')));
+	assert.equal(seen.length, 8); assert.equal(activeAgentRequest(), undefined); assert.equal(activeAgentLabel(), 'Agent');
 });

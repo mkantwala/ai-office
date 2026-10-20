@@ -10,7 +10,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const documentTools = JSON.parse(fs.readFileSync('extensions/ai-office-pdf/package.json', 'utf8')).contributes.languageModelTools.filter(tool => tool.name.startsWith('office_document_'));
 
-function harness(saved = [], trusted = true) {
+function harness(saved = [], trusted = true, activeDocument = undefined) {
 	const disposables = [], commands = new Map(), connections = [], calls = [], items = new Map();
 	let provider, controller, participant;
 	const statusButton = { show() { this.visible = true; }, dispose() { this.disposed = true; } };
@@ -41,10 +41,10 @@ function harness(saved = [], trusted = true) {
 		StatusBarAlignment: { Right: 2 },
 		workspace: { isTrusted: trusted, workspaceFolders: [{ uri: Uri.file('/workspace/example') }], getConfiguration: () => ({ get: () => 'opencode' }) },
 		window: { createStatusBarItem: (id, alignment, priority) => Object.assign(statusButton, { id, alignment, priority }), tabGroups: { activeTabGroup: {} }, showQuickPick: async options => options.find(option => option.id === 'allow') },
-		commands: { getCommands: async () => ['workbench.action.chat.openNewSessionSidebar.opencode', 'workbench.action.chat.openNewSessionSidebar.codex', 'workbench.action.chat.openNewSessionSidebar.claude-code'], registerCommand: (id, handler) => { commands.set(id, handler); return { dispose() {} }; }, executeCommand: async (id, ...args) => calls.push({ command: id, args }) },
+		commands: { getCommands: async () => ['workbench.action.chat.openNewSessionSidebar.opencode', 'workbench.action.chat.openNewSessionSidebar.codex', 'workbench.action.chat.openNewSessionSidebar.claude-code'], registerCommand: (id, handler) => { commands.set(id, handler); return { dispose() {} }; }, executeCommand: async (id, ...args) => { calls.push({ command: id, args }); return id === '_aiOffice.word.activeDocument' ? activeDocument : undefined; } },
 		lm: {
 			tools: documentTools.map(tool => ({ name: tool.name, description: tool.modelDescription, inputSchema: tool.inputSchema })),
-			invokeTool: async (name, options, token) => { assert.ok(!token?.isCancellationRequested); calls.push({ name, options }); return { content: [new Text(JSON.stringify(name === 'office_document_activity' ? { uri: 'file:/document.docx' } : { appliedEdits: [{ id: 'paragraph-1' }], version: 'updated' }))] }; }
+			invokeTool: async (name, options, token) => { assert.ok(!token?.isCancellationRequested); calls.push({ name, options }); return { content: [new Text(JSON.stringify(options.input.simulateError ? { error: 'Document changed', retry: 'Read the target again' } : name === 'office_document_activity' ? { uri: 'file:/document.docx' } : { appliedEdits: [{ id: 'paragraph-1' }], version: 'updated' }))] }; }
 		},
 		chat: {
 			createChatSessionItemController: (_type, refreshHandler) => controller = {
@@ -82,6 +82,7 @@ function harness(saved = [], trusted = true) {
 					const response = await fetch(env.SANGAM_DOCS_URL, { method: 'POST', headers: { Authorization: 'Bearer ' + env.SANGAM_DOCS_TOKEN }, body: JSON.stringify({ id: 1, method: 'tools/call', params: { name, arguments: input } }) });
 					return response.json();
 				};
+				if (text.endsWith('tool-error')) { const result = await invoke('office_document_edit', { simulateError: true }); this.structuredError = result.result; return { stopReason: 'end_turn' }; }
 				if (text.endsWith('all-tools')) {
 					const listing = await fetch(env.SANGAM_DOCS_URL, { method: 'POST', headers: { Authorization: 'Bearer ' + env.SANGAM_DOCS_TOKEN }, body: JSON.stringify({ id: 2, method: 'tools/list' }) });
 					assert.equal(listing.status, 200);
@@ -167,6 +168,7 @@ test('OpenCode uses request-scoped document tools, clears shimmer and exposes mo
 		assert.deepEqual(edit.options, { input: { id: 'paragraph-1', ifHash: 'guard', text: 'Revised' }, toolInvocationToken: invocationToken });
 		assert.deepEqual(h.connections[0].permission, { outcome: { outcome: 'selected', optionId: 'allow' } });
 		assert.equal(h.calls.at(-1).options.input.operation, 'stop');
+		assert.equal(h.calls.at(-1).options.toolInvocationToken, invocationToken, 'Cleanup retains ownership and cannot clear another request’s shimmer');
 		assert.deepEqual(stream.text, ['Document updated.']);
 		assert.deepEqual(stream.parts.map(part => ({ id: part.toolCallId, live: part.enablePartialUpdate, complete: part.isComplete })), [
 			{ id: 'doc-edit', live: true, complete: false }, { id: 'doc-edit', live: true, complete: true }
@@ -234,5 +236,27 @@ test('Native OpenCode request failures are returned to chat and sessions can ret
 		assert.equal(item.status, h.vscode.ChatSessionStatus.Failed);
 		h.connections[0].prompt = async () => ({ stopReason: 'end_turn' });
 		assert.deepEqual(await h.participant.handler({ prompt: 'retry', references: [] }, context, h.stream(), h.token().token), {});
+	} finally { h.dispose(); }
+});
+
+	test('OpenCode binds omitted tool URIs to the editor captured at request start', async () => {
+	const h = harness([], true, { uri: 'file:/active.docx', name: 'active.docx' });
+	try {
+		const item = await h.newSession();
+		const result = await h.participant.handler({ prompt: 'default-target', references: [], toolInvocationToken: { requestId: 'active-binding' } }, { history: [], chatSessionContext: { chatSessionItem: item, inputState: h.input() } }, h.stream(), h.token().token);
+		assert.deepEqual(result, {});
+		const edit = h.calls.find(call => call.name === 'office_document_edit');
+		assert.equal(edit.options.input.uri, 'file:/active.docx');
+		assert.ok(h.connections[0].promptText.includes('active.docx'));
+	} finally { h.dispose(); }
+	});
+
+test('OpenCode treats structured document refusals as failed MCP tool calls', async () => {
+	const h = harness();
+	try {
+		const item = await h.newSession();
+		await h.participant.handler({ prompt: 'tool-error', references: [] }, { history: [], chatSessionContext: { chatSessionItem: item, inputState: h.input() } }, h.stream(), h.token().token);
+		assert.equal(h.connections[0].structuredError.isError, true);
+		assert.match(h.connections[0].structuredError.content[0].text, /Document changed/);
 	} finally { h.dispose(); }
 });

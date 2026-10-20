@@ -49,3 +49,8 @@ Structural edits require the latest `version`. Only update/replaceText with matc
 Use `office_document_read` with `operation:styles` and an optional name/ID query to discover the document’s real style sizes. Use `office_document_history` status for available Undo/Redo and request checkpoints; mutations require its fresh version. History changes affect the open document and do not save it.
 
 History also supports `operation:checkpoint` with a fresh version to record the current position without editing the document. Later `restore` takes its internal checkpoint token. New edits after Undo discard the abandoned redo branch; checkpoints beyond the retained native undo history are unavailable.
+
+
+## Append at the document end
+
+For “at the end”, use `office_document_edit` with `{operation:"append",uri:<document URI>,version:<fresh version>,blocks:[{kind:"paragraph",text:"hello world"}]}`. Omit `id`, `position` and `ifHash`. The native engine appends to the actual body end inside the transaction; no pagination or guessed anchor is involved. This also works after tables and in a batch. `office_document_read` with `operation:tail` inspects the actual last top-level body block. Do not use the last result of a paginated read as the document end. Verify the returned created block and URI before claiming success.
