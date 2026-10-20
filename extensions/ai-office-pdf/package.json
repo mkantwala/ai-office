@@ -1274,15 +1274,6 @@
 					"edit",
 					"agent"
 				]
-			},
-			{
-				"id": "ai-office.opencode",
-				"name": "opencode",
-				"fullName": "OpenCode",
-				"description": "Work with OpenCode and your configured model providers.",
-				"modes": [
-					"agent"
-				]
 			}
 		],
 		"languageModelChatProviders": [

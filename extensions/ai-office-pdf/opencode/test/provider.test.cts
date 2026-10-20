@@ -8,10 +8,11 @@ const { test } = require('node:test');
 const Module = require('node:module');
 const path = require('node:path');
 const fs = require('node:fs');
+const documentTools = JSON.parse(fs.readFileSync('extensions/ai-office-pdf/package.json', 'utf8')).contributes.languageModelTools.filter(tool => tool.name.startsWith('office_document_'));
 
 function harness(saved = [], trusted = true) {
 	const disposables = [], commands = new Map(), connections = [], calls = [], items = new Map();
-	let provider, controller;
+	let provider, controller, participant;
 	const statusButton = { show() { this.visible = true; }, dispose() { this.disposed = true; } };
 	class Uri {
 		constructor(value) { Object.assign(this, value); }
@@ -42,15 +43,16 @@ function harness(saved = [], trusted = true) {
 		window: { createStatusBarItem: (id, alignment, priority) => Object.assign(statusButton, { id, alignment, priority }), tabGroups: { activeTabGroup: {} }, showQuickPick: async options => options.find(option => option.id === 'allow') },
 		commands: { registerCommand: (id, handler) => { commands.set(id, handler); return { dispose() {} }; }, executeCommand: async (id, ...args) => calls.push({ command: id, args }) },
 		lm: {
-			tools: [{ name: 'office_document_edit', description: 'Edit', inputSchema: { type: 'object' } }, { name: 'office_document_activity', description: 'Activity', inputSchema: { type: 'object' } }],
+			tools: documentTools.map(tool => ({ name: tool.name, description: tool.modelDescription, inputSchema: tool.inputSchema })),
 			invokeTool: async (name, options, token) => { assert.ok(!token?.isCancellationRequested); calls.push({ name, options }); return { content: [new Text(JSON.stringify(name === 'office_document_activity' ? { uri: 'file:/document.docx' } : { appliedEdits: [{ id: 'paragraph-1' }], version: 'updated' }))] }; }
 		},
 		chat: {
 			createChatSessionItemController: (_type, refreshHandler) => controller = {
 				items: { get: uri => items.get(uri.toString()), add: item => items.set(item.resource.toString(), item), replace: values => { items.clear(); values.forEach(item => items.set(item.resource.toString(), item)); } },
+				createChatSessionInputState: groups => ({ groups, managed: true }),
 				createChatSessionItem: (resource, label) => ({ resource, label }), refreshHandler, dispose() {}
 			},
-			createChatParticipant: () => ({ dispose() {} }),
+			createChatParticipant: (id, handler) => participant = { id, handler, dispose() {} },
 			registerChatSessionContentProvider: (_type, value) => { provider = value; return { dispose() {} }; }
 		}
 	};
@@ -80,11 +82,20 @@ function harness(saved = [], trusted = true) {
 					const response = await fetch(env.SANGAM_DOCS_URL, { method: 'POST', headers: { Authorization: 'Bearer ' + env.SANGAM_DOCS_TOKEN }, body: JSON.stringify({ id: 1, method: 'tools/call', params: { name, arguments: input } }) });
 					return response.json();
 				};
+				if (text.endsWith('all-tools')) {
+					const listing = await fetch(env.SANGAM_DOCS_URL, { method: 'POST', headers: { Authorization: 'Bearer ' + env.SANGAM_DOCS_TOKEN }, body: JSON.stringify({ id: 2, method: 'tools/list' }) });
+					assert.equal(listing.status, 200);
+					this.listedTools = (await listing.json()).result.tools;
+					for (const tool of documentTools) { await invoke(tool.name, { operation: 'test', uri: 'file:/document.docx', version: 'version', ifHash: 'guard' }); }
+					return { stopReason: 'end_turn' };
+				}
 				await invoke('office_document_activity', { operation: 'start', id: 'paragraph-1' });
 				const edited = await invoke('office_document_edit', { id: 'paragraph-1', ifHash: 'guard', text: 'Revised' });
 				assert.match(edited.result.content[0].text, /appliedEdits/);
 				const permission = await client.requestPermission({ sessionId: 'native-id', toolCall: { title: 'Write document', rawInput: { file: 'document.docx' } }, options: [{ optionId: 'allow', name: 'Allow Once', kind: 'allow_once' }, { optionId: 'deny', name: 'Deny', kind: 'reject_once' }] });
 				this.permission = permission;
+				client.sessionUpdate({ sessionId: 'native-id', update: { sessionUpdate: 'tool_call', toolCallId: 'doc-edit', title: 'Edit document', kind: 'edit', status: 'in_progress' } });
+				client.sessionUpdate({ sessionId: 'native-id', update: { sessionUpdate: 'tool_call_update', toolCallId: 'doc-edit', status: 'completed' } });
 				client.sessionUpdate({ sessionId: 'native-id', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Document updated.' } } });
 				return { stopReason: 'end_turn' };
 			},
@@ -94,11 +105,11 @@ function harness(saved = [], trusted = true) {
 		connections.push(connection); return connection;
 	};
 	register({ subscriptions: disposables, extensionUri: Uri.file(path.resolve('extensions/ai-office-pdf')), globalState: { get: () => stored, update: async (_key, value) => { stored = JSON.parse(JSON.stringify(value)); } } }, factory);
-	const input = () => ({ groups: [] });
+	const input = () => controller.getChatSessionInputState(undefined, { previousInputState: { groups: [] } });
 	const token = () => new CancellationTokenSource();
-	const stream = () => { const text = []; return { text, progress() {}, push() {}, thinkingProgress() {}, markdown: value => text.push(value) }; };
+	const stream = () => { const text = [], parts = []; return { text, parts, progress() {}, push: part => parts.push(part), thinkingProgress() {}, markdown: value => text.push(value) }; };
 	const newSession = async () => { const item = await controller.newChatSessionItemHandler({ request: { prompt: 'Edit a document' }, inputState: input() }); controller.items.add(item); return item; };
-	return { vscode, statusButton, provider, controller, newSession, input, token, stream, connections, calls, items, commands, saved: () => stored, dispose: () => disposables.reverse().forEach(value => value.dispose()) };
+	return { vscode, statusButton, provider, participant, controller, newSession, input, token, stream, connections, calls, items, commands, saved: () => stored, dispose: () => disposables.reverse().forEach(value => value.dispose()) };
 }
 
 test('OpenCode manifest enables native session creation commands', () => {
@@ -106,6 +117,7 @@ test('OpenCode manifest enables native session creation commands', () => {
 	const contribution = manifest.contributes.chatSessions.find(session => session.type === 'opencode');
 	assert.equal(contribution.canDelegate, true, 'The workbench only registers native new-session commands for delegating providers');
 	assert.equal(contribution.requiresCopilotSignIn, false);
+	assert.ok(!manifest.contributes.chatParticipants.some(participant => participant.id === contribution.type), 'The session contribution owns agent registration; a duplicate participant declaration breaks activation');
 });
 
 test('OpenCode registers in the native picker and keeps empty sessions lightweight', async () => {
@@ -118,6 +130,11 @@ test('OpenCode registers in the native picker and keeps empty sessions lightweig
 		assert.equal(h.statusButton.alignment, h.vscode.StatusBarAlignment.Right);
 		assert.equal(h.statusButton.command, 'aiOffice.opencode.newSession');
 		assert.equal(h.statusButton.visible, true);
+		assert.equal(h.participant.id, 'opencode', 'Native sessions invoke their session type as the agent ID');
+		const previousInputState = { groups: [{ id: 'model', items: [{ id: 'selected-model' }], selected: { id: 'selected-model' } }] };
+		const state = h.controller.getChatSessionInputState(undefined, { previousInputState });
+		assert.equal(state.managed, true);
+		assert.deepEqual(state.groups, previousInputState.groups);
 	} finally { h.dispose(); }
 });
 
@@ -125,7 +142,8 @@ test('OpenCode uses request-scoped document tools, clears shimmer and exposes mo
 	const h = harness();
 	try {
 		const item = await h.newSession(), input = h.input();
-		const session = await h.provider.provideChatSessionContent(item.resource, h.token().token, { inputState: input });
+		await h.provider.provideChatSessionContent(item.resource, h.token().token, { inputState: input });
+		const session = { requestHandler: (request, _context, stream, token) => h.participant.handler(request, { history: [], chatSessionContext: { chatSessionItem: item, inputState: input } }, stream, token) };
 		const stream = h.stream(); const token = h.token();
 		const invocationToken = { requestId: 'verified-request' };
 		assert.deepEqual(await session.requestHandler({ prompt: 'Update the document', references: [], toolInvocationToken: invocationToken }, {}, stream, token.token), {});
@@ -134,6 +152,10 @@ test('OpenCode uses request-scoped document tools, clears shimmer and exposes mo
 		assert.deepEqual(h.connections[0].permission, { outcome: { outcome: 'selected', optionId: 'allow' } });
 		assert.equal(h.calls.at(-1).options.input.operation, 'stop');
 		assert.deepEqual(stream.text, ['Document updated.']);
+		assert.deepEqual(stream.parts.map(part => ({ id: part.toolCallId, live: part.enablePartialUpdate, complete: part.isComplete })), [
+			{ id: 'doc-edit', live: true, complete: false }, { id: 'doc-edit', live: true, complete: true }
+		], 'Initial and final ACP chunks must update one live card, never create a denied legacy card');
+		assert.equal(stream.parts[1].invocationMessage, undefined, 'Status-only updates preserve the original tool label');
 		assert.equal(input.groups[0].items[1].id, 'second');
 		assert.equal(h.saved()[0].nativeId, 'native-id');
 		const env = Object.fromEntries(h.connections[0].servers[0].env.map(pair => [pair.name, pair.value]));
@@ -153,7 +175,7 @@ test('OpenCode reload resumes native history and cancellation stops the active t
 		const item = [...h.items.values()][0], token = h.token();
 		const session = await h.provider.provideChatSessionContent(item.resource, token.token, { inputState: h.input() });
 		assert.deepEqual(session.history.map(turn => turn.prompt || turn.response[0].value), ['Previous request', 'Previous reply']);
-		const pending = session.requestHandler({ prompt: 'wait', references: [], toolInvocationToken: { requestId: 'cancel-me' } }, {}, h.stream(), token.token);
+		const pending = h.participant.handler({ prompt: 'wait', references: [], toolInvocationToken: { requestId: 'cancel-me' } }, { history: [], chatSessionContext: { chatSessionItem: item, inputState: h.input() } }, h.stream(), token.token);
 		while (!h.connections[0].finish) { await new Promise(resolve => setImmediate(resolve)); }
 		token.cancel(); assert.deepEqual(await pending, {});
 		assert.equal(item.status, h.vscode.ChatSessionStatus.Completed);
@@ -164,9 +186,37 @@ test('OpenCode refuses to launch in untrusted workspaces', async () => {
 	const h = harness([], false);
 	try {
 		const item = await h.newSession();
-		const session = await h.provider.provideChatSessionContent(item.resource, h.token().token, { inputState: h.input() });
-		const result = await session.requestHandler({ prompt: 'Edit', references: [] }, {}, h.stream(), h.token().token);
+		const result = await h.participant.handler({ prompt: 'Edit', references: [] }, { history: [], chatSessionContext: { chatSessionItem: item, inputState: h.input() } }, h.stream(), h.token().token);
 		assert.match(result.errorDetails.message, /Trust this workspace/);
 		assert.equal(h.connections.length, 0);
+	} finally { h.dispose(); }
+});
+
+
+test('Native OpenCode requests expose every document tool with unchanged schemas and request context', async () => {
+	const h = harness();
+	try {
+		const item = await h.newSession(), invocationToken = { requestId: 'all-tools' };
+		const result = await h.participant.handler({ prompt: 'all-tools', references: [], toolInvocationToken: invocationToken }, { history: [], chatSessionContext: { chatSessionItem: item, inputState: h.input() } }, h.stream(), h.token().token);
+		assert.deepEqual(result, {});
+		assert.deepEqual(h.connections[0].listedTools.map(tool => ({ name: tool.name, inputSchema: tool.inputSchema })), documentTools.map(tool => ({ name: tool.name, inputSchema: tool.inputSchema })));
+		for (const tool of documentTools) {
+			const call = h.calls.find(call => call.name === tool.name && call.options.input.operation === 'test');
+			assert.deepEqual(call.options, { input: { operation: 'test', uri: 'file:/document.docx', version: 'version', ifHash: 'guard' }, toolInvocationToken: invocationToken });
+		}
+	} finally { h.dispose(); }
+});
+
+test('Native OpenCode request failures are returned to chat and sessions can retry', async () => {
+	const h = harness();
+	try {
+		const item = await h.newSession(), context = { history: [], chatSessionContext: { chatSessionItem: item, inputState: h.input() } };
+		await h.participant.handler({ prompt: 'all-tools', references: [] }, context, h.stream(), h.token().token);
+		h.connections[0].prompt = async () => { throw new Error('Provider unavailable'); };
+		const result = await h.participant.handler({ prompt: 'retry', references: [] }, context, h.stream(), h.token().token);
+		assert.match(result.errorDetails.message, /Provider unavailable/);
+		assert.equal(item.status, h.vscode.ChatSessionStatus.Failed);
+		h.connections[0].prompt = async () => ({ stopReason: 'end_turn' });
+		assert.deepEqual(await h.participant.handler({ prompt: 'retry', references: [] }, context, h.stream(), h.token().token), {});
 	} finally { h.dispose(); }
 });
