@@ -1313,6 +1313,7 @@
 		"chatSessions": [
 			{
 				"type": "opencode",
+				"canDelegate": true,
 				"name": "opencode",
 				"displayName": "OpenCode",
 				"description": "Run OpenCode with your configured providers and document tools.",

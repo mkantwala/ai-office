@@ -230,5 +230,12 @@ export function registerOpenCodeAgent(context: vscode.ExtensionContext, createCo
 	}, participant, { supportsInterruptions: true }));
 	context.subscriptions.push(vscode.commands.registerCommand('aiOffice.opencode.newSession', () => vscode.commands.executeCommand('workbench.action.chat.openNewSessionSidebar.opencode')));
 	context.subscriptions.push(vscode.commands.registerCommand('aiOffice.opencode.settings', () => vscode.commands.executeCommand('workbench.action.openSettings', 'aiOffice.opencode.path')));
+	const button = vscode.window.createStatusBarItem('aiOffice.opencode', vscode.StatusBarAlignment.Right, 100);
+	button.name = 'OpenCode';
+	button.text = '$(terminal) OpenCode';
+	button.tooltip = vscode.l10n.t('OpenCode: New Agent Session');
+	button.command = 'aiOffice.opencode.newSession';
+	button.show();
+	context.subscriptions.push(button);
 	context.subscriptions.push({ dispose: () => { for (const session of sessions.values()) { session.dispose(); } sessions.clear(); } });
 }

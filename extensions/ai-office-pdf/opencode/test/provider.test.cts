@@ -7,10 +7,12 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const Module = require('node:module');
 const path = require('node:path');
+const fs = require('node:fs');
 
 function harness(saved = [], trusted = true) {
 	const disposables = [], commands = new Map(), connections = [], calls = [], items = new Map();
 	let provider, controller;
+	const statusButton = { show() { this.visible = true; }, dispose() { this.disposed = true; } };
 	class Uri {
 		constructor(value) { Object.assign(this, value); }
 		static from(value) { return new Uri(value); }
@@ -35,8 +37,9 @@ function harness(saved = [], trusted = true) {
 		ThemeIcon: class { constructor(id) { this.id = id; } }, TabInputCustom: class {},
 		ChatSessionStatus: { InProgress: 2, Completed: 1, Failed: 0, NeedsInput: 3 },
 		l10n: { t: value => value },
+		StatusBarAlignment: { Right: 2 },
 		workspace: { isTrusted: trusted, workspaceFolders: [{ uri: Uri.file('/workspace/example') }], getConfiguration: () => ({ get: () => 'opencode' }) },
-		window: { tabGroups: { activeTabGroup: {} }, showQuickPick: async options => options.find(option => option.id === 'allow') },
+		window: { createStatusBarItem: (id, alignment, priority) => Object.assign(statusButton, { id, alignment, priority }), tabGroups: { activeTabGroup: {} }, showQuickPick: async options => options.find(option => option.id === 'allow') },
 		commands: { registerCommand: (id, handler) => { commands.set(id, handler); return { dispose() {} }; }, executeCommand: async (id, ...args) => calls.push({ command: id, args }) },
 		lm: {
 			tools: [{ name: 'office_document_edit', description: 'Edit', inputSchema: { type: 'object' } }, { name: 'office_document_activity', description: 'Activity', inputSchema: { type: 'object' } }],
@@ -95,8 +98,15 @@ function harness(saved = [], trusted = true) {
 	const token = () => new CancellationTokenSource();
 	const stream = () => { const text = []; return { text, progress() {}, push() {}, thinkingProgress() {}, markdown: value => text.push(value) }; };
 	const newSession = async () => { const item = await controller.newChatSessionItemHandler({ request: { prompt: 'Edit a document' }, inputState: input() }); controller.items.add(item); return item; };
-	return { vscode, provider, controller, newSession, input, token, stream, connections, calls, items, commands, saved: () => stored, dispose: () => disposables.reverse().forEach(value => value.dispose()) };
+	return { vscode, statusButton, provider, controller, newSession, input, token, stream, connections, calls, items, commands, saved: () => stored, dispose: () => disposables.reverse().forEach(value => value.dispose()) };
 }
+
+test('OpenCode manifest enables native session creation commands', () => {
+	const manifest = JSON.parse(fs.readFileSync('extensions/ai-office-pdf/package.json', 'utf8'));
+	const contribution = manifest.contributes.chatSessions.find(session => session.type === 'opencode');
+	assert.equal(contribution.canDelegate, true, 'The workbench only registers native new-session commands for delegating providers');
+	assert.equal(contribution.requiresCopilotSignIn, false);
+});
 
 test('OpenCode registers in the native picker and keeps empty sessions lightweight', async () => {
 	const h = harness();
@@ -105,6 +115,9 @@ test('OpenCode registers in the native picker and keeps empty sessions lightweig
 		assert.equal(session.history.length, 0); assert.equal(h.connections.length, 0);
 		await h.commands.get('aiOffice.opencode.newSession')();
 		assert.equal(h.calls[0].command, 'workbench.action.chat.openNewSessionSidebar.opencode');
+		assert.equal(h.statusButton.alignment, h.vscode.StatusBarAlignment.Right);
+		assert.equal(h.statusButton.command, 'aiOffice.opencode.newSession');
+		assert.equal(h.statusButton.visible, true);
 	} finally { h.dispose(); }
 });
 
