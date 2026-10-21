@@ -3024,7 +3024,7 @@
       "command": "table.altText",
       "label": "Alt Text",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.autofit",
@@ -3054,7 +3054,7 @@
       "command": "table.cellMargins",
       "label": "Cell Margins",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.columnWidth",
@@ -3084,7 +3084,7 @@
       "command": "table.deleteStyle",
       "label": "Delete Table Style",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.deleteTable",
@@ -3126,7 +3126,7 @@
       "command": "table.formula",
       "label": "Formula",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.fromText",
@@ -3168,7 +3168,7 @@
       "command": "table.look",
       "label": "Table Style Options",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.merge",
@@ -3180,7 +3180,7 @@
       "command": "table.modifyStyle",
       "label": "Modify Table Style",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.moveAxis",
@@ -3198,19 +3198,19 @@
       "command": "table.newStyle",
       "label": "New Table Style",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.properties",
       "label": "Properties",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.quick",
       "label": "Quick Tables",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.repeatHeader",
@@ -3234,7 +3234,7 @@
       "command": "table.rtl",
       "label": "Right-to-Left Table",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.selectAt",
@@ -3288,19 +3288,19 @@
       "command": "table.splitTable",
       "label": "Split Table",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.style",
       "label": "Table Styles",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.textDirection",
       "label": "Text Direction",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.toText",

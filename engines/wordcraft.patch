@@ -66,10 +66,10 @@ index 0000000..d390497
 +wasm-bindgen = "0.2"
 diff --git a/apps/ai-office-preview/src/agent.rs b/apps/ai-office-preview/src/agent.rs
 new file mode 100644
-index 0000000..f2faf32
+index 0000000..bb81543
 --- /dev/null
 +++ b/apps/ai-office-preview/src/agent.rs
-@@ -0,0 +1,694 @@
+@@ -0,0 +1,705 @@
 +//! Internal, revision-checked block editing for the AI Office agent.
 +use serde_json::{Value, json};
 +use sha2::{Digest, Sha256};
@@ -376,9 +376,20 @@ index 0000000..f2faf32
 +
 +pub fn inspect(doc: &Document, args: &Value) -> Result<Value, String> {
 +    let command = args["command"].as_str().ok_or("Inspection requires a command")?;
-+    if !matches!(command, "list.get" | "styles.inspect") { return Err("Inspection supports list.get and styles.inspect; mutations require guarded edits".into()); }
++    if !matches!(command, "list.get" | "styles.inspect" | "table.properties") { return Err("Inspection supports list.get, styles.inspect and table.properties; mutations require guarded edits".into()); }
++    if command == "table.properties" && args.get("params").is_some_and(|params| !params.as_object().is_some_and(|object| object.is_empty())) {
++        return Err("Table properties inspection takes no settings; use a guarded command to change properties".into());
++    }
 +    let (mut session, start, end) = inspection_session(doc, args)?;
-+    let result = session.run(command, args.get("params").unwrap_or(&json!({}))).map_err(|error|error.to_string())?;
++    let mut result = session.run(command, args.get("params").unwrap_or(&json!({}))).map_err(|error|error.to_string())?;
++    fn strip_ids(value: &mut Value) {
++        match value {
++            Value::Object(object) => { object.remove("officeId"); for value in object.values_mut() { strip_ids(value); } }
++            Value::Array(values) => { for value in values { strip_ids(value); } }
++            _ => {}
++        }
++    }
++    strip_ids(&mut result);
 +    if result.to_string().len() > 24000 { return Err("Inspection exceeds its context budget. Narrow the range or use the styles/formatting reads".into()); }
 +    Ok(json!({"id":args["id"],"start":start,"end":end,"command":command,"result":result}))
 +}
@@ -657,7 +668,7 @@ index 0000000..f2faf32
 +                }
 +                session.sel = Selection { anchor: Pos::new(node.story, (*first).clone(), start), focus: Pos::new(node.story, (*last).clone(), end) };
 +            }
-+            if command.starts_with("insert.") || command.starts_with("text.") {
++            if command.starts_with("insert.") || command.starts_with("text.") || command == "table.quick" {
 +                session.sel = Selection::caret(session.sel.focus.clone());
 +            }
 +            if (command.starts_with("picture.") || command.starts_with("arrange.") || command == "object.altText") && args.get("start").is_none() {
@@ -799,10 +810,10 @@ index 0000000..84a7a0f
 +}
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..ce18deb
+index 0000000..7c9c408
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,594 @@
+@@ -0,0 +1,607 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -1334,6 +1345,19 @@ index 0000000..ce18deb
 +            | "table.sort"
 +            | "table.shading"
 +            | "table.cellAlign"
++            | "table.altText"
++            | "table.cellMargins"
++            | "table.deleteStyle"
++            | "table.formula"
++            | "table.look"
++            | "table.modifyStyle"
++            | "table.newStyle"
++            | "table.properties"
++            | "table.quick"
++            | "table.rtl"
++            | "table.splitTable"
++            | "table.style"
++            | "table.textDirection"
 +            | "table.selectRow"
 +            | "table.selectColumn"
 +            | "table.selectTable"

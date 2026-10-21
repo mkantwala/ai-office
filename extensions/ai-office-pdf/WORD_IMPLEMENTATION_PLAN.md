@@ -6,7 +6,7 @@ The app keeps WordCraft's pinned `159b84f54c74e9e82fb3109b758ae7dd6f4e3ab0` engi
 
 `WORD_CAPABILITIES.json` is generated from the **running registry**, including generated entries, using `node scripts/audit-word-commands.mts --write` after building Word. Running the script without `--write` checks for drift. The development-only `command_catalog` export is not a model tool and does not place the registry in chat context.
 
-The pinned registry contains 622 commands. The formatting and paragraph/list/style batches raise the integrated bridge from 99 to **181** commands. The inventory distinguishes editor controls from targeted block commands and explicitly marks 441 remaining entries as pending. Pending includes application-owned operations such as file Save and UI dialog requests; the count does not mean 495 missing document mutations. **Full command parity is not complete.**
+The pinned registry contains 622 commands. The formatting, paragraph/list/style and table batches raise the integrated bridge from 99 to **194** commands. The inventory distinguishes editor controls from targeted block commands and explicitly marks 428 remaining entries as pending. Pending includes application-owned operations such as file Save and UI dialog requests; the count is not a count of missing document mutations. **Full command parity is not complete.**
 
 The inspected reference at `d588e0b8` declares 633 commands. Comparing its command definitions with the pin found additional work including bookmark deletion, empty-header removal, multilevel-list presets, recipient sorting/filtering and cross-document object copying. These need individual adaptations or a separately verified engine upgrade; exposing names without implementation would misrepresent support.
 
@@ -30,6 +30,14 @@ Read-only `office_document_read` operation `inspect` supports `list.get` and `st
 
 Styles and existing list definitions are shared resources: changing them can affect other paragraphs. Numbering restart/value changes include subsequent contiguous items of the same list. Default tab changes are document-wide. These scopes are documented in the command guide and verified where applicable. Dialog-only paragraph/style-pane commands, cross-file style copying and multi-paragraph sorting remain pending rather than falsely returning success.
 
+## Landed: extended tables
+
+The third batch adds 13 native commands: table/row/cell properties, table accessibility text, default cell margins, direction, right-to-left layout, look flags, custom style creation/modification/deletion/application, native sample tables, splitting tables and formula fields. Target a paragraph in the intended cell; table-wide settings and shared styles retain their native scope. Table properties can also be inspected read-only, without settings or leaking internal identities.
+
+Quick-table insertion collapses the agent target to its end before calling the native insertion command, preserving the existing paragraph and comments. Splitting keeps surviving IDs and assigns fresh IDs to the new table. Formulas insert native fields at the target paragraph end; they do not replace existing cell content. The guide documents replacement as a deliberate guarded batch.
+
+Plain-text table conversions and destructive cell deletion remain pending because the pinned implementation can discard rich content or comments. Draw/erase/border-painter/gridline interaction modes need host controls. These operations are not advertised as supported agent edits.
+
 ## Next integration stages
 
 1. Finish paragraph/style integration: add explicit contiguous-block targeting for sorting and a host adapter for cross-file style copying. Map remaining dialog-only actions to application controls.
@@ -48,3 +56,5 @@ Every newly exposed formatting command has a targeted-block integration test for
 The initial integration passes 106 shared tests, including one real-engine check per new formatting command, coherent review/Undo, and read-only Unicode formatting inspection. The Word WASM build, TypeScript, targeted lint, running-inventory check and clean-source patch check pass. A live OpenCode GLM-5.3-Flash Free session applied small caps and 1.5-point spacing to one selected phrase in a single atomic batch; the receipts confirmed one edit and untouched neighboring content.
 
 The paragraph/list/style batch passes 163 shared document/provider tests and a focused Rust identity regression test. The two comment/range regressions were reproduced before their fixes and pass afterward. TypeScript, targeted ESLint, the native Word WASM build, the running 181-command inventory and clean-source patch application were verified. The always-loaded skill is 388 words; detailed command guidance stays on demand.
+
+The extended-table batch passes all 170 shared tests, including read-only inspection, shared-style rollback, formula-field serialization, table splitting, native Undo/Redo, saved/reopened DOCX files and proposal rejection with comment anchors intact. A regression test reproduced quick-table insertion deleting the target paragraph before the caret-collapse fix. TypeScript, targeted ESLint, Word/UI builds, the 194-command running inventory and clean-source patch application pass. Native round trips remain distinct from external Word/Google Docs rendering verification.

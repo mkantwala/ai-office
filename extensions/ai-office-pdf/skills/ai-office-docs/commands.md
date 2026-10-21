@@ -86,3 +86,19 @@ Use a fresh paragraph/heading/list-item ID and document version with operation=c
 - Inspection: `office_document_read` operation=`inspect`, paragraph `id`, `command:list.get|styles.inspect`, optional native `params` and Unicode `start`/`end`. `list.get` returns the target's nine-level definition (or an explicit num); `styles.inspect` reports inherited styles and direct overrides. These reads never move the user selection or create Undo/review changes. Never execute a mutation for inspection.
 
 Upstream styles-pane/paragraph-dialog/organizer requests need application UI adapters and are not agent edits. Cross-file style copying remains unsupported; do not invent a file parameter. Word generic execution remains guarded through block edits, not office_document_run.
+
+
+## Extended table commands
+
+Address a fresh paragraph ID in the intended cell for cell/row operations; table IDs select their entire contents and focus the last cell. Use exact command help, guarded versions and atomic batches.
+
+- `table.properties`: native table/row/cell layout in one step: align, rtl, width/widthPct/indent, rowHeight/rowHeightRule, allowBreak/headerRow, columnWidth/cellWidth and valign. Table settings affect the whole table; row/column/cell settings use the target cell. Inspect current values with read operation=inspect, command=table.properties and paragraph ID, without settings.
+- `table.altText`: title and description; an empty string clears the corresponding value.
+- `table.cellMargins`: table-wide default top/left/bottom/right padding in points. Omitted edges use native defaults; supply all four to preserve a known complete setting.
+- `table.rtl`: explicit value true/false; `table.textDirection`: horizontal/down/up for the intended cells.
+- `table.newStyle`, `table.modifyStyle`, `table.deleteStyle`, `table.style`, `table.look`: custom table styles, conditional header/banding/edge formatting, applying styles and enabling their look options. Styles are shared resources. New styles apply by default; modification applies only when requested. Built-in deletion is refused. Apply an existing style with table.style params.style; discover the detailed Region schema only when needed.
+- `table.splitTable`: splits before the target row; the first row cannot be a split point. Surviving rows/cells/paragraphs retain IDs; reread the newly created table and intervening paragraph.
+- `table.quick`: inserts a native calendar/tabular/matrix sample table after the target paragraph. These are reference-engine sample contents, not user data.
+- `table.formula`: inserts a native formula field at the target cell paragraph's end and returns the computed result. Supported functions include SUM/AVERAGE/COUNT/MAX/MIN/PRODUCT with ABOVE/LEFT. To replace existing content, clear the intended paragraph and insert the field in one guarded batch; preserve comments. The field is serialized as a Word field, not flattened text.
+
+Destructive cell deletion and plain-text table conversions remain pending while rich content/comment preservation is adapted. Border-painter/draw/eraser/gridline modes need application interaction adapters and are not model commands. Do not claim those unsupported operations succeeded.

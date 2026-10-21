@@ -1603,3 +1603,125 @@ test('Word native paragraph moves can move a complete commented selection as one
 		await engine.execute('edit.undo', {}); assert.deepEqual(read(), before);
 	} finally { engine.dispose(); }
 });
+
+test('Word extended table settings preserve identities and survive DOCX reopening', async () => {
+	const engine = await openEngine('word', 'Table properties.docx', docx, root);
+	try {
+		const agent = engine.agent!;
+		const first = (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks[0];
+		await agent.edit({ revision: engine.state().revision, operation: 'insert', id: first.id, position: 'after', blocks: [{ kind: 'table', rows: [['Name', 'Value'], ['Target', '2'], ['Other', '3']] }] });
+		const target = (agent.read({ query: 'Target' }) as { blocks: WordAgentBlock[] }).blocks.find(b => b.kind === 'paragraph')!;
+		const original = agent.read({}), originalDepth = engine.state().undoDepth!;
+		const command = (command: string, params: Record<string, unknown>) => agent.edit({ revision: engine.state().revision, operation: 'command', id: target.id, command, params });
+		for (const [id, params] of [
+			['table.properties', { align: 'center', rowHeight: 32, rowHeightRule: 'atLeast', allowBreak: false, valign: 'center' }],
+			['table.altText', { title: 'Inventory', text: 'Stock by item' }],
+			['table.cellMargins', { top: 3, left: 6, bottom: 3, right: 6 }],
+			['table.look', { headerRow: true, bandedRows: true, firstColumn: true }],
+			['table.rtl', { value: true }], ['table.textDirection', { value: 'down' }]
+		] as [string, Record<string, unknown>][]) { await command(id, params); }
+		const state = engine.state(), bytes = await engine.export();
+		const inspection = agent.read({ operation: 'inspect', id: target.id, command: 'table.properties' });
+		assert.ok(inspection); assert.doesNotMatch(JSON.stringify(inspection), /officeId/);
+		assert.deepEqual(engine.state(), state, 'Property inspection must leave history and selection unchanged');
+		assert.deepEqual(await engine.export(), bytes);
+		assert.throws(() => agent.read({ operation: 'inspect', id: target.id, command: 'table.properties', params: { rtl: false } }), /no settings/);
+		const xml = strFromU8(unzipSync(bytes)['word/document.xml']);
+		for (const pattern of [/Inventory/, /Stock by item/, /w:bidiVisual/, /w:textDirection/, /w:tblCellMar/, /w:cantSplit/, /w:vAlign w:val="center"/]) { assert.match(xml, pattern); }
+		const reopened = await openEngine('word', 'Reopened table.docx', bytes, root);
+		try {
+			assert.equal((reopened.agent!.read({ id: target.id }) as { blocks: WordAgentBlock[] }).blocks[0].text, 'Target');
+			assert.deepEqual(reopened.agent!.read({ operation: 'inspect', id: target.id, command: 'table.properties' }), inspection);
+		} finally { reopened.dispose(); }
+		while (engine.state().undoDepth! > originalDepth) { await engine.execute('edit.undo', {}); }
+		assert.deepEqual(agent.read({}), original);
+	} finally { engine.dispose(); }
+});
+
+test('Word table styles are guarded shared resources with atomic rollback and native undo', async () => {
+	const engine = await openEngine('word', 'Table styles.docx', docx, root);
+	try {
+		const agent = engine.agent!, first = (agent.read({}) as { blocks: WordAgentBlock[] }).blocks[0];
+		await agent.edit({ revision: engine.state().revision, operation: 'insert', id: first.id, position: 'after', blocks: [{ kind: 'table', rows: [['Header'], ['Target']] }] });
+		const target = (agent.read({ query: 'Target' }) as { blocks: WordAgentBlock[] }).blocks.find(b => b.kind === 'paragraph')!;
+		const run = (command: string, params: Record<string, unknown>) => agent.edit({ revision: engine.state().revision, operation: 'command', id: target.id, command, params });
+		const before = await engine.export(), revision = engine.state().revision;
+		await assert.rejects(agent.edit({ revision, operation: 'batch', edits: [
+			{ operation: 'command', id: target.id, command: 'table.newStyle', params: { name: 'Rollback table' } },
+			{ operation: 'command', id: target.id, command: 'table.style', params: { style: 'Missing table style' } }
+		] }));
+		assert.deepEqual(await engine.export(), before); assert.equal(engine.state().revision, revision);
+		await run('table.newStyle', { name: 'Report grid', headerRow: { fill: '123456', bold: true }, wholeTable: { borders: true } });
+		await assert.rejects(agent.edit({ revision, operation: 'command', id: target.id, command: 'table.rtl', params: { value: true } }), /fresh document version/);
+		await run('table.modifyStyle', { style: 'Report grid', bandedRows: { fill: 'ABCDEF' } });
+		await run('table.style', { style: 'Report grid' });
+		const saved = await engine.export(), styles = strFromU8(unzipSync(saved)['word/styles.xml']);
+		assert.match(styles, /123456/); assert.match(styles, /ABCDEF/);
+		const reopened = await openEngine('word', 'Reopened styles.docx', saved, root);
+		try { assert.equal((reopened.agent!.read({ id: target.id }) as { blocks: WordAgentBlock[] }).blocks[0].text, 'Target'); assert.match(strFromU8(unzipSync(await reopened.export())['word/styles.xml']), /ABCDEF/); } finally { reopened.dispose(); }
+		await run('table.deleteStyle', { style: 'Report grid' });
+		assert.doesNotMatch(strFromU8(unzipSync(await engine.export())['word/styles.xml']), /Report grid/);
+		await engine.execute('edit.undo', {}); assert.match(strFromU8(unzipSync(await engine.export())['word/styles.xml']), /Report grid/);
+	} finally { engine.dispose(); }
+});
+
+test('Word table formulas and splitting preserve content, identities and undo', async () => {
+	const engine = await openEngine('word', 'Table formulas.docx', docx, root);
+	try {
+		const agent = engine.agent!, first = (agent.read({}) as { blocks: WordAgentBlock[] }).blocks[0];
+		await agent.edit({ revision: engine.state().revision, operation: 'insert', id: first.id, position: 'after', blocks: [{ kind: 'table', rows: [['Name', 'Value'], ['A', '2'], ['B', '3'], ['Total', 'Result: ']] }] });
+		const target = (agent.read({ query: 'Result:' }) as { blocks: WordAgentBlock[] }).blocks.find(b => b.kind === 'paragraph')!;
+		await agent.edit({ revision: engine.state().revision, operation: 'command', id: target.id, command: 'table.formula', params: { formula: '=SUM(ABOVE)' } });
+		let xml = strFromU8(unzipSync(await engine.export())['word/document.xml']); assert.match(xml, /=SUM\(ABOVE\)/); assert.match(xml, />5</); assert.match(xml, /Result: /);
+		const before = agent.read({}), state = engine.state();
+		await agent.edit({ revision: state.revision, operation: 'command', id: target.id, command: 'table.splitTable', params: {} });
+		assert.equal(engine.render(0, 1).tables!.length, 2);
+		assert.equal((agent.read({ id: target.id }) as { blocks: WordAgentBlock[] }).blocks[0].id, target.id);
+		const current = agent.read({}), saved = await engine.export();
+		const reopened = await openEngine('word', 'Reopened split.docx', saved, root);
+		try { assert.equal(reopened.render(0, 1).tables!.length, 2); assert.equal((reopened.agent!.read({ id: target.id }) as { blocks: WordAgentBlock[] }).blocks[0].id, target.id); } finally { reopened.dispose(); }
+		await engine.execute('edit.undo', {}); assert.deepEqual(agent.read({}), before);
+		await engine.execute('edit.redo', {}); assert.deepEqual(agent.read({}), current);
+		xml = strFromU8(unzipSync(await engine.export())['word/document.xml']); assert.match(xml, /=SUM\(ABOVE\)/);
+	} finally { engine.dispose(); }
+});
+
+test('Word quick tables insert at the requested paragraph without replacing surrounding content', async () => {
+	for (const kind of ['calendar', 'matrix', 'tabular']) {
+		const engine = await openEngine('word', `${kind}.docx`, docx, root);
+		try {
+			const agent = engine.agent!, before = (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks;
+			await agent.edit({ revision: engine.state().revision, operation: 'command', id: before[0].id, command: 'table.quick', params: { kind } });
+			const top = (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks;
+			assert.equal(top[0].id, before[0].id); assert.equal(top[0].text, before[0].text); assert.equal(top[1].kind, 'table');
+			assert.equal((agent.read({ id: before[1].id }) as { blocks: WordAgentBlock[] }).blocks[0].text, before[1].text);
+			assert.equal(engine.render(0, 1).tables!.length, 1);
+			const reopened = await openEngine('word', 'Quick table.docx', await engine.export(), root);
+			try { assert.equal(reopened.render(0, 1).tables![0].rows.length, kind === 'matrix' ? 4 : 7); } finally { reopened.dispose(); }
+			await engine.execute('edit.undo', {}); assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks, before);
+		} finally { engine.dispose(); }
+	}
+});
+
+test('Word table proposals restore shared styles, table structure and comment anchors together', async () => {
+	const engine = await openEngine('word', 'Table review.docx', docx, root);
+	try {
+		const agent = engine.agent!, first = (agent.read({}) as { blocks: WordAgentBlock[] }).blocks[0];
+		await agent.edit({ revision: engine.state().revision, operation: 'insert', id: first.id, position: 'after', blocks: [{ kind: 'table', rows: [['Header'], ['Annotated row']] }] });
+		await engine.execute('select.text', { text: 'Annotated row' }); await engine.execute('review.newComment', { text: 'Keep this annotation' });
+		const target = (agent.read({ query: 'Annotated row' }) as { blocks: WordAgentBlock[] }).blocks.find(b => b.kind === 'paragraph')!;
+		const original = agent.read({}), files = unzipSync(await engine.export()), depth = engine.state().undoDepth!;
+		agent.reviewStart!();
+		await agent.edit({ revision: engine.state().revision, operation: 'batch', edits: [
+			{ operation: 'command', id: target.id, command: 'table.newStyle', params: { name: 'Review table style', headerRow: { fill: 'AABBCC' } } },
+			{ operation: 'command', id: target.id, command: 'table.splitTable', params: {} }
+		] });
+		agent.reviewFinish!();
+		assert.equal(engine.state().undoDepth, depth + 1); assert.equal(engine.render(0, 1).tables!.length, 2);
+		assert.equal(engine.state().comments?.[0].text, 'Keep this annotation'); assert.ok(agent.reviewRead!().changes.length);
+		await agent.reviewDecide!(engine.state().revision, 'undo', agent.reviewRead!().changes.map(change => change.id));
+		assert.deepEqual(agent.read({}), original); assert.equal(engine.render(0, 1).tables!.length, 1);
+		assert.equal(strFromU8(unzipSync(await engine.export())['word/styles.xml']), strFromU8(files['word/styles.xml']));
+		assert.equal(engine.state().comments?.[0].text, 'Keep this annotation');
+	} finally { engine.dispose(); }
+});
