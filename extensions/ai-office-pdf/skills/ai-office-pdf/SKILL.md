@@ -1,12 +1,14 @@
 ---
 name: ai-office-pdf
-description: Read and edit an open PDF in Sangam One through bounded capability discovery and native commands.
+description: Read and edit PDFs in Sangam One using bounded discovery and the native PdfCraft command engine.
 ---
 
-Use `office_document_tools` to discover the active PDF, its version and category counts. Select only the relevant category, then request the exact command schema. Execute with `office_document_run`; use the returned current version for the next mutation. Never load every schema or guess a command shape.
+Use `office_document_tools` to discover the active PDF and current version. Select a category, then request only the command schema needed. Execute through `office_document_run`; reuse its returned version for the next mutation. Never load every schema or guess payload shapes. Use `operation: list` to identify open files and `operation: open` with a PDF/DOCX URI to open an artifact.
 
-PDF paragraphs, images, forms and page geometry are revision-scoped fixed-layout content. Read them fresh after structural changes. They are not persistent Word paragraph IDs. Text reads use explicit ranges of at most ten pages. Narrow oversized results; do not repeatedly request the whole file.
+PDF paragraphs and artwork are positional, revision-scoped references, not persistent Word IDs. Reread them after structural changes. Text extraction takes explicit ranges of at most ten pages. Oversized results return a `resultId`: use discovery with that ID, a `resultPath`, offset and limit. Never repeat a mutation to retrieve its output.
 
-Native edits remain unsaved until normal Save and support document Undo. Never claim Word-style inline Keep/Undo review for PDFs unless the tool confirms it exists. Verify affected pages and exported/reopened output before claiming format fidelity. Keep binaries out of model context; use host-managed URIs for future file workflows. Unsupported operations must be reported, not simulated with destructive rewrites.
+Pass file URIs in file parameters; the host stages bytes and returns managed output artifacts. Omit output locations for generated artifacts. Existing outputs are never replaced. Inputs matching the active PDF include unsaved changes; other inputs use saved files. Keep binaries out of context.
 
-The integration roadmap and known gaps are in `../../PDF_IMPLEMENTATION_PLAN.md`. Use the existing Word skill only for DOCX documents.
+Edits remain unsaved until normal Save and support native Undo. Signing produces a separate signed copy. Report remaining PDF/A/accessibility/export warnings accurately; signature integrity does not imply certificate trust. OCR is excluded. Platform printers and certificate stores require host support. Native Office export supports DOCX/PPTX/HTML/RTF; do not invent XLSX export or Office/HTML-to-PDF conversion.
+
+Verify affected pages and artifacts before claiming completion. Keep IDs internal. Use the existing Word skill for DOCX block edits. See `../../PDF_IMPLEMENTATION_PLAN.md` for the audited capability inventory and platform limits.

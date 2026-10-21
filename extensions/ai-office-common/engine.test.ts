@@ -741,11 +741,11 @@ test('PDF page operations keep page geometry, native Undo and saved output synch
 		assert.equal(extracted.revision, version, 'Read-only commands never change history');
 		assert.match(JSON.stringify(extracted.agentCommandResult), /AI Office editing/);
 		const reopened = await openEngine('pdf', 'Saved-pages.pdf', await engine.export(), root);
-		try { assert.deepEqual(reopened.pages(), engine.pages()); assert.ok(reopened.render(0, .5).pixels!.length); } finally { reopened.dispose(); }
+		try { assert.deepEqual(reopened.pages(), engine.pages()); assert.ok((await reopened.renderAsync!(0, .5)).pixels!.length); } finally { reopened.dispose(); }
 		const original = await engine.export();
 		await assert.rejects(engine.execute('page_rotate', { pages: [99], degrees: 90 }), /page/i);
-		await assert.rejects(engine.execute('doc_watermark', { text: 'X', file: '/secret.png' }), /host document workflow/);
-		await assert.rejects(engine.execute('doc_save', { path: '/tmp/not-allowed.pdf' }), /not enabled/);
+		await assert.rejects(engine.execute('doc_watermark', { text: 'X', file: '/secret.png' }), /explicit file:\/\/ URIs/);
+		await assert.rejects(engine.execute('doc_save', { path: '/tmp/not-allowed.pdf' }), /managed by the application|not enabled/);
 		assert.deepEqual(await engine.export(), original, 'Refused edits leave document bytes unchanged');
 	} finally { engine.dispose(); }
 });
@@ -760,7 +760,7 @@ test('PDF watermarks, printed page numbers and backgrounds survive save and reop
 		try {
 			const text = JSON.stringify((await reopened.execute('text_extract', { pages: [1] })).agentCommandResult);
 			assert.match(text, /SYNTHETIC DRAFT/); assert.match(text, /Page 1 of 1/);
-			assert.match(text, /AI Office editing/); assert.ok(reopened.render(0, .5).pixels!.length);
+			assert.match(text, /AI Office editing/); assert.ok((await reopened.renderAsync!(0, .5)).pixels!.length);
 		} finally { reopened.dispose(); }
 	} finally { engine.dispose(); }
 });
@@ -781,7 +781,7 @@ test('PDF: edit paragraph, format, comments, links, undo and reopen', async () =
 		await engine.execute('page_add_text', { page: 1, at: [72, 180], width: 300, text: 'Additional text' });
 		await engine.execute('image.insert', { page: 1, data: imageFixture(), name: 'pixel.png' });
 		const reopened = await openEngine('pdf', 'saved.pdf', await engine.export(), root);
-		try { assert.match(reopened.state().blocks!.map(b => b.text).join(' '), /Editable PDF/); assert.ok(reopened.state().comments?.some(c => c.text === 'PDF review')); assert.ok(reopened.render(0, .5).pixels!.length > 100); } finally { reopened.dispose(); }
+		try { assert.match(reopened.state().blocks!.map(b => b.text).join(' '), /Editable PDF/); assert.ok(reopened.state().comments?.some(c => c.text === 'PDF review')); assert.ok((await reopened.renderAsync!(0, .5)).pixels!.length > 100); } finally { reopened.dispose(); }
 	} finally { engine.dispose(); }
 });
 

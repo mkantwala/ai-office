@@ -1,10 +1,10 @@
 # AI Office documents
 
-DOCX and PDF open directly on a page canvas with a compact editing toolbar. Word uses the Rust Wordcraft engine for hit testing, selections, typing, pagination and formatting. PDF uses the Rust Pdfcraft engine and its headless automation commands for paragraph editing and annotations. Engines run in extension-host worker threads; the webview contains only the document surface and controls.
+DOCX and PDF open directly on a page canvas with a compact editing toolbar. Word uses the Rust Wordcraft engine for hit testing, selections, typing, pagination and formatting. PDF uses the Rust Pdfcraft engine and its headless automation commands for paragraph editing and annotations. Word runs in an extension-host worker thread and PDF in a persistent native worker; the webview contains only the document surface and controls.
 
 Click in Word to position the caret; drag to select text. In PDF, click a paragraph to edit it and click outside or press Ctrl+Enter to finish. Ctrl+S saves, Ctrl+Z undoes, and Ctrl+Shift+Z redoes. Comments appear in the Comments disclosure above the document. VS Code provides save, Save As, revert and crash-recovery backups. Changes made externally reload clean documents; conflicting saves are refused so you can use Save As.
 
-Word supports heading styles, font, size, bold, italic, underline, alignment, bullets, numbering, spacing, tables, images, links and comments. PDF supports text insertion, paragraph text/font/size/emphasis/alignment/spacing, images, links and comments. PDF lists, heading styles and tables are disabled. PDF formatting applies to the paragraph; scanned pages need OCR before their text can be edited. This initial surface does not add OCR or a full office ribbon.
+Word supports heading styles, font, size, bold, italic, underline, alignment, bullets, numbering, spacing, tables, images, links and comments. PDF supports text insertion, paragraph text/font/size/emphasis/alignment/spacing, images, links and comments. PDF lists, heading styles and tables are disabled. PDF formatting applies to the paragraph. OCR is intentionally excluded. The PDF Tools dialog exposes the remaining native editing and file commands.
 
 All toolbar document operations are available through the [shared CLI](../ai-office-common/README.md). The CLI reads and writes files; the registered `aiOffice.word.execute` and `aiOffice.pdf.execute` VS Code commands operate on open documents using `(fileNameOrUri, commandId, params)` and participate in the same undo/save flow, and the `aiOfficeEdit` language model tool exposes the same commands to chat agents (it is contributed by this extension and dispatches to any AI Office kind). Without a file argument both edit the active document, and a bare file name targets another open document. A CLI edit to a file with unsaved in-app changes requires resolving the resulting conflict.
 
@@ -15,7 +15,7 @@ node extensions/ai-office-pdf/build.mts
 node extensions/ai-office-pdf/build.mts --word
 ```
 
-Requires sibling pdfcraft and wordcraft checkouts, Rust wasm32-unknown-unknown and wasm-bindgen 0.2.129 at `.build/pdf-tools/bin` (or WASM_BINDGEN). The shared worker and CLI also require the dependencies installed in `extensions/ai-office-slides`. PDFCRAFT_SOURCE, WORDCRAFT_SOURCE and CARGO_TARGET_DIR override source/target paths. `--ui-only` rebuilds TypeScript; `--package-only` packages existing Rust builds. Notices accompany generated engines. Opening a document does not save it.
+Run `node scripts/prepare-office-engines.mts` first to prepare the pinned sources. PDF requires a native Rust toolchain; Word requires Rust wasm32-unknown-unknown and wasm-bindgen 0.2.129 at `.build/pdf-tools/bin` (or WASM_BINDGEN). The shared worker and CLI also require the dependencies installed in `extensions/ai-office-slides`. PDFCRAFT_SOURCE, WORDCRAFT_SOURCE and CARGO_TARGET_DIR override source/target paths. `--ui-only` rebuilds TypeScript; `--package-only` packages existing Rust builds. Notices accompany generated engines. Opening a document does not save it.
 
 ## Word agent
 
@@ -43,7 +43,7 @@ Install OpenCode on the machine hosting the extension. It uses your existing Ope
 
 Responses, reasoning and tool activity stream into chat. OpenCode's permission requests show the actual options and tool input; cancellation dismisses pending permission choices and stops the turn. A process that fails to stop is terminated. Model and agent-mode choices come from OpenCode's session configuration after connecting, including its configured model providers. Workspace trust is required before starting the local agent.
 
-The `sangam-docs` MCP bridge exposes the eight existing document tools. Calls carry the current chat request's opaque tool token, preserving guarded block edits, native history, request-level Keep/Undo and agent shimmer. Tools cannot run through the bridge while the chat is idle or cancelled. The bridge binds only to loopback and uses an ephemeral credential passed through the child environment. No model credentials are copied into this extension or persisted by it.
+The `sangam-docs` MCP bridge exposes the existing document tools plus the two bounded PDF discovery/execution entry points. Calls carry the current chat request's opaque tool token, preserving guarded block edits, native history, request-level Keep/Undo and agent shimmer. Tools cannot run through the bridge while the chat is idle or cancelled. The bridge binds only to loopback and uses an ephemeral credential passed through the child environment. No model credentials are copied into this extension or persisted by it.
 
 OpenCode owns durable conversation history. Sangam One stores only its session ID, folder and display metadata, then reloads the conversation through ACP. Empty sessions start no process; idle processes and tool bridges shut down after two minutes and reconnect on the next request. Session metadata is bounded to the latest 200 entries.
 
@@ -64,3 +64,7 @@ node extensions/ai-office-pdf/build.mts
 node extensions/ai-office-common/test.mts
 OFFICE_BROWSER_PATH=/usr/bin/chromium node --experimental-transform-types --test extensions/ai-office-common/pdfTools.test.mts
 ```
+
+The complete integration supersedes the first milestone's seven/55-command WASM bridge: [PDF capability inventory](PDF_CAPABILITIES.json) accounts for all 171 reference commands (159 native, nine application-managed, three excluded OCR commands). **All PDF Tools** exposes the native schemas through searchable visual forms. Bounded user inspections and managed artifact links use the same engine as agents.
+
+Build the platform worker with `node extensions/ai-office-pdf/build.mts --native` after `node scripts/prepare-office-engines.mts`. It stays in the Node extension host; there is no second application window or additional MCP server. Generated binaries are ignored. See the implementation plan for URI staging, saved/unsaved source semantics, printer/certificate platform requirements and conversion directions absent from the reference itself.

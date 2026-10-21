@@ -6,6 +6,15 @@
 import type { Command } from './types.js';
 
 export function commandCategory(id: string): string {
+	if (/^bookmark_/.test(id)) { return 'bookmarks'; }
+	if (/^accessibility_/.test(id)) { return 'accessibility'; }
+	if (/^measure_/.test(id)) { return 'measurements'; }
+	if (/^(sign_|fill_sign)/.test(id)) { return 'signing'; }
+	if (/^(printers|printer_|doc_print)/.test(id)) { return 'printing'; }
+	if (/^(js_|action_)/.test(id)) { return 'scripting'; }
+	if (/^(pdfa_|print_readiness)/.test(id)) { return 'standards'; }
+	if (/^doc_(export|import|create|combine|split|reduce|optimize|compare)/.test(id)) { return 'files'; }
+
 	if (/^page_add_/.test(id)) { return 'content'; }
 	if (/^(page_|select\.page)/.test(id)) { return 'pages'; }
 	if (/^(comment_|comments_|review\.)/.test(id)) { return 'comments'; }
@@ -38,4 +47,19 @@ export function discoverCommands(commands: Command[], input: { command?: string;
 export function boundedCommandResult(value: unknown, budget = 24000) {
 	const serialized = JSON.stringify(value);
 	return serialized && serialized.length > budget ? { omitted: true, characters: serialized.length, guidance: 'Result exceeded the context budget. Retry with a smaller page range or a narrower query.' } : value;
+}
+
+/** Read a cached receipt without repeating an expensive read or a document mutation. */
+export function projectCommandResult(value: unknown, pointer = '', offset = 0, limit = 40) {
+	if (pointer.length > 1000 || pointer !== '' && !pointer.startsWith('/') || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) { throw new Error('Use a JSON pointer, offset >= 0 and limit from 1 to 100.'); }
+	let selected = value;
+	const keys = pointer === '' ? [] : pointer.slice(1).split('/').map(key => key.replaceAll('~1', '/').replaceAll('~0', '~'));
+	if (keys.length > 16) { throw new Error('Result projection is too deep.'); }
+	for (const key of keys) {
+		if (!selected || typeof selected !== 'object' || !Object.hasOwn(selected, key) || ['__proto__', 'constructor', 'prototype'].includes(key)) { throw new Error('Result path does not exist. Inspect the parent keys first.'); }
+		selected = (selected as Record<string, unknown>)[key];
+	}
+	if (Array.isArray(selected)) { return { kind: 'array' as const, path: pointer, total: selected.length, items: boundedCommandResult(selected.slice(offset, offset + limit)), ...(offset + limit < selected.length ? { nextOffset: offset + limit } : {}) }; }
+	if (selected && typeof selected === 'object') { const entries = Object.entries(selected); return { kind: 'object' as const, path: pointer, keys: entries.slice(offset, offset + limit).map(([key, value]) => ({ key, type: Array.isArray(value) ? 'array' : typeof value, ...(Array.isArray(value) ? { length: value.length } : {}) })), ...(offset + limit < entries.length ? { nextOffset: offset + limit } : {}) }; }
+	return { kind: 'value' as const, path: pointer, value: boundedCommandResult(selected) };
 }

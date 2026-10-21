@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 import { spawnSync } from 'node:child_process';
-import { mkdir, copyFile, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, copyFile, readFile, readdir, writeFile, chmod } from 'node:fs/promises';
 import { dirname, resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,8 @@ const project = word ? 'wordcraft' : 'pdfcraft';
 const prepared = resolve(root, '.build/engines', project);
 const source = (word ? process.env.WORDCRAFT_SOURCE : process.env.PDFCRAFT_SOURCE) || (existsSync(prepared) ? prepared : resolve(root, `../${project}`));
 const target = process.env.CARGO_TARGET_DIR || (existsSync(prepared) ? resolve(root, '.build/office-rust-target') : resolve(root, '../pdfcraft/target'));
-const output = join(extension, word ? 'media/word-engine' : 'media/engine');
+const native = !word;
+const output = native ? join(extension, 'media/native', process.platform + '-' + process.arch) : join(extension, word ? 'media/word-engine' : 'media/engine');
 await Promise.all([
 	build({ entryPoints: [join(extension, '../ai-office-common/engineWorker.ts')], bundle: true, platform: 'node', format: 'cjs', outfile: join(extension, 'out/engineWorker.cjs') }),
 	build({ entryPoints: [join(extension, '../ai-office-common/cli.ts')], bundle: true, platform: 'node', format: 'cjs', outfile: join(extension, 'out/cli.cjs') }),
@@ -38,12 +39,19 @@ function run(command: string, args: string[], cwd = source) {
 	if (result.error || result.status !== 0) { throw result.error || new Error(`${command} exited with ${result.status}`); }
 }
 if (!process.argv.includes('--package-only')) {
-	run('cargo', ['build', '-p', `${project}-preview`, '--locked', '--target-dir', target, '--target', 'wasm32-unknown-unknown', '--profile', 'low-disk', '-j', '2']);
+	if (native) { run('cargo', ['build', '-p', 'pdfcraft-preview', '--bin', 'sangam-pdf', '--locked', '--target-dir', target, '--profile', 'low-disk', '-j', '2']); }
+	else { run('cargo', ['build', '-p', `${project}-preview`, '--locked', '--target-dir', target, '--target', 'wasm32-unknown-unknown', '--profile', 'low-disk', '-j', '2']); }
 }
 await mkdir(output, { recursive: true });
-await writeFile(join(output, 'package.json'), '{"type":"module"}\n');
-const bindgen = process.env.WASM_BINDGEN || join(root, '.build/pdf-tools/bin', process.platform === 'win32' ? 'wasm-bindgen.exe' : 'wasm-bindgen');
-run(bindgen, ['--target', 'web', '--out-dir', output, '--out-name', project, join(target, `wasm32-unknown-unknown/low-disk/${project}_preview.wasm`)]);
+if (native) {
+	const executable = process.platform === 'win32' ? 'sangam-pdf.exe' : 'sangam-pdf';
+	await copyFile(join(target, 'low-disk', executable), join(output, executable));
+	if (process.platform !== 'win32') { await chmod(join(output, executable), 0o755); const strip = spawnSync('strip', [process.platform === 'darwin' ? '-S' : '--strip-debug', join(output, executable)]); if (strip.error || strip.status !== 0) { throw strip.error || new Error('Could not strip native PDF debug symbols. Install the platform build tools.'); } }
+} else {
+	await writeFile(join(output, 'package.json'), '{"type":"module"}\n');
+	const bindgen = process.env.WASM_BINDGEN || join(root, '.build/pdf-tools/bin', process.platform === 'win32' ? 'wasm-bindgen.exe' : 'wasm-bindgen');
+	run(bindgen, ['--target', 'web', '--out-dir', output, '--out-name', project, join(target, `wasm32-unknown-unknown/low-disk/${project}_preview.wasm`)]);
+}
 for (const name of ['LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'ATTRIBUTION.md', ...(word ? [] : ['ATTRIBUTION.toml'])]) {
 	await copyFile(join(source, name), join(output, name));
 }
@@ -84,5 +92,5 @@ for (const [crate, folder] of [['epaint_default_fonts', 'fonts'], ['hayro-cmap',
 	if (!copied) { throw new Error(`Missing bundled asset licences for ${crate}-${version} in the Cargo registry.`); }
 }
 const revision = spawnSync('git', ['-c', `safe.directory=${source.replaceAll('\\', '/')}`, 'rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' });
-await writeFile(join(output, 'BUILD.txt'), `${project} ${revision.stdout.trim()} with local content-only preview crate.\nRust wasm32-unknown-unknown; profile low-disk; content-only preview renderer.\n`);
+await writeFile(join(output, 'BUILD.txt'), `${project} ${revision.stdout.trim()} with local content-only preview crate.\nRust ${native ? 'native ' + process.platform + '-' + process.arch : 'wasm32-unknown-unknown'}; profile low-disk; ${native ? 'persistent confined automation engine (OCR excluded)' : 'content-only preview renderer'}.\n`);
 console.log(`${project} engine installed in ${output}`);

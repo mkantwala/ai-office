@@ -11,6 +11,7 @@ await build({ entryPoints: ['extensions/ai-office-common/provider.ts'], bundle: 
 await build({ entryPoints: ['extensions/ai-office-common/cloudflareClient.test.ts'], bundle: true, platform: 'node', format: 'cjs', outfile: '.build/office-cloudflareClient.test.cjs' });
 await build({ entryPoints: ['extensions/ai-office-common/wordFormatting.test.ts'], bundle: true, platform: 'node', format: 'cjs', outfile: '.build/office-wordFormatting.test.cjs' });
 await build({ entryPoints: ['extensions/ai-office-common/documentCapabilities.test.ts'], bundle: true, platform: 'node', format: 'cjs', outfile: '.build/office-capabilities.test.cjs' });
+await build({ entryPoints: ['extensions/ai-office-common/nativePdf.test.ts'], bundle: true, platform: 'node', format: 'cjs', outfile: '.build/office-nativePdf.test.cjs' });
 const filter = process.argv.includes('--word') ? ['--test-name-pattern=^(Word|Cloudflare|custom editor)'] : [];
-const result = spawnSync(process.execPath, ['--test', ...filter, '.build/office-engine.test.cjs', '.build/office-cloudflareClient.test.cjs', '.build/office-wordFormatting.test.cjs', '.build/office-capabilities.test.cjs', 'extensions/ai-office-common/provider.test.cts'], { stdio: 'inherit' });
+const result = spawnSync(process.execPath, ['--test', ...filter, '.build/office-engine.test.cjs', '.build/office-cloudflareClient.test.cjs', '.build/office-wordFormatting.test.cjs', '.build/office-capabilities.test.cjs', '.build/office-nativePdf.test.cjs', 'extensions/ai-office-common/provider.test.cts'], { stdio: 'inherit' });
 process.exitCode = result.status ?? 1;

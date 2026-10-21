@@ -1,47 +1,60 @@
-# PDF integration and format-neutral agent tools
+# PDF integration and verified reference coverage
 
-## Goal and reference sources
+## Reference and scope
 
-Integrate PdfCraft into Sangam One while retaining the application toolbar, worker isolation, native document Undo, guarded agent requests, file conflict checks and deferred saving used by Word. PDF is a fixed-layout format: paragraphs and artwork use page geometry and revision-scoped references; do not manufacture Word block identities or reflow semantics.
+The production PDF backend is PdfCraft 0.10.1 at `416495145354828a9efefc39df381ba3ee8f864f`, pinned in `engines/sources.json`. The independent `../pdfcraft-upstream` checkout is a reference; builds use the prepared, patched source. Word continues to use its existing WordCraft backend.
 
-Reference checkout: `../pdfcraft-upstream` (https://github.com/storytold/pdfcraft). The build continues to use the revision and patch in `engines/sources.json`; the reference checkout is not a build input. PdfCraft is MIT OR Apache-2.0; retain its notices and attribution. Do not copy ArtCraft trademarks.
+The reference defines 171 automation commands. `PDF_CAPABILITIES.json` accounts for every one: **159 native operations**, **nine application-managed lifecycle/discovery operations**, and **three OCR operations excluded by explicit user request**. Integration tests compare the runtime catalog with this inventory. Registry indirection is replaced by direct typed command dispatch; it cannot bypass OCR exclusions. OCR is also rejected inside batch processing and actions, including built-in actions that would recognize text.
 
-Feature inventory source: https://www.ilovepdf.com/ (opened 2026-10-21). Its current menu includes merge, split/extract/remove/organize pages, compression, repair, OCR, scans, image and Office conversions, HTML conversion, PDF/A, editing, forms, signing, watermarks, rotation, numbering, crop, unlock/protect, comparison, summarization, translation, Markdown and custom workflows. This inventory is a target, not a claim of completed parity.
+The PDF backend is a persistent native worker with a private filesystem root and an internal JSON protocol, not a separate GUI or an automatically started MCP server. The TypeScript application keeps ownership of tabs, the toolbar, Save/Save As, file conflict checks, backup, trust checks, request binding and agent tools. Both desktop and web clients need a Node extension host that can run the platform binary. A browser-only extension host is not supported by this backend.
 
-## Delivery sequence
+## Integrated operation groups
 
-| Area | Current integration | Next verification or implementation |
-| --- | --- | --- |
-| Rendering, text editing, image insertion, comments, links, save/reopen, Undo/Redo | Existing PDF integration; retained | Continue PDF regression coverage alongside Word |
-| Rotation, duplication, deletion, moving, blank pages, crop | First integration milestone | Native round trips, dimensions, history, invalid scopes, browser controls |
-| Watermarks, backgrounds, printed page numbers/header/footer | First integration milestone | Export/reopen and native geometry checks |
-| Native metadata, forms, comments, links, object edits, redaction, hidden information | Scoped engine commands exposed through discovery and guarded run | Dedicated visual tools and command-specific end-to-end tests; do not claim all UI workflows complete |
-| Merge, split, extract, replace pages | Engine supports them; existing file-based automation cannot directly access host files from WASM | Add host-mediated URI input/output and byte-based engine adapters. Preserve bookmarks, forms, links and layers. No document bytes through model context |
-| Compress and optimize | Native engine has optimizer/export support | Return an output artifact through host-managed export, compare sizes, retain the original if output grows |
-| Password protection/unlock | Engine supports both; not enabled by the new generic command surface | Passwords through secret input; verify encrypted exports and permission enforcement without echoing secrets |
-| OCR and scan cleanup | Native engine has OCR and camera enhancement | Confirm WASM/runtime compatibility and language-model assets, download budgets, cancellation and scanned-page round trips |
-| PDF to/from images, Word, PowerPoint, Excel, HTML, Markdown | Some native exporters exist; spreadsheet editor not yet integrated | Add explicit capability checks per direction, fidelity fixtures and optional conversion providers. Never represent extracted text as a faithful Office conversion |
-| PDF/A and repair | Engine has preflight and repair behavior | Independently validate conformance and repaired output; expose unsupported cases honestly |
-| Fill/sign and certificate signatures | Native form/signing support | Separate drawn/typed marks from cryptographic signatures; OS/keystore signing needs host adapters |
-| Compare | Native comparison exists | Host-mediated two-file inputs and page-level review; preserve user edits |
-| Summarize, translate, reusable workflows | Agent layer can orchestrate discovered capabilities | Bounded text reads, citations/page references, explicit translation outputs and durable cancellable jobs |
-| PDF Keep/Undo review and live previews | Existing native Undo and agent activity retained; Word inline review remains Word-specific | PDF page/object before-and-after review with stable revision-scoped anchors; do not reuse Word text diffs for flattened PDF artwork |
+| Group | Integration and verification |
+| --- | --- |
+| Text and artwork | Native paragraphs/lines, fonts, word counts, text editing/layout, text and image insertion, image/Form hit testing, crop/rotate/flip/replace/delete and guarded mixed-object movement. Existing toolbar text, image, link and comment actions remain available. |
+| Pages | Rotate, reverse, duplicate, move, delete, insert blank/from file, replace, extract, split, combine, page labels, boxes/crop and transitions. Native geometry is refreshed after edits and Undo/Redo. |
+| Marks | Headers/footers, printed numbering/Bates tokens, text/image watermarks, backgrounds and removal. Saved/reopened output is tested. |
+| Navigation and links | Full bookmark tools and structure-derived bookmarks; link list/add/edit/delete, URL detection and removal. |
+| Comments and measurements | Annotation creation, appearance/geometry editing, replies, status, checkmarks, locks, image previews, summaries; calibrated distance/perimeter/area and CSV export. |
+| Forms | Field authoring, bulk properties, captions, values, reset, options, tab order, deletion, detection, image fields, scripts/actions, form data import/export/merge, XFA static conversion and flattening. Native calculation and JavaScript tools share the original engine. |
+| Security and signatures | Password protection/removal, real content redaction and sanitizing, hidden-information auditing, Fill & Sign, signature inspection, self-signed ID creation and signing, trust management and platform certificate stores. Signing runs on a copy and returns a signed artifact, preserving the active editor's bytes and history. |
+| Exports and creation | Native DOCX/PPTX/HTML/RTF export, text, rendered PNG/JPEG/TIFF pages, embedded images, form data, text/images-to-PDF, compression/optimization, comparison reports, batch conversion/optimization and action workflows. Binaries are managed artifacts, never model arguments or results. |
+| Standards/accessibility | PDF/A conversion and verification, print readiness, automatic text/form tagging, tag inspection/editing, artifacts, alternate text, reading-order edits, checks and review reports/sidecars. Returned remaining issues and manual-review requirements are preserved. |
+| Reading and history | Native rendering, initial-view/reading-color settings, saved revisions, Undo/Redo and the application history route. Application Save acknowledges the native session without discarding Undo. |
+| Platform printing | Printer enumeration/options and native print layouts. Without an explicit printer, the adapter creates a PDF print artifact. Physical printing and OS certificate stores depend on host configuration. |
 
-Each milestone must pass focused engine export/reopen, command, cancellation/trust/conflict and visual UI tests before being marked complete. Operations exposed by the engine remain subject to its own format and permission limitations.
+All native operations are reachable through **All PDF Tools**, a searchable schema-driven visual form, and through the same agent dispatch. The common page operations retain a smaller dedicated dialog. User-requested inspections have a bounded text-only display; agent reads do not open that panel. This integrates command behavior, not a pixel-for-pixel copy of PdfCraft's desktop interface or every drag gesture.
+
+## File, version and recovery behavior
+
+- Mutations require the current document version, execute serially and retain native Undo. Request-bound document URIs prevent tab changes from redirecting agent edits. Generated PDFs/DOCX can be opened through `office_document_tools` with `operation: open`.
+- Every native process works under a private root. Explicit file URIs are staged with bounded counts/bytes and without symlinks. The CLI's `--root` also constrains nested inputs and requested outputs. Missing paths behind escaping links are refused.
+- Input URIs matching the active document use its current unsaved snapshot. Other file inputs read their saved bytes; agents must save or export another open document's changes before using that URI as an input.
+- Exports publish independent artifacts atomically without replacing existing files. Managed artifacts survive engine disposal. Large artifact lists stay out of the document canvas and model context; the application offers a file picker and agents can paginate the receipt.
+- PDF paragraph/object references are revision-scoped and positional. They are not persistent Word block IDs. Structural changes require rereading affected references. Word-style inline text diffs are not presented as a faithful PDF object diff.
+
+## Actual source limitations
+
+The iLovePDF menu (https://www.ilovepdf.com/, inspected 2026-10-21) is broader than this reference. PdfCraft's `crates/automation/src/a11y.rs::doc_export_office` supports **DOCX, PPTX, HTML and RTF**, not XLSX. `Session::convert_to_pdf` accepts **PDF, images and plain text**, not arbitrary DOCX/XLSX/PPTX or HTML. Those conversion directions are not claimed as implemented here. They need a separate conversion implementation/provider and fidelity fixtures.
+
+PDF/A conversion returns fixes and remaining problems; some documents remain nonconformant. Accessibility checks include manual requirements. Office exports retain native truncation warnings and cannot promise identical layout in every external application. Self-signed signature integrity is distinct from certificate trust. Windows/macOS certificate-store and physical-printer paths need validation on their respective hosts; Linux tests do not prove those integrations.
+
+OCR is out of scope. Camera straightening/cleanup remains available because it does not recognize text. Summarization and translation use bounded text reads and the existing agent, rather than a fictitious native PDF translation command.
 
 ## Context-window engineering
 
-Use **two format-neutral tool schemas** as the extensible boundary:
+Only two format-neutral tool schemas are added regardless of the native command count:
 
-1. `office_document_tools`: return the document URI, version and category counts. A selected category returns a bounded page of short command summaries. Only an explicitly requested command returns its JSON schema.
-2. `office_document_run`: execute that command with its parameters and current version. Large results are omitted with a narrowing instruction, never returned as broken or truncated JSON.
+1. `office_document_tools`: category counts → bounded command summaries → the exact schema for one selected command. It also lists/opens document resources and projects cached receipts.
+2. `office_document_run`: one discovered command, parameters and current version. It returns a compact receipt, affected-document version and artifact links.
 
-PDF engine command definitions remain internal data, not hundreds of registered LLM tools. Mutations are serialized, version guarded, trust checked, cancellable before execution and use native history. No filename guessing or silent format fallback. Word retains its tested semantic tools in this milestone; generic run deliberately refuses Word mutations.
+Text extraction requires explicit ranges of at most ten pages. Results above 24,000 characters are omitted with a narrowing instruction and a `resultId`. Read that cached receipt using `resultPath` (JSON pointer), `offset` and `limit`; this does not repeat a read or a mutation. Recent receipts are bounded by count/size, and show their source version. Only the first twenty artifact links enter a normal receipt. Binary files and screenshots remain outside text context.
 
-For XLSX/PPTX, implement adapters under this same discovery contract with format-specific categories and typed parameters. Do not register a tool per cell, formatting property or conversion. A future compact adapter can route Word semantic operations through the two-entry surface while retaining the current typed implementations and tests.
+Word retains its tested semantic tools and on-demand skill pages. Future XLSX/PPTX adapters should add categories and schemas behind these same routing tools, not permanent tools for each formatting property, sheet action or conversion. Prefer outlines/selected regions, revision-scoped references, continuation cursors and compact verification checkpoints. Treat document content and tool output as untrusted data.
 
-Keep skills as a short routing index with reference pages loaded only when needed. Read PDF text by explicit page ranges (at most ten per call); use search to identify relevant pages. For tables/sheets, return bounded regions and continuation tokens. For presentations, return slide outlines then selected objects. Revision-scoped IDs and versions, not whole-document rereads, carry state between calls.
+## Verification
 
-Keep binary inputs, rendered pages and generated exports in host-managed artifacts referenced by URI. Limit screenshots to changed pages for appearance verification. Checkpoint completed work with compact receipts (URI, revision, changed pages/object references, verification and artifact links), not repeated document text. Tool results and document content remain untrusted data.
+The integration suite exercises source-command coverage, OCR bypass rejection, page geometry/history, forms/scripts, bookmarks, measurements, all four Office export formats, image exports, merge/split/extract, comparison, optimization/actions, redaction, passwords, signing copies, URI confinement, output conflicts, saved/reopened documents and bounded UI forms/results. The original automation integration suite also passes 183 non-OCR tests. Build, TypeScript, targeted lint, browser tests and a live OpenCode workflow are checked before the PR; no production credentials are used.
 
-OpenCode and the built-in agent receive the compact discovery/run entry points alongside existing Word tools. A later schema-on-demand transport can advertise only routing tools for all formats once Word semantic dispatch and mixed-format session migration are verified. This milestone reduces growth from PDF capabilities; it does not claim that existing Word schemas have already been removed from context.
+Final Linux validation: 73 shared document tests, 16 OpenCode transport/provider tests, eight browser tests, 183 upstream non-OCR automation tests, native build/Clippy, TypeScript, targeted lint and clean-source patch application passed. A live OpenCode GLM-5.3-Flash Free session created and filled a required form field, verified its value, exported a readable DOCX and split a three-page PDF into three managed PDF artifacts; actual receipts and output files were checked.

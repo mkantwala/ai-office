@@ -14,7 +14,11 @@ export interface ImageGeometry {
 	parentId: string; offset: number; page: number; x: number; y: number; width: number; height: number;
 	alt: string; title: string; decorative: boolean; crop: number[]; wrap: string; rotation: number; flipH: boolean; flipV: boolean;
 }
+export interface Raster { pixels?: Uint8Array; width?: number; height?: number; svg?: string; tables?: TableGeometry[]; images?: ImageGeometry[] }
 export interface State {
+	pdfArtifactCount?: number;
+	pdfNewArtifacts?: { uri: string; name: string; mime: string; size: number }[];
+	pdfArtifacts?: { uri: string; name: string; mime: string; size: number }[];
 	image?: ImageGeometry | null;
 	pageSetup?: PageSetupState;
 	editingRegion?: 'body' | 'header' | 'footer';
@@ -65,6 +69,8 @@ export interface Engine {
 	commands(): Command[];
 	execute(id: string, args: Record<string, unknown>): Promise<State>;
 	export(): Promise<Uint8Array>;
-	render(page: number, scale: number): { pixels?: Uint8Array; width?: number; height?: number; svg?: string; tables?: TableGeometry[]; images?: ImageGeometry[] };
+	saved?(): Promise<State>;
+	render(page: number, scale: number): Raster;
+	renderAsync?(page: number, scale: number): Promise<Raster>;
 	dispose(): void;
 }

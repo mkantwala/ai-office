@@ -35,3 +35,13 @@ test('PDF page ranges are bounded, ordered and reject ambiguous partial input', 
 	for (const value of ['0', '1-1000000', '3-1', '1,', 'x', '', '-1', '1.5']) { assert.throws(() => pdfPageRange(value, 5)); }
 	assert.throws(() => pdfPageRange('all', 10001));
 });
+
+test('Cached receipts support bounded projections without re-executing native operations', async () => {
+	const { projectCommandResult } = await import('./documentCapabilities.js');
+	const receipt = { artifacts: Array.from({ length: 120 }, (_, index) => ({ uri: 'file:///result-' + index })), result: [{ text: 'Existing output' }] };
+	const page = projectCommandResult(receipt, '/artifacts', 50, 20); assert.ok(page.kind === 'array'); assert.equal(page.total, 120); assert.equal(page.nextOffset, 70); assert.deepEqual(page.items, receipt.artifacts.slice(50, 70));
+	const scalar = projectCommandResult(receipt, '/result/0/text'); assert.ok(scalar.kind === 'value'); assert.deepEqual(scalar.value, 'Existing output');
+	assert.throws(() => projectCommandResult(receipt, '/__proto__'), /does not exist/);
+	assert.throws(() => projectCommandResult(receipt, '/missing'), /does not exist/);
+	assert.throws(() => projectCommandResult(receipt, '/artifacts', 0, 101), /limit/);
+});

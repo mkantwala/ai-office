@@ -4,10 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 import DOMPurify from '../ai-office-slides/node_modules/dompurify/dist/purify.es.mjs';
-import type { Kind, State, Block } from './types.js';
+import type { Kind, State, Block, Command } from './types.js';
 import { arrangeWordToolbar } from './wordToolbar.js';
 import { renderAgentActivity, WordAgentReveal } from './agentOverlay.js';
 import type { DocumentToolbarAction, DocumentToolbarControl } from '../../src/vs/base/browser/ui/documentToolbar/documentToolbar.js';
+import { renderPdfInspection } from './pdfInspection.js';
+import { PdfCommandForm } from './pdfCommandForm.js';
 import { PdfTools } from './pdfTools.js';
 import { WordImage } from './wordImage.js';
 import { WordTable } from './wordTable.js';
@@ -68,7 +70,14 @@ const wordTable = new WordTable(pages, point, place, execute, ask, focusWordInpu
 	(request, args) => send('tablePreview', { request, args }),
 	at => !!state.rects?.some(r => r.page === at.page && at.x >= r.x && at.x <= r.x + r.width && at.y >= r.y && at.y <= r.y + r.height));
 const wordImage = new WordImage(pages, point, place, execute, target => send('image', { replace: true, target }), focusWordInput, page => page.clientWidth / dimensions[Number(page.dataset.page)][0]);
-const pdfTools = new PdfTools(() => ({ total: dimensions.length, page: currentPage, revision: state.revision }), (command, args, revision) => send('execute', { command, args, revision }));
+
+let documentCommands: Command[] = [];
+const resourcePickers = new Map<string, (uri: string | undefined) => void>();
+const pdfCommandForm = new PdfCommandForm(() => ({ commands: documentCommands, total: dimensions.length, revision: state.revision }), (command, args, revision) => send('execute', { command, args, revision, inspect: true }), folders => new Promise(resolve => { const request = String(Date.now()) + ':' + resourcePickers.size; resourcePickers.set(request, resolve); send('pdfPickResource', { request, folders }); }));
+const pdfTools = new PdfTools(() => ({ total: dimensions.length, page: currentPage, revision: state.revision }), (command, args, revision) => send('execute', { command, args, revision }), () => pdfCommandForm.open());
+const pdfInspection = document.createElement('details'); pdfInspection.className = 'pdf-inspection'; pdfInspection.hidden = true; pages.before(pdfInspection);
+const pdfArtifacts = document.createElement('details'); pdfArtifacts.className = 'pdf-artifacts'; pdfArtifacts.hidden = true; pages.before(pdfArtifacts);
+
 let wordParagraph: WordParagraph | undefined;
 let kind: Kind;
 let state: State = { revision: -1 };
@@ -125,7 +134,7 @@ function typeWordText(text: string) {
 	wordText += text;
 	if (!wordTextTimer) { wordTextTimer = setTimeout(flushWordInput, 0); }
 }
-window.addEventListener('pagehide', () => { flushWordInput(); disposeToolbar?.(); wordParagraph?.dispose(); wordPageSetup?.dispose(); wordReview.dispose(); wordTable.dispose(); wordImage.dispose(); pdfTools.dispose(); clearTimeout(activityTimer); agentReveal.clear(); clearAgent(); }, { once: true });
+window.addEventListener('pagehide', () => { flushWordInput(); disposeToolbar?.(); wordParagraph?.dispose(); wordPageSetup?.dispose(); wordReview.dispose(); wordTable.dispose(); wordImage.dispose(); pdfTools.dispose(); pdfCommandForm.dispose(); for (const resolve of resourcePickers.values()) { resolve(undefined); } resourcePickers.clear(); clearTimeout(activityTimer); agentReveal.clear(); clearAgent(); }, { once: true });
 window.addEventListener('blur', flushWordInput);
 function clearActivityPreview() {
 	if (!agentRects.length && agentIntent === undefined && activityTimer === undefined) { return; }
@@ -373,7 +382,7 @@ function overlay() {
 		}
 	}
 }
-function defaultHint() { el('hint').textContent = kind === 'word' ? '' : 'Click text to edit · Ctrl+Enter to finish · Ctrl+S to save'; }
+function defaultHint() { el('hint').textContent = kind !== 'slides' ? '' : 'Click text to edit · Ctrl+Enter to finish · Ctrl+S to save'; }
 let agentTimer: ReturnType<typeof setTimeout> | undefined;
 function clearAgent() {
 	clearTimeout(agentTimer); agentTimer = undefined;
@@ -438,6 +447,8 @@ window.addEventListener('message', event => {
 		}
 		agentReveal.queue(data.revision, rects); renderNext(); return;
 	}
+	if (data.type === 'pdfInspection') { pdfInspection.hidden = false; pdfInspection.open = true; const summary = document.createElement('summary'); summary.textContent = 'PDF Inspection'; pdfInspection.replaceChildren(summary); const body = document.createElement('div'); renderPdfInspection(body, data.result); pdfInspection.append(body); return; }
+	if (data.type === 'pdfResource') { const resolve = resourcePickers.get(data.request); resourcePickers.delete(data.request); resolve?.(data.uri); return; }
 	if (data.type === 'agentActivity') {
 		if (data.revision !== undefined && data.revision !== state.revision) { return; }
 		clearTimeout(activityTimer); activityTimer = undefined; agentLabel = typeof data.label === 'string' ? data.label.slice(0, 40) : 'Agent';
@@ -459,13 +470,14 @@ window.addEventListener('message', event => {
 		const regionChanged = state.editingRegion !== data.state.editingRegion;
 		if (changed) { agentReveal.clear(); clearActivityPreview(); }
 		const repaginated = JSON.stringify(dimensions) !== JSON.stringify(data.pages);
-		state = data.state; dimensions = data.pages; if (kind === 'pdf') { currentPage = Math.min(state.page ?? currentPage, Math.max(0, dimensions.length - 1)); } wordTable.update(state.revision); wordImage.update(state.revision, state.image);
+		state = data.state; dimensions = data.pages; if (Array.isArray(data.commands)) { documentCommands = data.commands; }
+		if (kind === 'pdf' && state.pdfArtifacts?.length) { pdfArtifacts.hidden = false; pdfArtifacts.replaceChildren(); const summary = document.createElement('summary'); summary.textContent = `Generated Files (${state.pdfArtifactCount || state.pdfArtifacts.length})`; pdfArtifacts.append(summary); for (const artifact of state.pdfArtifacts) { const open = document.createElement('button'); open.textContent = artifact.name; open.addEventListener('click', () => send('pdfOpenArtifact', { uri: artifact.uri })); pdfArtifacts.append(open); } if ((state.pdfArtifactCount || 0) > state.pdfArtifacts.length) { const more = document.createElement('button'); more.textContent = 'Show All Generated Files'; more.addEventListener('click', () => send('pdfArtifactList')); pdfArtifacts.append(more); } } if (kind === 'pdf') { currentPage = Math.min(state.page ?? currentPage, Math.max(0, dimensions.length - 1)); } wordTable.update(state.revision); wordImage.update(state.revision, state.image);
 		revealWordCaret = kind === 'word' && (data.command?.startsWith('text.') || data.command === 'insert.table' || data.command === 'insert.editHeader' || data.command === 'insert.editFooter');
 		const commentsOpen = comments.open;
 		comments.replaceChildren(); comments.open = commentsOpen; comments.hidden = kind === 'word' || !state.comments?.length;
 		const summary = document.createElement('summary'); summary.textContent = `Comments (${state.comments?.length || 0})`; comments.append(summary);
 		for (const comment of state.comments || []) { const p = document.createElement('p'); p.textContent = (comment.resolved ? 'Resolved · ' : '') + (comment.author || 'Comment') + ': ' + comment.text; if (typeof comment.parentId === 'number') { p.style.marginInlineStart = '24px'; } comments.append(p); }
-		if (!initialized) { initialized = true; buildToolbar(); }
+		if (!initialized) { initialized = true; if (kind === 'pdf') { document.body.classList.add('pdf-document'); } buildToolbar(); }
 		if (kind === 'word') {
 			for (const [key, value] of Object.entries({ bold: state.formatting?.bold, italic: state.formatting?.italic, underline: state.formatting?.underline, strike: state.formatting?.strike })) { if (typeof value === 'boolean') { toolbarControls[key]?.setAttribute('aria-pressed', String(value)); } }
 			const size = toolbarControls.size; if (size) { size.dataset.currentSize = String(state.formatting?.size ?? ''); toolbarControls.font.dataset.currentFont = state.formatting?.font || ''; size.dispatchEvent(new Event('formatstate')); }

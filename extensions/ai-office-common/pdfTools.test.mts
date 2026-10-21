@@ -35,3 +35,24 @@ test('PDF tools share exact native parameters, reject stale dialogs and retain k
 		await page.evaluate('tools.dispose()');
 	} finally { await browser.close(); }
 });
+
+test('All PDF Tools renders native schemas, optional typed properties and stale guards without JSON editing', async () => {
+	const bundle = await build({ entryPoints: ['extensions/ai-office-common/pdfCommandForm.ts', 'extensions/ai-office-common/pdfInspection.ts'], bundle: true, platform: 'browser', format: 'iife', globalName: 'OfficePDFForm', write: false, outdir: '.build/pdf-browser-tests' });
+	const browser = await chromium.launch({ executablePath: process.env.OFFICE_BROWSER_PATH, headless: true, args: ['--no-sandbox'] });
+	try {
+		const page = await browser.newPage(); await page.setContent('<button id="open">All PDF Tools</button>');
+		await page.addStyleTag({ content: await readFile('extensions/ai-office-common/editor.css', 'utf8') });
+		await page.addScriptTag({ content: bundle.outputFiles.find(file => file.path.endsWith('pdfCommandForm.js'))!.text });
+		await page.evaluate(`window.snapshot={total:3,revision:4,commands:[{id:'form_set_props',label:'Field Properties',params:{type:'object',properties:{field:{type:'string'},appearance:{type:'object'}},required:['field'],additionalProperties:false}}]};window.calls=[];window.tools=new OfficePDFForm.PdfCommandForm(()=>snapshot,(command,params,revision)=>calls.push({command,params,revision}));document.getElementById('open').onclick=()=>tools.open()`);
+		await page.locator('#open').click(); await page.getByLabel('Field', { exact: false }).first().fill('Answer');
+		await page.getByRole('checkbox', { name: 'Set Appearance' }).check(); await page.getByRole('button', { name: 'Add Entry' }).click(); await page.getByPlaceholder('Name', { exact: true }).fill('width');
+		await page.locator('.pdf-schema-entry select').selectOption('1'); await page.getByRole('spinbutton').fill('2'); await page.getByRole('button', { name: 'Apply', exact: true }).click();
+		assert.deepEqual(await page.evaluate('calls'), [{ command: 'form_set_props', params: { field: 'Answer', appearance: { width: 2 } }, revision: 4 }]);
+		await page.locator('#open').click(); await page.getByLabel('Field', { exact: false }).first().fill('Answer'); await page.evaluate('snapshot={...snapshot,revision:5}'); await page.getByRole('button', { name: 'Apply', exact: true }).click();
+		assert.match(await page.getByRole('alert').textContent(), /document changed/); assert.equal(await page.evaluate('calls.length'), 1); await page.keyboard.press('Escape');
+		await page.addScriptTag({ content: bundle.outputFiles.find(file => file.path.endsWith('pdfInspection.js'))!.text });
+		await page.evaluate(`window.inspection=document.createElement('div');document.body.append(inspection);OfficePDFForm.renderPdfInspection(inspection,[{doc:3,text:'<img src=x onerror=alert(1)>',items:Array.from({length:10000},(_,i)=>({value:i}))}])`);
+		assert.equal(await page.locator('img').count(), 0); assert.ok(await page.locator('details').count() < 200); assert.match(await page.locator('body').textContent(), /Showing 40 of 10000/);
+		await page.evaluate('tools.dispose()');
+	} finally { await browser.close(); }
+});

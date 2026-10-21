@@ -210,3 +210,18 @@ html::-webkit-scrollbar-track, html::-webkit-scrollbar-corner { background: var(
 .pdf-tools-dialog button:active { transform: scale(.98); }
 .pdf-tools-dialog .pdf-tool-error { color: var(--vscode-errorForeground); }
 @media (prefers-reduced-motion: reduce) { .pdf-tools-dialog button { transition: none; transform: none; } }
+.pdf-command-dialog { width: min(720px, calc(100vw - 40px)); }
+.pdf-command-dialog form > .pdf-command-fields { display: block; }
+.pdf-command-dialog input[type="search"] { margin-bottom: 12px; }
+.pdf-schema-field { min-width: 0; }
+.pdf-schema-field textarea { box-sizing: border-box; width: 100%; min-height: 76px; resize: vertical; padding: 8px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, #8886); border-radius: 6px; font: inherit; }
+.pdf-schema-group { border: 1px solid var(--vscode-widget-border, #8885); border-radius: 6px; margin: 8px 0; padding: 12px; }
+.pdf-schema-group[hidden] { display: none; }
+.pdf-schema-field input[type="checkbox"] { width: 16px; min-height: 16px; }
+.pdf-schema-entry { padding: 10px 0; border-bottom: 1px solid var(--vscode-widget-border, #8885); }
+.pdf-artifacts { padding: 10px 18px; font-size: 12px; }
+.pdf-artifacts button { margin: 8px 8px 0 0; cursor: pointer; }
+.pdf-inspection { margin: 10px 18px; padding: 12px; max-height: 40vh; overflow: auto; border: 1px solid var(--vscode-widget-border, #8885); border-radius: 8px; font-size: 12px; }
+.pdf-inspection details { padding-inline-start: 12px; margin-block: 6px; }
+.pdf-inspection p { margin: 6px 0; overflow-wrap: anywhere; }
+.pdf-document #info:has(#hint:empty):not(:has(.agent-status:not(:empty))) { display: none; }

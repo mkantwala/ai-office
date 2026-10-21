@@ -21,7 +21,7 @@ export function pdfPageRange(text: string, total: number): number[] {
 
 export class PdfTools {
 	private dialog?: HTMLDialogElement;
-	constructor(private readonly snapshot: () => { total: number; page: number; revision: number }, private readonly execute: (command: string, params: Record<string, unknown>, revision: number) => void) { }
+	constructor(private readonly snapshot: () => { total: number; page: number; revision: number }, private readonly execute: (command: string, params: Record<string, unknown>, revision: number) => void, private readonly allTools?: () => void) { }
 	dispose() { this.dialog?.remove(); }
 	open() {
 		if (this.dialog?.open) { this.dialog.focus(); return; }
@@ -57,7 +57,7 @@ export class PdfTools {
 			label.append(value); options.append(label);
 			const destructive = operation.value === 'page_delete'; apply.textContent = destructive ? 'Delete Selected Pages' : 'Apply'; apply.classList.toggle('destructive', destructive);
 		};
-		const footer = document.createElement('footer'), cancel = document.createElement('button'), apply = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Cancel'; cancel.addEventListener('click', () => dialog.close()); apply.type = 'submit'; apply.textContent = 'Apply'; footer.append(cancel, apply); form.append(error, footer);
+		const footer = document.createElement('footer'), cancel = document.createElement('button'), apply = document.createElement('button'); cancel.type = 'button'; cancel.textContent = 'Cancel'; cancel.addEventListener('click', () => dialog.close()); apply.type = 'submit'; apply.textContent = 'Apply'; if (this.allTools) { const more = document.createElement('button'); more.type = 'button'; more.textContent = 'All PDF Tools'; more.addEventListener('click', () => { dialog.close(); this.allTools!(); }); footer.append(more); } footer.append(cancel, apply); form.append(error, footer);
 		operation.addEventListener('change', render); render();
 		form.addEventListener('submit', event => {
 			event.preventDefault();

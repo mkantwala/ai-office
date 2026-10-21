@@ -1379,6 +1379,7 @@
 				"inputSchema": {
 					"type": "object",
 					"properties": {
+						"operation": {"type": "string", "enum": ["discover", "open", "list"], "description": "Default discover. Open a generated PDF or Word file by URI, or list open files of the selected kind."},
 						"uri": {
 							"type": "string"
 						},
@@ -1395,6 +1396,8 @@
 						"command": {
 							"type": "string"
 						},
+						"resultId": {"type": "string", "description": "Read a cached run receipt without repeating the operation."},
+						"resultPath": {"type": "string", "description": "JSON pointer into the cached receipt, e.g. /result/0 or /artifacts."},
 						"offset": {
 							"type": "integer",
 							"minimum": 0

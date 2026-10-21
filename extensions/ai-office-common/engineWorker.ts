@@ -16,7 +16,7 @@ parentPort?.on('message', message => {
 			let result: unknown;
 			let transfer: ArrayBuffer[] = [];
 			if (message.method === 'open') {
-				const opened = await openEngine(message.kind as Kind, message.name, message.bytes, message.extensionsRoot, message.password);
+				const opened = await openEngine(message.kind as Kind, message.name, message.bytes, message.extensionsRoot, message.password, { artifactRoot: message.artifactRoot, sourceUri: message.sourceUri });
 				engine?.dispose(); engine = opened;
 				wordFrame = message.kind === 'word' ? new WordFrame() : undefined;
 				result = { pages: engine.pages(), state: engine.state(), commands: engine.commands() };
@@ -51,8 +51,9 @@ parentPort?.on('message', message => {
 						if (message.review) { engine.agent?.reviewFinish?.(); } break;
 					case 'tablePreview': result = engine.tablePreview?.(message.args); break;
 					case 'export': result = await engine.export(); break;
+					case 'saved': result = { state: engine.saved ? await engine.saved() : engine.state(), pages: engine.pages() }; break;
 					case 'render': {
-						const raster = engine.render(message.page, message.scale);
+						const raster = engine.renderAsync ? await engine.renderAsync(message.page, message.scale) : engine.render(message.page, message.scale);
 						if (wordFrame && raster.pixels && raster.width && raster.height && typeof message.frame === 'number') {
 							const update = wordFrame.update({ pixels: raster.pixels, width: raster.width, height: raster.height }, message.page, message.scale, message.frame, message.base);
 							result = { ...update, tables: raster.tables }; transfer = [update.pixels.buffer as ArrayBuffer];
@@ -66,3 +67,5 @@ parentPort?.on('message', message => {
 		} catch (error) { parentPort?.postMessage({ id: message.id, error: String(error) }); }
 	});
 });
+
+process.on('exit', () => engine?.dispose());
