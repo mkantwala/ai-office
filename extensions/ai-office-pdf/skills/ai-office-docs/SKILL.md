@@ -21,4 +21,4 @@ Choose structure and grouping autonomously; do not ask the user to organize edit
 
 Use `office_document_history` for Undo/Redo, checkpoints and restore: status first, then fresh version. Leave native Keep/Undo decisions to the user. Keep does not save. Changes remain unsaved until Save. Verify requested content, placement and URI; report partial work honestly.
 
-Load details only as needed with `office_document_help` guide: content, commands, identity, drafting, comments. Discover command parameters; never invent capabilities.
+Load details only as needed with `office_document_help` guide: content, commands, identity, drafting, comments. Discover command parameters; never invent capabilities. Extended character formatting uses targeted operation=command; batch related commands. Verify effective character properties with read operation=formatting, paragraph ID and optional start/end. Ruby/enclosed characters change offsets, so reread before further edits.

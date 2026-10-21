@@ -17,7 +17,7 @@ Prefer `office_document_format` for common character and paragraph formatting. I
 | Selection (editor only) | `select.all`, `select.range`, `select.word`, `select.text`, `select.collapse` | Read `operation:selection` for user context. Targeted command rejects these to avoid losing the target. |
 | History (editor only) | `edit.undo`, `edit.redo` | Normal editor Undo/Redo handles complete agent operations. These commands are excluded from targeted edits because they cannot be scoped to a block. Use the separate `office_document_history` tool for status, undo, redo or restoring a request checkpoint. |
 
-Table-border color/thickness, row/column insertion/deletion, file creation, automatic save, and Keep/Undo review are not exposed by these tools. Do not promise those capabilities. Protection and native Track Changes disable agent block mutation. Discover missing capabilities rather than attempting raw XML or filesystem workarounds.
+Table and image commands below use guarded targeted edits. File creation and automatic saving remain application operations. Keep/Undo review and history have separate controls/tools. Protection and native Track Changes disable agent block mutation. Discover missing capabilities rather than attempting raw XML or filesystem workarounds.
 
 All ordinary document toolbar commands remain available in the editor. The tool's smaller surface intentionally provides deterministic targeting and bounded output. Large image payloads can exceed the tool input limit; do not inline oversized base64 data into model context.
 
@@ -52,3 +52,21 @@ Image inspection returns `images` on its containing paragraph: `offset` is a Uni
 - `picture.select` is an editor-only hit-test command. Agents use paragraph ID and exact image start/end, never screen coordinates.
 
 At the end of a document, use `office_document_edit` with `operation:append`, blocks and a fresh version, without id or position. The engine resolves the true body end. Use `office_document_read` with `operation:tail` to inspect the final top-level block. Never guess the end from a paginated read. Keep the returned document URI for subsequent calls and verify the inserted block's text in that same document before reporting success.
+
+
+## Extended character formatting
+
+These commands use the original WordCraft implementation through `office_document_edit` with `operation:command`, a fresh block ID/version and optional Unicode `start`/`end`. Fetch the exact native parameters using `office_document_help` with `command`; batch related properties into one Undo/review step. They also work through the editor command API and CLI.
+
+- Underline/strike: `format.doubleUnderline`, `format.wordUnderline`, `format.doubleStrikethrough`.
+- Character appearance: `format.border`, `format.allCaps`, `format.smallCaps`, `format.hidden`, `format.outline`, `format.shadow`, `format.emboss`, `format.engrave`. Use explicit `value:true|false` where supported rather than blindly toggling.
+- Baseline: `format.subscript`, `format.superscript`, `format.position` (`points`).
+- Sizing: `format.growFont`, `format.shrinkFont` use the native font-size ladder; `format.growFont1`, `format.shrinkFont1` adjust one point. Prefer an explicit `format.size` when the desired size is known.
+- Spacing: `format.spacing` (`points`) and `format.scale` (`percent`).
+- Background/style: `format.shading` (`color` or null), `format.charStyle` (`style`), `format.set` (`props`, native CharProps), `format.textEffects` (native fill/outline/shadow/glow/reflection). Omitted properties are preserved; do not infer unsupported CharProps keys.
+- Text transformation: `format.changeCase` (`mode:sentence|lower|upper|title|toggle`). This changes text; caps formatting above preserves the underlying letters.
+- Reset direct character formatting: `format.resetChar`; `format.clear` also clears paragraph formatting.
+- Enclosed characters: `format.enclose` (`shape:circle|square|triangle|diamond` or null to remove). Select one supported full-width or up to two half-width characters.
+- Phonetic guide: `format.phonetic` with an explicit `ruby` string (null removes it), optional alignment/size/offset. Select the exact plain-text base range. Ruby/enclosures are inline objects and can change the paragraph's character offsets: reread before the next edit.
+
+`format.fontDialog` is an upstream window request and is not exposed. Inspect effective formatting with `office_document_read` operation=`formatting`, paragraph `id` and optional Unicode `start`/`end`. This uses native formatting state without moving the user caret or creating Undo/review changes; mixed spacing/font values are null. Block hashes are from fresh reads, not durable values to remember across reopen; IDs remain internal and stable.

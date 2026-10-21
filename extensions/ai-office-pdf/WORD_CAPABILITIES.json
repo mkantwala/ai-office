@@ -1,0 +1,3738 @@
+{
+  "repository": "https://github.com/storytold/wordcraft.git",
+  "revision": "159b84f54c74e9e82fb3109b758ae7dd6f4e3ab0",
+  "commands": [
+    {
+      "command": "arrange.align",
+      "label": "Align",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "arrange.bounds",
+      "label": "Move or Resize",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "arrange.bringForward",
+      "label": "Bring Forward",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "arrange.group",
+      "label": "Group",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "arrange.moveWithText",
+      "label": "Move with Text",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "arrange.nudge",
+      "label": "Nudge",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "arrange.position",
+      "label": "Position",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "arrange.rotate",
+      "label": "Rotate",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "arrange.rotation",
+      "label": "Rotation",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "arrange.selectionPane",
+      "label": "Selection Pane",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "arrange.sendBackward",
+      "label": "Send Backward",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "arrange.ungroup",
+      "label": "Ungroup",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "arrange.wrap",
+      "label": "Wrap Text",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "arrange.wrapText",
+      "label": "Wrap Text Sides",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "canvas.expand",
+      "label": "Expand",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "canvas.fit",
+      "label": "Fit",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "canvas.member",
+      "label": "Canvas Member",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "canvas.scale",
+      "label": "Scale Drawing",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "caret.docEnd",
+      "label": "Document End",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "caret.docStart",
+      "label": "Document Start",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "caret.down",
+      "label": "Down",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "caret.end",
+      "label": "Line End",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "caret.home",
+      "label": "Line Start",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "caret.left",
+      "label": "Left",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "caret.pageDown",
+      "label": "Page Down",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "caret.pageUp",
+      "label": "Page Up",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "caret.paraDown",
+      "label": "Paragraph Down",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "caret.paraUp",
+      "label": "Paragraph Up",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "caret.pastCitation",
+      "label": "Move Past Citation",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "caret.right",
+      "label": "Right",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "caret.set",
+      "label": "Set Caret",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "caret.up",
+      "label": "Up",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "caret.wordLeft",
+      "label": "Word Left",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "caret.wordRight",
+      "label": "Word Right",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "chart.dataLabels",
+      "label": "Data Labels",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "chart.editData",
+      "label": "Edit Data",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "chart.legend",
+      "label": "Legend",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "chart.title",
+      "label": "Chart Title",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "chart.type",
+      "label": "Change Chart Type",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "design.effects",
+      "label": "Effects",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "design.pageBorders",
+      "label": "Page Borders",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "design.pageColor",
+      "label": "Page Color",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "design.paragraphSpacing",
+      "label": "Paragraph Spacing",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "design.setDefault",
+      "label": "Set as Default",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "design.styleSet",
+      "label": "Style Set",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "design.theme",
+      "label": "Themes",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "design.themeColors",
+      "label": "Colors",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "design.themeFonts",
+      "label": "Fonts",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "design.themes",
+      "label": "Theme List",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "design.watermark",
+      "label": "Watermark",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.buildingBlock",
+      "label": "Building Block Gallery Content Control",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.checkBox",
+      "label": "Check Box Content Control",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.chooseItem",
+      "label": "Choose List Item",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.comboBox",
+      "label": "Combo Box Content Control",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.control",
+      "label": "Content Control at Selection",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.datePicker",
+      "label": "Date Picker Content Control",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.designMode",
+      "label": "Design Mode",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.dropDown",
+      "label": "Drop-Down List Content Control",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.picture",
+      "label": "Picture Content Control",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.plainText",
+      "label": "Plain Text Content Control",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.properties",
+      "label": "Properties",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.removeControl",
+      "label": "Remove Content Control",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.repeatingSection",
+      "label": "Repeating Section Content Control",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.richText",
+      "label": "Rich Text Content Control",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.setDate",
+      "label": "Set Date",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "developer.toggleCheckBox",
+      "label": "Toggle Check Box",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "document.inspect",
+      "label": "Inspect Document",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "document.layout",
+      "label": "Layout Summary",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "document.paragraph",
+      "label": "Paragraph Details",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "document.selection",
+      "label": "Selection",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "document.setText",
+      "label": "Replace Document Text",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "document.text",
+      "label": "Document Text",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.addPen",
+      "label": "Add Pen",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.convertInk",
+      "label": "Convert to Shapes",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.erase",
+      "label": "Erase Ink",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.eraser",
+      "label": "Eraser",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.highlighter",
+      "label": "Highlighter",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.inkToShape",
+      "label": "Ink to Shape",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.lasso",
+      "label": "Lasso Select",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.lassoColor",
+      "label": "Recolor Selected Ink",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.lassoDelete",
+      "label": "Delete Selected Ink",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.lassoMove",
+      "label": "Move Selected Ink",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.pen",
+      "label": "Pen",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.pencil",
+      "label": "Pencil",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.removePen",
+      "label": "Remove Pen",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.replay",
+      "label": "Ink Replay",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.select",
+      "label": "Select",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "draw.stroke",
+      "label": "Draw Ink",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.advancedFind",
+      "label": "Advanced Find",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.clearClipboard",
+      "label": "Clear All",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.clipboardItems",
+      "label": "Clipboard Items",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.clipboardPane",
+      "label": "Clipboard Pane",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.copy",
+      "label": "Copy",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.copyFormat",
+      "label": "Copy Formatting",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.cut",
+      "label": "Cut",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.deleteClipboardItem",
+      "label": "Delete Clipboard Item",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.find",
+      "label": "Find",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.findNext",
+      "label": "Find Next",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.findPrevious",
+      "label": "Find Previous",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.findReplace",
+      "label": "Find and Replace",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.formatPainter",
+      "label": "Format Painter",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.goBack",
+      "label": "Go Back",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.goto",
+      "label": "Go To",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.paste",
+      "label": "Paste",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.pasteAllClipboard",
+      "label": "Paste All",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.pasteClipboardItem",
+      "label": "Paste Clipboard Item",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.pasteFormat",
+      "label": "Paste Formatting",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.pasteMerge",
+      "label": "Paste: Merge Formatting",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.pasteSpecial",
+      "label": "Paste Special",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.pasteText",
+      "label": "Paste: Keep Text Only",
+      "readOnly": false,
+      "integration": "editor"
+    },
+    {
+      "command": "edit.redo",
+      "label": "Redo",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "edit.repeat",
+      "label": "Repeat",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.replace",
+      "label": "Replace",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.replaceAll",
+      "label": "Replace All",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.undo",
+      "label": "Undo",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "edit.undoHistory",
+      "label": "Undo History",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "edit.undoTo",
+      "label": "Undo Actions",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.backspace",
+      "label": "Delete Back in Equation",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.convert",
+      "label": "Convert",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.delete",
+      "label": "Delete in Equation",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.display",
+      "label": "Change to Display",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.edit",
+      "label": "Edit Equation",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.enter",
+      "label": "Enter in Equation",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.exit",
+      "label": "Leave Equation",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.gallery",
+      "label": "Equation Gallery",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.get",
+      "label": "Equation Info",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.inputFormat",
+      "label": "Input Format",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.insertStructure",
+      "label": "Insert Structure",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.insertSymbol",
+      "label": "Insert Symbol",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.justify",
+      "label": "Justification",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.move",
+      "label": "Move in Equation",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.normalText",
+      "label": "Normal Text",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.number",
+      "label": "Equation Number",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.set",
+      "label": "Set Equation",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.structure",
+      "label": "Change Structure",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.structureActions",
+      "label": "Structure Actions",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "equation.type",
+      "label": "Type in Equation",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "fields.lock",
+      "label": "Lock Fields",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "fields.next",
+      "label": "Next Field",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "fields.previous",
+      "label": "Previous Field",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "fields.selected",
+      "label": "Selected Fields",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "fields.setCode",
+      "label": "Edit Field Code",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "fields.toggleCode",
+      "label": "Toggle Field Codes",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "fields.unlink",
+      "label": "Unlink Fields",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "fields.unlock",
+      "label": "Unlock Fields",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "file.accessibility",
+      "label": "Check Accessibility",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.autosave",
+      "label": "AutoSave",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.close",
+      "label": "Close",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.compatibility",
+      "label": "Check Compatibility",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.encrypt",
+      "label": "Encrypt with Password",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.exportPdf",
+      "label": "Export PDF",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.exportPng",
+      "label": "Export Page as PNG",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.info",
+      "label": "Info",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.inspect",
+      "label": "Inspect Document",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "file.new",
+      "label": "New",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.newFromTemplate",
+      "label": "New from Template",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.open",
+      "label": "Open",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.options",
+      "label": "Options",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.print",
+      "label": "Print",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.printMarkup",
+      "label": "Print Markup",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.printPdf",
+      "label": "Print to PDF",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.properties",
+      "label": "Properties",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "file.protect",
+      "label": "Protect Document",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "file.recover",
+      "label": "Recover Unsaved Documents",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.save",
+      "label": "Save",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.saveAs",
+      "label": "Save As",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.saveTemplate",
+      "label": "Save as Template",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.setAuthor",
+      "label": "User Name",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.share",
+      "label": "Share",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "file.versions",
+      "label": "Version History",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "font.add",
+      "label": "Add Font…",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "font.list",
+      "label": "Added Fonts",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "font.remove",
+      "label": "Remove Added Font",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "format.allCaps",
+      "label": "All Caps",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.bold",
+      "label": "Bold",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.border",
+      "label": "Character Border",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.changeCase",
+      "label": "Change Case",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.charStyle",
+      "label": "Apply Character Style",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.clear",
+      "label": "Clear All Formatting",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.color",
+      "label": "Font Color",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.doubleStrikethrough",
+      "label": "Double Strikethrough",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.doubleUnderline",
+      "label": "Double Underline",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.emboss",
+      "label": "Emboss",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.enclose",
+      "label": "Enclose Characters",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.engrave",
+      "label": "Engrave",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.font",
+      "label": "Font",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.fontDialog",
+      "label": "Font Dialog",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "format.growFont",
+      "label": "Increase Font Size",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.growFont1",
+      "label": "Grow Font 1 Point",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.hidden",
+      "label": "Hidden",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.highlight",
+      "label": "Text Highlight Color",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.italic",
+      "label": "Italic",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.outline",
+      "label": "Outline",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.phonetic",
+      "label": "Phonetic Guide",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.position",
+      "label": "Character Position",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.resetChar",
+      "label": "Reset Character Formatting",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.scale",
+      "label": "Character Scale",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.set",
+      "label": "Set Character Formatting",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.shading",
+      "label": "Character Shading",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.shadow",
+      "label": "Shadow",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.shrinkFont",
+      "label": "Decrease Font Size",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.shrinkFont1",
+      "label": "Shrink Font 1 Point",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.size",
+      "label": "Font Size",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.smallCaps",
+      "label": "Small Caps",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.spacing",
+      "label": "Character Spacing",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.state",
+      "label": "Formatting at Selection",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "format.strikethrough",
+      "label": "Strikethrough",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.subscript",
+      "label": "Subscript",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.superscript",
+      "label": "Superscript",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.textEffects",
+      "label": "Text Effects",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.underline",
+      "label": "Underline",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "format.wordUnderline",
+      "label": "Underline Words Only",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "hf.next",
+      "label": "Next Section",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "hf.position",
+      "label": "Header/Footer Position",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "hf.previous",
+      "label": "Previous Section",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.autoText",
+      "label": "AutoText",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.blankPage",
+      "label": "Blank Page",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.bookmark",
+      "label": "Bookmark",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.canvas",
+      "label": "Drawing Canvas",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.chart",
+      "label": "Chart",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.closeHeader",
+      "label": "Close Header and Footer",
+      "readOnly": true,
+      "integration": "block-command"
+    },
+    {
+      "command": "insert.coverPage",
+      "label": "Cover Page",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.createFooter",
+      "label": "Create Footer",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.createHeader",
+      "label": "Create Header",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.crossReference",
+      "label": "Cross-reference",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.dateField",
+      "label": "Insert Date Field",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.dateTime",
+      "label": "Date & Time",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.docProperty",
+      "label": "Document Property",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.dropCap",
+      "label": "Drop Cap",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.editFooter",
+      "label": "Edit Footer",
+      "readOnly": true,
+      "integration": "block-command"
+    },
+    {
+      "command": "insert.editHeader",
+      "label": "Edit Header",
+      "readOnly": true,
+      "integration": "block-command"
+    },
+    {
+      "command": "insert.equation",
+      "label": "Equation",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.field",
+      "label": "Field",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.footer",
+      "label": "Footer",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.header",
+      "label": "Header",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.horizontalLine",
+      "label": "Horizontal Line",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.icon",
+      "label": "Icons",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.link",
+      "label": "Link",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "insert.object",
+      "label": "Object",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.pageBreak",
+      "label": "Page Break",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.pageField",
+      "label": "Insert Page Field",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.pageNumber",
+      "label": "Page Number",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.picture",
+      "label": "Pictures",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "insert.quickParts",
+      "label": "Quick Parts",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.removeFooter",
+      "label": "Remove Footer",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.removeHeader",
+      "label": "Remove Header",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.removeLink",
+      "label": "Remove Hyperlink",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.shape",
+      "label": "Shapes",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.signatureLine",
+      "label": "Signature Line",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.smartArt",
+      "label": "SmartArt",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.spreadsheet",
+      "label": "Spreadsheet Table",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.symbol",
+      "label": "Symbol",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.table",
+      "label": "Table",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "insert.textBox",
+      "label": "Text Box",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.textFromFile",
+      "label": "Text from File",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.timeField",
+      "label": "Insert Time Field",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "insert.wordArt",
+      "label": "WordArt",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.break",
+      "label": "Breaks",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.columns",
+      "label": "Columns",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.differentFirstPage",
+      "label": "Different First Page",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.differentOddEven",
+      "label": "Different Odd & Even Pages",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.documentGrid",
+      "label": "Document Grid",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.hyphenation",
+      "label": "Hyphenation",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.lineNumbers",
+      "label": "Line Numbers",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.linkToPrevious",
+      "label": "Link to Previous",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.manualHyphenation",
+      "label": "Manual Hyphenation",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.margins",
+      "label": "Margins",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.orientation",
+      "label": "Orientation",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.pageNumberFormat",
+      "label": "Format Page Numbers",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.pageProperties",
+      "label": "Page Settings",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "layout.pageSetup",
+      "label": "Page Setup",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.section",
+      "label": "Section Properties",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.sectionRtl",
+      "label": "Right-to-Left Section",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.size",
+      "label": "Size",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.textDirection",
+      "label": "Text Direction",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "layout.verticalAlign",
+      "label": "Vertical Alignment",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "list.define",
+      "label": "Define New Multilevel List",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "list.get",
+      "label": "List Definition",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.addressBlock",
+      "label": "Address Block",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.checkErrors",
+      "label": "Check for Errors",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.editRecipients",
+      "label": "Edit Recipient List",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.envelopes",
+      "label": "Envelopes",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.findRecipient",
+      "label": "Find Recipient",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.finish",
+      "label": "Finish & Merge",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.greetingLine",
+      "label": "Greeting Line",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.highlightFields",
+      "label": "Highlight Merge Fields",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.insertField",
+      "label": "Insert Merge Field",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.labels",
+      "label": "Labels",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.matchFields",
+      "label": "Match Fields",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.next",
+      "label": "Next Record",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.preview",
+      "label": "Preview Results",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.previous",
+      "label": "Previous Record",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.recipients",
+      "label": "Select Recipients",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.rules",
+      "label": "Rules",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "mailings.start",
+      "label": "Start Mail Merge",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "object.altText",
+      "label": "Alt Text",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "outline.close",
+      "label": "Close Outline View",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.collapse",
+      "label": "Collapse",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.demote",
+      "label": "Demote",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.demoteToBody",
+      "label": "Demote to Body Text",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.expand",
+      "label": "Expand",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.firstLineOnly",
+      "label": "Show First Line Only",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.level",
+      "label": "Outline Level",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.moveDown",
+      "label": "Move Down",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.moveUp",
+      "label": "Move Up",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.promote",
+      "label": "Promote",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.promoteToHeading1",
+      "label": "Promote to Heading 1",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.selectSubtree",
+      "label": "Select Heading and Content",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.showAll",
+      "label": "Show All Levels",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.showFormatting",
+      "label": "Show Text Formatting",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.showLevel",
+      "label": "Show Level",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.showLevel1",
+      "label": "Show Level 1",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.showLevel2",
+      "label": "Show Level 2",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.showLevel3",
+      "label": "Show Level 3",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.showLevel4",
+      "label": "Show Level 4",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.showLevel5",
+      "label": "Show Level 5",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.showLevel6",
+      "label": "Show Level 6",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.showLevel7",
+      "label": "Show Level 7",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.showLevel8",
+      "label": "Show Level 8",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.showLevel9",
+      "label": "Show Level 9",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.state",
+      "label": "Outline State",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "outline.toggle",
+      "label": "Expand or Collapse Heading",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "para.addSpaceBefore",
+      "label": "Add Space Before Paragraph",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.align",
+      "label": "Alignment",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "para.alignCenter",
+      "label": "Center",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.alignLeft",
+      "label": "Align Left",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.alignRight",
+      "label": "Align Right",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.asianTypography",
+      "label": "Asian Typography",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.borders",
+      "label": "Borders",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.bullets",
+      "label": "Bullets",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "para.defineBullet",
+      "label": "Define New Bullet",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.defineNumber",
+      "label": "Define New Number Format",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.demote",
+      "label": "Demote",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.dialog",
+      "label": "Paragraph Settings",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "para.distribute",
+      "label": "Distributed",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.double",
+      "label": "Double Spacing",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.hangingIndent",
+      "label": "Hanging Indent",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.heading1",
+      "label": "Heading 1",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.heading2",
+      "label": "Heading 2",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.heading3",
+      "label": "Heading 3",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.indent",
+      "label": "Increase Indent",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.indents",
+      "label": "Indents",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.justify",
+      "label": "Justify",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.keepLines",
+      "label": "Keep Lines Together",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.keepNext",
+      "label": "Keep with Next",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.lineSpacing",
+      "label": "Line and Paragraph Spacing",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "para.listLevel",
+      "label": "Change List Level",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.ltr",
+      "label": "Left-to-Right Text Direction",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.moveDown",
+      "label": "Move Paragraph Down",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.moveUp",
+      "label": "Move Paragraph Up",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.multilevel",
+      "label": "Multilevel List",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.normal",
+      "label": "Normal Style",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.numbering",
+      "label": "Numbering",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "para.oneAndHalf",
+      "label": "1.5 Line Spacing",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.outdent",
+      "label": "Decrease Indent",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.outlineLevel",
+      "label": "Outline Level",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.pageBreakBefore",
+      "label": "Page Break Before",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.promote",
+      "label": "Promote",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.properties",
+      "label": "Paragraph Properties",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "para.removeHanging",
+      "label": "Reduce Hanging Indent",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.removeSpaceAfter",
+      "label": "Remove Space After Paragraph",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.reset",
+      "label": "Reset Paragraph Formatting",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.restartNumbering",
+      "label": "Restart at 1",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.rtl",
+      "label": "Right-to-Left Text Direction",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.set",
+      "label": "Set Paragraph Formatting",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.setNumberingValue",
+      "label": "Set Numbering Value",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.shading",
+      "label": "Shading",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.single",
+      "label": "Single Spacing",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.sort",
+      "label": "Sort",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.spacing",
+      "label": "Paragraph Spacing",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.style",
+      "label": "Apply Style",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "para.tabs",
+      "label": "Tabs",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "para.widowControl",
+      "label": "Widow/Orphan Control",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "picture.altText",
+      "label": "Alt Text",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "picture.border",
+      "label": "Picture Border",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "picture.change",
+      "label": "Change Picture",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "picture.color",
+      "label": "Color",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "picture.compress",
+      "label": "Compress Pictures",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "picture.corrections",
+      "label": "Corrections",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "picture.crop",
+      "label": "Crop",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "picture.delete",
+      "label": "Delete Picture",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "picture.effects",
+      "label": "Artistic Effects",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "picture.iconColor",
+      "label": "Icon Color",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "picture.removeBackground",
+      "label": "Remove Background",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "picture.reset",
+      "label": "Reset Picture",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "picture.select",
+      "label": "Select Picture",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "picture.size",
+      "label": "Size",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "picture.style",
+      "label": "Picture Styles",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "picture.transparency",
+      "label": "Transparency",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "readAloud.next",
+      "label": "Next Sentence",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "readAloud.playPause",
+      "label": "Play/Pause",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "readAloud.previous",
+      "label": "Previous Sentence",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "readAloud.skipCitations",
+      "label": "Skip Citations and Bibliography",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "readAloud.speed",
+      "label": "Reading Speed",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "readAloud.status",
+      "label": "Read Aloud Status",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "readAloud.stop",
+      "label": "Stop Reading",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "references.addText",
+      "label": "Add Text",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.bibliography",
+      "label": "Bibliography",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.caption",
+      "label": "Insert Caption",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "references.citation",
+      "label": "Insert Citation",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.citationStyle",
+      "label": "Style",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.convertNotes",
+      "label": "Convert Notes",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.endnote",
+      "label": "Insert Endnote",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.footnote",
+      "label": "Insert Footnote",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.index",
+      "label": "Insert Index",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.markCitation",
+      "label": "Mark Citation",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.markEntry",
+      "label": "Mark Entry",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.nextFootnote",
+      "label": "Next Footnote",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "references.noteOptions",
+      "label": "Footnote and Endnote",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.notes",
+      "label": "Show Notes",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "references.removeToc",
+      "label": "Remove Table of Contents",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.researcher",
+      "label": "Researcher",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "references.sources",
+      "label": "Manage Sources",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.tableOfAuthorities",
+      "label": "Insert Table of Authorities",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.tableOfFigures",
+      "label": "Insert Table of Figures",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.toc",
+      "label": "Table of Contents",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.updateAuthorities",
+      "label": "Update Table",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.updateFields",
+      "label": "Update Field",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.updateFigures",
+      "label": "Update Table",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.updateIndex",
+      "label": "Update Index",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "references.updateToc",
+      "label": "Update Table",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.accept",
+      "label": "Accept",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.acceptAll",
+      "label": "Accept All Changes",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.addToDictionary",
+      "label": "Add to Dictionary",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.applySuggestion",
+      "label": "Change",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.changes",
+      "label": "Reviewing Pane",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.combine",
+      "label": "Combine",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.comments",
+      "label": "Show Comments",
+      "readOnly": true,
+      "integration": "block-command"
+    },
+    {
+      "command": "review.compare",
+      "label": "Compare",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.deleteComment",
+      "label": "Delete",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.editComment",
+      "label": "Edit Comment",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.editor",
+      "label": "Editor",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.hideInk",
+      "label": "Hide Ink",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.ignoreAll",
+      "label": "Ignore All",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.issues",
+      "label": "Proofing Issues",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.language",
+      "label": "Language",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.markup",
+      "label": "Display for Review",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.newComment",
+      "label": "New Comment",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "review.nextChange",
+      "label": "Next Change",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.nextComment",
+      "label": "Next",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.previousChange",
+      "label": "Previous Change",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.previousComment",
+      "label": "Previous",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.proofing",
+      "label": "Check Spelling as You Type",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.readAloud",
+      "label": "Read Aloud",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.reject",
+      "label": "Reject",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.rejectAll",
+      "label": "Reject All Changes",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.reply",
+      "label": "Reply",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.resolveComment",
+      "label": "Resolve",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.restrict",
+      "label": "Restrict Editing",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.showMarkup",
+      "label": "Show Markup",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.spelling",
+      "label": "Spelling & Grammar",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.suggestions",
+      "label": "Spelling Suggestions",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.thesaurus",
+      "label": "Thesaurus",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.trackChanges",
+      "label": "Track Changes",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "review.trackingOptions",
+      "label": "Track Changes Options",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "review.wordCount",
+      "label": "Word Count",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "select.addObject",
+      "label": "Add Object to Selection",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "select.all",
+      "label": "Select All",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "select.collapse",
+      "label": "Collapse Selection",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "select.column",
+      "label": "Column Selection",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "select.dragUnit",
+      "label": "Extend Selection by Units",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "select.extend",
+      "label": "Extend Selection",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "select.line",
+      "label": "Select Line",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "select.objects",
+      "label": "Select Objects",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "select.paragraph",
+      "label": "Select Paragraph",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "select.range",
+      "label": "Select Range",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "select.sentence",
+      "label": "Select Sentence",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "select.similar",
+      "label": "Select Text with Similar Formatting",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "select.text",
+      "label": "Select Text",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "select.word",
+      "label": "Select Word",
+      "readOnly": true,
+      "integration": "editor"
+    },
+    {
+      "command": "shape.alignText",
+      "label": "Align Text",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "shape.breakLink",
+      "label": "Break Link",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "shape.change",
+      "label": "Change Shape",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "shape.connect",
+      "label": "Connect Shapes",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "shape.effects",
+      "label": "Shape Effects",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "shape.fill",
+      "label": "Shape Fill",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "shape.link",
+      "label": "Create Link",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "shape.outline",
+      "label": "Shape Outline",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "shape.textDirection",
+      "label": "Text Direction",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "smartArt.addShape",
+      "label": "Add Shape",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "smartArt.colors",
+      "label": "Change Colors",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "smartArt.demote",
+      "label": "Demote",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "smartArt.items",
+      "label": "Edit Items",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "smartArt.layout",
+      "label": "Change Layout",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "smartArt.promote",
+      "label": "Promote",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "smartArt.reset",
+      "label": "Reset Graphic",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "smartArt.textPane",
+      "label": "Text Pane",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.addToGallery",
+      "label": "Add to Style Gallery",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.apply",
+      "label": "Apply Styles",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.copyFrom",
+      "label": "Copy Styles",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.create",
+      "label": "Create a Style",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.delete",
+      "label": "Delete Style",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.inspect",
+      "label": "Inspect Styles at Selection",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.inspector",
+      "label": "Style Inspector",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.inspectorClear",
+      "label": "Clear Formatting Level",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.list",
+      "label": "Styles",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.manage",
+      "label": "Manage Styles",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.modify",
+      "label": "Modify Style",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.organizer",
+      "label": "Organizer",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.pane",
+      "label": "Styles Pane",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.rename",
+      "label": "Rename Style",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.setVisibility",
+      "label": "Show or Hide Style",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "styles.updateToMatch",
+      "label": "Update Style to Match Selection",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.altText",
+      "label": "Alt Text",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.autofit",
+      "label": "AutoFit",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.borderPainter",
+      "label": "Border Painter",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.borders",
+      "label": "Borders",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.cellAlign",
+      "label": "Alignment",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.cellMargins",
+      "label": "Cell Margins",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.columnWidth",
+      "label": "Table Column Width",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.deleteCells",
+      "label": "Delete Cells",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.deleteColumn",
+      "label": "Delete Columns",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.deleteRow",
+      "label": "Delete Rows",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.deleteStyle",
+      "label": "Delete Table Style",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.deleteTable",
+      "label": "Delete Table",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.distributeColumns",
+      "label": "Distribute Columns",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.distributeRows",
+      "label": "Distribute Rows",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.draw",
+      "label": "Draw Table",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.eraser",
+      "label": "Eraser",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.fitColumn",
+      "label": "AutoFit Column by Double-Clicking",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.formula",
+      "label": "Formula",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.fromText",
+      "label": "Convert Text to Table",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.insertAt",
+      "label": "Insert Row or Column by Clicking",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.insertColumnLeft",
+      "label": "Insert Left",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.insertColumnRight",
+      "label": "Insert Right",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.insertRowAbove",
+      "label": "Insert Above",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.insertRowBelow",
+      "label": "Insert Below",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.look",
+      "label": "Table Style Options",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.merge",
+      "label": "Merge Cells",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.modifyStyle",
+      "label": "Modify Table Style",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.moveAxis",
+      "label": "Move Row or Column",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.moveDrag",
+      "label": "Move Table by Dragging",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.newStyle",
+      "label": "New Table Style",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.properties",
+      "label": "Properties",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.quick",
+      "label": "Quick Tables",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.repeatHeader",
+      "label": "Repeat Header Rows",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.resizeDrag",
+      "label": "Resize Table by Dragging",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.rowHeight",
+      "label": "Table Row Height",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.rtl",
+      "label": "Right-to-Left Table",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.selectAt",
+      "label": "Select Table Cells by Clicking",
+      "readOnly": true,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.selectCell",
+      "label": "Select Cell",
+      "readOnly": true,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.selectColumn",
+      "label": "Select Column",
+      "readOnly": true,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.selectRow",
+      "label": "Select Row",
+      "readOnly": true,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.selectTable",
+      "label": "Select Table",
+      "readOnly": true,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.shading",
+      "label": "Shading",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.sort",
+      "label": "Sort",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.split",
+      "label": "Split Cells",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "table.splitTable",
+      "label": "Split Table",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.style",
+      "label": "Table Styles",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.textDirection",
+      "label": "Text Direction",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.toText",
+      "label": "Convert to Text",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "table.viewGridlines",
+      "label": "View Gridlines",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "text.backspace",
+      "label": "Backspace",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "text.backTab",
+      "label": "Shift+Tab",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "text.columnBreak",
+      "label": "Column Break",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "text.copyright",
+      "label": "Copyright Sign",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "text.delete",
+      "label": "Delete",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "text.deleteWordBack",
+      "label": "Delete Previous Word",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "text.deleteWordForward",
+      "label": "Delete Next Word",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "text.ellipsis",
+      "label": "Ellipsis",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "text.emDash",
+      "label": "Em Dash",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "text.insert",
+      "label": "Type Text",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "text.lineBreak",
+      "label": "Line Break",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "text.nbHyphen",
+      "label": "Nonbreaking Hyphen",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "text.nbsp",
+      "label": "Nonbreaking Space",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "text.newParagraph",
+      "label": "New Paragraph",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "text.optionalHyphen",
+      "label": "Optional Hyphen",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "text.overtype",
+      "label": "Overtype",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "text.pageBreak",
+      "label": "Page Break",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "text.registered",
+      "label": "Registered Sign",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "text.tab",
+      "label": "Tab",
+      "readOnly": false,
+      "integration": "block-command"
+    },
+    {
+      "command": "text.toggleUnicode",
+      "label": "Toggle Unicode Character",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "text.trademark",
+      "label": "Trademark Sign",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "tools.attachTemplate",
+      "label": "Attach Template",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "tools.autocorrect",
+      "label": "AutoCorrect Options",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "tools.customizeKeyboard",
+      "label": "Customize Keyboard",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "tools.customizeRibbon",
+      "label": "Customize Ribbon",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "tools.detachTemplate",
+      "label": "Detach Template",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "tools.linkStyles",
+      "label": "Automatically Update Document Styles",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "tools.macros",
+      "label": "Macros",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "tools.recordMacro",
+      "label": "Record Macro",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "tools.search",
+      "label": "Search",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "tools.templates",
+      "label": "Templates and Add-ins",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "tools.updateStyles",
+      "label": "Update Styles from Template",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "view.accessibilityPane",
+      "label": "Accessibility Pane",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.altTextPane",
+      "label": "Alt Text Pane",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.commentsPane",
+      "label": "Comments Pane",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.darkMode",
+      "label": "Switch Modes",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.draft",
+      "label": "Draft",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.fieldCodes",
+      "label": "Field Codes",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.focus",
+      "label": "Focus",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.gridlines",
+      "label": "Gridlines",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.hideWhiteSpace",
+      "label": "Hide White Space",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.immersive",
+      "label": "Immersive Reader",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.marks",
+      "label": "Show/Hide ¶",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.multiplePages",
+      "label": "Multiple Pages",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.navigationPane",
+      "label": "Navigation Pane",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.newWindow",
+      "label": "New Window",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.numeral",
+      "label": "Numerals",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.onePage",
+      "label": "One Page",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.outline",
+      "label": "Outline",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.pageWidth",
+      "label": "Page Width",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.printLayout",
+      "label": "Print Layout",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.readColumnWidth",
+      "label": "Reading Column Width",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.readLineSpacing",
+      "label": "Reading Line Spacing",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.readMode",
+      "label": "Read Mode",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.readTextSize",
+      "label": "Reading Text Size",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.ruler",
+      "label": "Ruler",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.sideToSide",
+      "label": "Side to Side",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.split",
+      "label": "Split",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.state",
+      "label": "View State",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.stylesPane",
+      "label": "Styles Pane",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.vertical",
+      "label": "Vertical",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.webLayout",
+      "label": "Web Layout",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.zoom",
+      "label": "Zoom",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.zoom100",
+      "label": "100%",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.zoomIn",
+      "label": "Zoom In",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "view.zoomOut",
+      "label": "Zoom Out",
+      "readOnly": true,
+      "integration": "pending"
+    },
+    {
+      "command": "wordArt.style",
+      "label": "WordArt Styles",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "wordArt.textFill",
+      "label": "Text Fill",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "wordArt.textOutline",
+      "label": "Text Outline",
+      "readOnly": false,
+      "integration": "pending"
+    },
+    {
+      "command": "wordArt.transform",
+      "label": "Transform",
+      "readOnly": false,
+      "integration": "pending"
+    }
+  ]
+}

@@ -68,3 +68,7 @@ OFFICE_BROWSER_PATH=/usr/bin/chromium node --experimental-transform-types --test
 The complete integration supersedes the first milestone's seven/55-command WASM bridge: [PDF capability inventory](PDF_CAPABILITIES.json) accounts for all 171 reference commands (159 native, nine application-managed, three excluded OCR commands). **All PDF Tools** exposes the native schemas through searchable visual forms. Bounded user inspections and managed artifact links use the same engine as agents.
 
 Build the platform worker with `node extensions/ai-office-pdf/build.mts --native` after `node scripts/prepare-office-engines.mts`. It stays in the Node extension host; there is no second application window or additional MCP server. Generated binaries are ignored. See the implementation plan for URI staging, saved/unsaved source semantics, printer/certificate platform requirements and conversion directions absent from the reference itself.
+
+## WordCraft command parity
+
+The first parity batch exposes 28 additional native character-formatting commands through guarded block edits, the command API and CLI. The running registry inventory accounts for 622 pinned commands, with 127 currently integrated; full parity remains in progress. See [Word implementation plan](WORD_IMPLEMENTATION_PLAN.md) and [command inventory](WORD_CAPABILITIES.json). After a Word build, `node scripts/audit-word-commands.mts` verifies that inventory against the actual WASM registry.

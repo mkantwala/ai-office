@@ -5,7 +5,11 @@
 
 import type { Command } from './types.js';
 
+const wordCategories: Record<string, string> = { format: 'formatting', para: 'paragraphs', styles: 'styles', table: 'tables', layout: 'pages', references: 'references', equation: 'equations', picture: 'images', arrange: 'images', insert: 'insert' };
+
 export function commandCategory(id: string): string {
+	const word = /^(format|para|styles|table|layout|references|equation|picture|arrange|insert)\./.exec(id);
+	if (word) { return wordCategories[word[1]]; }
 	if (/^bookmark_/.test(id)) { return 'bookmarks'; }
 	if (/^accessibility_/.test(id)) { return 'accessibility'; }
 	if (/^measure_/.test(id)) { return 'measurements'; }

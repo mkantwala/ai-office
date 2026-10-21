@@ -1293,3 +1293,127 @@ test('Word review groups consecutive insertion runs at separate anchors without 
 		} finally { restored.dispose(); }
 	} finally { engine.dispose(); }
 });
+
+const wordParityFormats: [string, Record<string, unknown>, RegExp][] = [
+	['doubleUnderline', {}, /w:u[^>]*double/], ['wordUnderline', {}, /w:u[^>]*words/],
+	['border', { value: true }, /w:bdr/], ['doubleStrikethrough', { value: true }, /w:dstrike/],
+	['subscript', { value: true }, /w:vertAlign[^>]*subscript/], ['superscript', { value: true }, /w:vertAlign[^>]*superscript/],
+	['allCaps', { value: true }, /w:caps/], ['smallCaps', { value: true }, /w:smallCaps/], ['hidden', { value: true }, /w:vanish/],
+	['outline', { value: true }, /w:outline/], ['shadow', { value: true }, /w:shadow/], ['emboss', { value: true }, /w:emboss/], ['engrave', { value: true }, /w:imprint/],
+	['growFont', {}, /w:sz/], ['shrinkFont', {}, /w:sz/], ['growFont1', {}, /w:sz/], ['shrinkFont1', {}, /w:sz/],
+	['shading', { color: 'DDEEFF' }, /w:shd[^>]*DDEEFF/], ['changeCase', { mode: 'upper' }, /AI OFFICE EDITING/],
+	['resetChar', {}, /AI Office editing/], ['spacing', { points: 1.5 }, /w:spacing[^>]*30/], ['scale', { percent: 125 }, /w:w[^>]*125/],
+	['position', { points: 2 }, /w:position[^>]*4/], ['charStyle', { style: 'Emphasis' }, /w:rStyle[^>]*Emphasis/],
+	['set', { props: { bold: true, spacing: 1.25 } }, /w:spacing[^>]*25/],
+	['enclose', { shape: 'circle' }, / eq /i], ['phonetic', { ruby: 'ei' }, /w:ruby/], ['textEffects', { style: 'shadowed' }, /w14:shadow/]
+];
+for (const [name, params, expected] of wordParityFormats) {
+	test(`Word parity format.${name} targets a block, survives DOCX reopen and remains undoable`, async () => {
+		const engine = await openEngine('word', 'Formatting parity.docx', docx, root);
+		try {
+			const agent = engine.agent!;
+			const before = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks;
+			const id = before[0].id;
+			assert.ok(engine.commands().some(command => command.id === 'format.' + name));
+			if (name === 'resetChar') { await agent.edit({ revision: engine.state().revision, operation: 'command', id, command: 'format.bold', params: { value: true } }); }
+			const original = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks;
+			const revision = engine.state().revision;
+			const args = { operation: 'command', revision, id, command: 'format.' + name, params, ...(name === 'enclose' || name === 'phonetic' ? { start: 0, end: name === 'enclose' ? 1 : 2 } : {}) };
+			await agent.edit(args);
+			assert.ok(engine.state().revision > revision);
+			const current = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks;
+			assert.equal(current[0].id, id);
+			assert.deepEqual(current[1], before[1], 'The neighboring paragraph stays untouched');
+			const saved = await engine.export(), xml = strFromU8(unzipSync(saved)['word/document.xml']);
+			assert.match(xml, expected);
+			const reopened = await openEngine('word', 'Reopened.docx', saved, root);
+			try {
+				const content = (blocks: Block[]) => blocks.map(block => Object.fromEntries(Object.entries(block).filter(([key]) => key !== 'ifHash')));
+				assert.deepEqual(content((reopened.agent!.read({ parentId: 'body' }) as { blocks: Block[] }).blocks), content(current));
+				assert.equal(strFromU8(unzipSync(await reopened.export())['word/document.xml']), xml, 'Native DOCX formatting is stable after import normalization; hashes belong to a fresh read');
+			} finally { reopened.dispose(); }
+			await assert.rejects(agent.edit(args), /changed|version|guard/i);
+			await engine.execute('edit.undo', {});
+			assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks, original);
+			await engine.execute('edit.redo', {});
+			assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks, current);
+		} finally { engine.dispose(); }
+	});
+}
+
+test('Word phonetic commands require explicit content instead of opening an upstream dialog', async () => {
+	const engine = await openEngine('word', 'Phonetic.docx', docx, root);
+	try {
+		const agent = engine.agent!, revision = engine.state().revision;
+		const id = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks[0].id;
+		await assert.rejects(agent.edit({ revision, operation: 'command', id, command: 'format.phonetic', params: {} }), /params.ruby/);
+		assert.equal(engine.state().revision, revision);
+		assert.ok(!engine.commands().some(command => command.id === 'format.fontDialog'));
+	} finally { engine.dispose(); }
+});
+
+test('Word command inventory matches the built bridge and distinguishes pending reference commands', async () => {
+	const engine = await openEngine('word', 'Catalog.docx', docx, root);
+	try {
+		const audit = JSON.parse(await readFile(resolve(root, 'ai-office-pdf/WORD_CAPABILITIES.json'), 'utf8')) as { commands: { command: string; integration: string }[] };
+		assert.equal(new Set(audit.commands.map(command => command.command)).size, audit.commands.length);
+		assert.deepEqual(engine.commands().filter(command => !command.id.startsWith('content.')).map(command => command.id).sort(), audit.commands.filter(command => command.integration !== 'pending').map(command => command.command).sort());
+		assert.ok(audit.commands.some(command => command.command === 'format.fontDialog' && command.integration === 'pending'));
+		assert.ok(audit.commands.some(command => command.command === 'file.save' && command.integration === 'pending'));
+	} finally { engine.dispose(); }
+});
+
+test('Word extended formatting batches preserve comments and use one review and native Undo step', async () => {
+	const engine = await openEngine('word', 'Batch formatting.docx', docx, root);
+	try {
+		const agent = engine.agent!;
+		await engine.execute('select.text', { text: 'AI Office' });
+		await engine.execute('review.newComment', { text: 'Keep this comment' });
+		const original = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks;
+		const id = original[0].id;
+		const edit = (command: string, params: Record<string, unknown>) => ({ operation: 'command', id, start: 0, end: 9, command, params });
+		const edits = [edit('format.smallCaps', { value: true }), edit('format.spacing', { points: 1.5 }), edit('format.textEffects', { style: 'shadowed' })];
+		agent.reviewStart!();
+		await agent.edit({ revision: engine.state().revision, operation: 'batch', edits });
+		agent.reviewFinish!();
+		const changed = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks;
+		assert.equal(agent.reviewRead!().changes.length, 1);
+		assert.equal(engine.state().comments?.[0].text, 'Keep this comment');
+		await engine.execute('edit.undo', {});
+		assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks, original);
+		await engine.execute('edit.redo', {});
+		assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks, changed);
+		await agent.reviewDecide!(engine.state().revision, 'undo', agent.reviewRead!().changes.map(change => change.id));
+		assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks, original);
+		assert.equal(engine.state().comments?.[0].text, 'Keep this comment');
+		const revision = engine.state().revision;
+		await assert.rejects(agent.edit({ revision, operation: 'batch', edits: [edits[0], edit('format.enclose', { shape: 'invalid' })] }));
+		assert.equal(engine.state().revision, revision);
+		assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks, original);
+	} finally { engine.dispose(); }
+});
+
+test('Word effective formatting inspection is Unicode-aware and never changes selection or history', async () => {
+	const engine = await openEngine('word', 'Read formatting.docx', docx, root);
+	try {
+		const agent = engine.agent!;
+		const id = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks[0].id;
+		await agent.edit({ revision: engine.state().revision, operation: 'update', id, text: '😀 AI Office unchanged' });
+		await agent.edit({ revision: engine.state().revision, operation: 'batch', edits: [
+			{ operation: 'command', id, start: 2, end: 11, command: 'format.smallCaps', params: { value: true } },
+			{ operation: 'command', id, start: 2, end: 11, command: 'format.spacing', params: { points: 1.5 } }
+		] });
+		await engine.execute('caret.docEnd', {});
+		const state = engine.state(), revision = state.revision;
+		const inspect = (start: number, end: number) => agent.read({ operation: 'formatting', id, start, end }) as { formatting: { smallCaps: boolean; spacing: number | null } };
+		assert.deepEqual({ smallCaps: inspect(2, 11).formatting.smallCaps, spacing: inspect(2, 11).formatting.spacing }, { smallCaps: true, spacing: 1.5 });
+		assert.equal(inspect(12, 21).formatting.smallCaps, false);
+		assert.equal(inspect(0, 21).formatting.spacing, null, 'A mixed range reports null rather than a guessed spacing');
+		assert.deepEqual(engine.state(), state, 'Read-only inspection leaves caret, revision and native Undo untouched');
+		assert.throws(() => agent.read({ operation: 'formatting', id, start: 50, end: 55 }), /range/);
+		assert.throws(() => agent.read({ operation: 'formatting', id, start: 4, end: 3 }), /range/);
+		assert.throws(() => agent.read({ operation: 'formatting' }), /paragraph ID/);
+		assert.equal(engine.state().revision, revision);
+		assert.match(String(engine.commands().find(command => command.id === 'format.smallCaps')?.params), /value/);
+	} finally { engine.dispose(); }
+});

@@ -66,10 +66,10 @@ index 0000000..d390497
 +wasm-bindgen = "0.2"
 diff --git a/apps/ai-office-preview/src/agent.rs b/apps/ai-office-preview/src/agent.rs
 new file mode 100644
-index 0000000..fc07466
+index 0000000..54f53c5
 --- /dev/null
 +++ b/apps/ai-office-preview/src/agent.rs
-@@ -0,0 +1,660 @@
+@@ -0,0 +1,678 @@
 +//! Internal, revision-checked block editing for the AI Office agent.
 +use serde_json::{Value, json};
 +use sha2::{Digest, Sha256};
@@ -354,6 +354,21 @@ index 0000000..fc07466
 +    Ok(())
 +}
 +
++/// Inspect the exact target without changing the user's selection, history or document.
++pub fn formatting(doc: &Document, args: &Value) -> Result<Value, String> {
++    let id = args["id"].as_str().ok_or("Formatting inspection requires a paragraph ID")?;
++    let node = target(doc, id)?;
++    let paragraph = doc.para(node.story, &node.path).ok_or("Formatting inspection requires a paragraph, heading or list-item ID")?;
++    let offsets: Vec<_> = paragraph.text.char_indices().map(|(i, _)| i).chain(std::iter::once(paragraph.text.len())).collect();
++    let start = index(args, "start", 0)?;
++    let end = index(args, "end", paragraph.text.chars().count())?;
++    if start > end { return Err("Invalid character range".into()); }
++    let (Some(&first), Some(&last)) = (offsets.get(start), offsets.get(end)) else { return Err("Invalid character range".into()); };
++    let mut session = Session::new(doc.clone());
++    session.sel = Selection { anchor: Pos::new(node.story, node.path.clone(), first), focus: Pos::new(node.story, node.path, last) };
++    Ok(json!({"id":id,"start":start,"end":end,"formatting":wordcraft_engine::cmd::format::state(&session)}))
++}
++
 +pub fn read(doc: &Document, args: &Value) -> Value {
 +    if args["operation"] == "tail" {
 +        return read(doc, &json!({"parentId":"body","offset":doc.body.len().saturating_sub(1),"limit":1}));
@@ -598,6 +613,9 @@ index 0000000..fc07466
 +            if command == "para.properties" && session.doc.para(node.story, &node.path).is_none() {
 +                return Err("Paragraph properties require a paragraph, heading or list-item ID".into());
 +            }
++            if command == "format.phonetic" && args.get("params").and_then(|params| params.get("ruby")).is_none() {
++                return Err("Provide params.ruby (text, or null to remove) for a targeted phonetic-guide command".into());
++            }
 +            let paragraphs = session.doc.para_paths(node.story);
 +            let paths: Vec<_> = paragraphs.iter().filter(|p| p.0.starts_with(&node.path.0)).collect();
 +            let first = paths.first().ok_or("Target has no editable paragraph")?;
@@ -765,10 +783,10 @@ index 0000000..84a7a0f
 +}
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..26dc9de
+index 0000000..7e3180b
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,497 @@
+@@ -0,0 +1,537 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -854,8 +872,17 @@ index 0000000..26dc9de
 +
 +    pub fn commands(&self) -> Result<String, JsValue> {
 +        let list: Vec<_> =
-+            self.session.registry.all().iter().filter(|c| allowed(c.id)).map(|c| json!({"id": c.id, "label": c.label, "params": c.params})).collect();
++            self.session.registry.all().iter().filter(|c| allowed(c.id)).map(|c| {
++                let params = if matches!(c.id, "format.doubleStrikethrough" | "format.subscript" | "format.superscript" | "format.allCaps" | "format.smallCaps" | "format.hidden" | "format.outline" | "format.shadow" | "format.emboss" | "format.engrave") { r#"{"value"?: bool}"# } else { c.params };
++                json!({"id": c.id, "label": c.label, "description":c.location,"params":params,"readOnly":!c.mutates})
++            }).collect();
 +        serde_json::to_string(&list).map_err(|e| JsValue::from_str(&e.to_string()))
++    }
++
++    /// Development audit only: the application tool list still uses bounded discovery.
++    pub fn command_catalog(&self) -> String {
++        let commands: Vec<_> = self.session.registry.all().iter().map(|c| json!({"id":c.id,"label":c.label,"location":c.location,"params":c.params,"readOnly":!c.mutates,"integrated":allowed(c.id)})).collect();
++        json!({"commands":commands}).to_string()
 +    }
 +
 +    pub fn state(&self) -> Result<String, JsValue> {
@@ -1014,6 +1041,9 @@ index 0000000..26dc9de
 +
 +    pub fn agent_read(&self, args: &str) -> Result<String, JsValue> {
 +        let args: Value = serde_json::from_str(args).map_err(|e| JsValue::from_str(&e.to_string()))?;
++        if args["operation"] == "formatting" {
++            return agent::formatting(&self.session.doc, &args).map(|value| value.to_string()).map_err(|error| JsValue::from_str(&error));
++        }
 +        if args["operation"] == "comments" {
 +            return Ok(agent::comments(&self.session.doc, &args).to_string());
 +        }
@@ -1177,6 +1207,34 @@ index 0000000..26dc9de
 +            | "select.text"
 +            | "select.collapse"
 +            | "format.bold"
++            | "format.allCaps"
++            | "format.border"
++            | "format.changeCase"
++            | "format.charStyle"
++            | "format.doubleStrikethrough"
++            | "format.doubleUnderline"
++            | "format.emboss"
++            | "format.enclose"
++            | "format.engrave"
++            | "format.growFont"
++            | "format.growFont1"
++            | "format.hidden"
++            | "format.outline"
++            | "format.phonetic"
++            | "format.position"
++            | "format.resetChar"
++            | "format.scale"
++            | "format.set"
++            | "format.shading"
++            | "format.shadow"
++            | "format.shrinkFont"
++            | "format.shrinkFont1"
++            | "format.smallCaps"
++            | "format.spacing"
++            | "format.subscript"
++            | "format.superscript"
++            | "format.textEffects"
++            | "format.wordUnderline"
 +            | "format.strikethrough"
 +            | "format.color"
 +            | "format.highlight"

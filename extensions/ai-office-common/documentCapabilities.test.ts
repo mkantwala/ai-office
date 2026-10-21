@@ -45,3 +45,11 @@ test('Cached receipts support bounded projections without re-executing native op
 	assert.throws(() => projectCommandResult(receipt, '/missing'), /does not exist/);
 	assert.throws(() => projectCommandResult(receipt, '/artifacts', 0, 101), /limit/);
 });
+
+test('Word command discovery groups formatting separately without loading its schemas', () => {
+	const commands = [{ id: 'format.spacing', label: 'Character Spacing', params: '{points:number}' }, { id: 'para.properties', label: 'Paragraph' }, { id: 'table.borders', label: 'Borders' }];
+	assert.deepEqual(discoverCommands(commands, {}).categories, [{ category: 'formatting', count: 1 }, { category: 'paragraphs', count: 1 }, { category: 'tables', count: 1 }]);
+	const list = discoverCommands(commands, { category: 'formatting' });
+	assert.ok(list.mode === 'commands'); assert.equal(Object.hasOwn(list.commands[0], 'params'), false);
+	assert.equal(discoverCommands(commands, { command: 'format.spacing' }).command?.params, '{points:number}');
+});
