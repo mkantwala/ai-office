@@ -5,6 +5,8 @@ description: Read and edit PDFs in Sangam One using bounded discovery and the na
 
 Use `office_document_tools` to discover the active PDF and current version. Select a category, then request only the command schema needed. Execute through `office_document_run`; reuse its returned version for the next mutation. Never load every schema or guess payload shapes. Use `operation: list` to identify open files and `operation: open` with a PDF/DOCX URI to open an artifact.
 
+For movement, read object_list and use object_move with its generation and kind/index references; this preserves source glyphs and artwork in one Undo step. Resize native text with text_edit width, and images with image_edit using their full placement rather than the clipped visible rectangle.
+
 PDF paragraphs and artwork are positional, revision-scoped references, not persistent Word IDs. Reread them after structural changes. Text extraction takes explicit ranges of at most ten pages. Oversized results return a `resultId`: use discovery with that ID, a `resultPath`, offset and limit. Never repeat a mutation to retrieve its output.
 
 Pass file URIs in file parameters; the host stages bytes and returns managed output artifacts. Omit output locations for generated artifacts. Existing outputs are never replaced. Inputs matching the active PDF include unsaved changes; other inputs use saved files. Keep binaries out of context.

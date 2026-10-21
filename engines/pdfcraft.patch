@@ -46,10 +46,10 @@ index 0000000..230150a
 +path = "src/bin/sangam-pdf.rs"
 diff --git a/apps/ai-office-preview/src/bin/sangam-pdf.rs b/apps/ai-office-preview/src/bin/sangam-pdf.rs
 new file mode 100644
-index 0000000..ce6b0f4
+index 0000000..f4187ff
 --- /dev/null
 +++ b/apps/ai-office-preview/src/bin/sangam-pdf.rs
-@@ -0,0 +1,199 @@
+@@ -0,0 +1,216 @@
 +//! Persistent, confined PDF engine for Sangam One. No network or MCP listener.
 +use pdfcraft_automation::{Automation, Content};
 +use pdfcraft_engine::DocId;
@@ -93,7 +93,24 @@ index 0000000..ce6b0f4
 +            ),
 +            Err(error) => (json!([]), Some(error.to_string())),
 +        };
++        let objects = self.automation.call("object_list", &json!({"doc":id.0,"page":self.page+1}));
++        let (mut objects, object_error) = match objects {
++            Ok(parts) => (parts.into_iter().find_map(|part| if let Content::Json(value) = part {value.get("objects").cloned()} else {None}).unwrap_or(json!([])), None),
++            Err(error) => (json!([]), Some(error.to_string())),
++        };
 +        let doc = self.automation.session().get(id).ok_or("Document closed")?;
++        if let Some(objects) = objects.as_array_mut() {
++            let info = &doc.info.pages[self.page];
++            let images = doc.page_images(self.page);
++            for object in objects {
++                if object["kind"] == "image" && let Some(image) = object["index"].as_u64().and_then(|index| index.checked_sub(1)).and_then(|index| images.get(index as usize)) {
++                    let a = info.user_to_view(image.rect[0] as f32, image.rect[1] as f32);
++                    let b = info.user_to_view(image.rect[2] as f32, image.rect[3] as f32);
++                    object["fullRect"] = json!([a[0].min(b[0]), a[1].min(b[1]), a[0].max(b[0]), a[1].max(b[1])]);
++                }
++            }
++        }
++        let rotation = doc.info.pages[self.page].rotation;
 +        let sizes: Vec<_> = doc.info.pages.iter().map(|p| [p.width, p.height]).collect();
 +        let comments: Vec<_> = doc
 +            .info
@@ -103,7 +120,7 @@ index 0000000..ce6b0f4
 +            .map(|a| json!({"author":a.author,"text":a.contents}))
 +            .collect();
 +        Ok(
-+            json!({"pages":sizes,"state":{"revision":doc.edit_generation(),"undo":doc.can_undo().is_some(),"redo":doc.can_redo().is_some(),"page":self.page,"blocks":paragraphs,"comments":comments,"textError":text_error,"agentCommandResult":self.result}}),
++            json!({"pages":sizes,"state":{"revision":doc.edit_generation(),"undo":doc.can_undo().is_some(),"redo":doc.can_redo().is_some(),"page":self.page,"blocks":paragraphs,"pdfObjects":objects,"pdfRotation":rotation,"pdfObjectError":object_error,"comments":comments,"textError":text_error,"agentCommandResult":self.result}}),
 +        )
 +    }
 +    fn call(&mut self, message: &Value) -> Result<Value, String> {

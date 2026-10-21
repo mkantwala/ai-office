@@ -21,7 +21,7 @@ export class PdfCommandForm {
 	private dialog?: HTMLDialogElement;
 	constructor(private readonly snapshot: () => { commands: Command[]; total: number; revision: number }, private readonly execute: (command: string, params: Record<string, unknown>, revision: number) => void, private readonly pickFile?: (folders: boolean) => Promise<string | undefined>) { }
 	dispose() { this.dialog?.remove(); }
-	open() {
+	open(commandId?: string, initial: Record<string, unknown> = {}) {
 		if (this.dialog?.open) { this.dialog.focus(); return; } this.dialog?.remove();
 		const snapshot = this.snapshot();
 		const dialog = this.dialog = document.createElement('dialog'); dialog.className = 'pdf-tools-dialog pdf-command-dialog'; dialog.setAttribute('aria-label', 'All PDF Tools');
@@ -37,7 +37,7 @@ export class PdfCommandForm {
 			definition = snapshot.commands.find(command => command.id === select.value); fields.replaceChildren(); error.hidden = true;
 			if (!definition) { description.textContent = 'No matching tools.'; root = undefined; apply.disabled = true; return; }
 			description.textContent = definition.description || definition.label; apply.textContent = definition.readOnly ? 'Inspect' : 'Apply'; apply.disabled = false;
-			root = this.field(definition.params as Schema, 'Parameters', true, snapshot.total, 0); fields.append(root.element);
+			root = this.field(definition.params as Schema, 'Parameters', true, snapshot.total, 0, definition.id === commandId ? initial : undefined); fields.append(root.element);
 		};
 		const filter = () => {
 			const previous = select.value, query = search.value.trim().toLowerCase(); select.replaceChildren();
@@ -48,7 +48,7 @@ export class PdfCommandForm {
 			}
 			if (commands.some(command => command.id === previous)) { select.value = previous; } render();
 		};
-		search.addEventListener('input', filter); select.addEventListener('change', render); filter();
+		search.addEventListener('input', filter); select.addEventListener('change', render); filter(); if (commandId && snapshot.commands.some(command => command.id === commandId)) { select.value = commandId; render(); }
 		form.append(title, search, select, description, fields, error, footer);
 		form.addEventListener('submit', event => {
 			event.preventDefault(); error.hidden = true;
@@ -60,7 +60,7 @@ export class PdfCommandForm {
 		});
 		dialog.append(form); document.body.append(dialog); dialog.showModal(); search.focus();
 	}
-	private field(schema: Schema, name: string, required: boolean, total: number, depth: number): Field {
+	private field(schema: Schema, name: string, required: boolean, total: number, depth: number, initial?: unknown): Field {
 		if (depth > 8) { throw new Error('This tool exceeds the supported visual nesting depth. Use the same operation through the document agent.'); }
 		if (!schema.type && !schema.properties && !schema.enum && !schema.oneOf && !schema.anyOf) { schema = { ...schema, oneOf: [{ type: 'string', title: 'Text' }, { type: 'number', title: 'Number' }, { type: 'boolean', title: 'Yes / No' }, { type: 'object', title: 'Properties', additionalProperties: true }, { type: 'array', title: 'Text List', items: { type: 'string' } }, { type: 'array', title: 'Number List', items: { type: 'number' } }] }; }
 		if (schema.type === 'object' && schema.properties === undefined && schema.additionalProperties === undefined) { schema = { ...schema, additionalProperties: true }; }
@@ -77,7 +77,7 @@ export class PdfCommandForm {
 		if (type === 'object' || schema.properties || schema.additionalProperties) {
 			const group = document.createElement('fieldset'); group.className = 'pdf-schema-group'; const children: { name: string; field: Field }[] = [];
 			let included = required; if (!required) { const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.setAttribute('aria-label', 'Set ' + humanize(name)); toggle.addEventListener('change', () => { included = toggle.checked; group.hidden = !included; }); label.append(toggle); group.hidden = true; }
-			for (const [key, child] of Object.entries(schema.properties || {})) { const field = this.field(child, key, !!schema.required?.includes(key), total, depth + 1); group.append(field.element); children.push({ name: key, field }); }
+			for (const [key, child] of Object.entries(schema.properties || {})) { const field = this.field(child, key, !!schema.required?.includes(key), total, depth + 1, initial && typeof initial === 'object' ? (initial as Record<string, unknown>)[key] : undefined); group.append(field.element); children.push({ name: key, field }); }
 			const entries: { key: HTMLInputElement; value: Field; row: HTMLElement }[] = [];
 			if (schema.additionalProperties) {
 				const add = document.createElement('button'); add.type = 'button'; add.textContent = 'Add Entry'; add.addEventListener('click', () => { if (entries.length >= 200) { return; } const row = document.createElement('div'); row.className = 'pdf-schema-entry'; const key = document.createElement('input'); key.placeholder = 'Name'; key.setAttribute('aria-label', humanize(name) + ' entry name'); const value = this.field(typeof schema.additionalProperties === 'object' ? schema.additionalProperties : {}, 'Value', true, total, depth + 1); const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Remove'; const entry = { key, value, row }; remove.addEventListener('click', () => { entries.splice(entries.indexOf(entry), 1); row.remove(); }); row.append(key, value.element, remove); add.before(row); entries.push(entry); key.focus(); }); group.append(add);
@@ -93,10 +93,10 @@ export class PdfCommandForm {
 		}
 		if (schema.enum || type === 'boolean') {
 			const select = document.createElement('select'); if (!required) { select.add(new Option('Unchanged / Not Set', '')); }
-			const choices = schema.enum || [true, false]; choices.forEach((value, index) => select.add(new Option(String(value), String(index)))); label.append(select);
+			const choices = schema.enum || [true, false]; choices.forEach((value, index) => select.add(new Option(String(value), String(index)))); if (initial !== undefined) { const index = choices.indexOf(initial as string | number | boolean); if (index >= 0) { select.value = String(index); } } label.append(select);
 			return { element: container, read: () => select.value === '' ? undefined : choices[Number(select.value)] };
 		}
-		const input = document.createElement(type === 'array' || /text|script|contents/i.test(name) ? 'textarea' : 'input'); let touched = false;
+		const input = document.createElement(type === 'array' || /text|script|contents/i.test(name) ? 'textarea' : 'input'); let touched = initial !== undefined; if (initial !== undefined) { input.value = Array.isArray(initial) ? initial.join(', ') : String(initial); }
 		input.setAttribute('aria-label', humanize(name)); input.addEventListener('input', () => { touched = true; });
 		if (input instanceof HTMLInputElement && /password/i.test(name)) { input.type = 'password'; input.autocomplete = 'off'; }
 		if (input instanceof HTMLInputElement && ['integer', 'number'].includes(type || '')) { input.type = 'number'; input.step = type === 'integer' ? '1' : 'any'; if (schema.minimum !== undefined) { input.min = String(schema.minimum); } if (schema.maximum !== undefined) { input.max = String(schema.maximum); } }

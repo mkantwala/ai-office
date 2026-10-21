@@ -135,6 +135,13 @@ test('PDF native image editing, camera cleanup and PDF/A report actual conversio
 		const picture = await openEngine('pdf', 'Image.pdf', await readFile(fileURLToPath(created)), root, undefined, { artifactRoot: join(work, 'artifacts'), resourceRoot: work });
 		try {
 			await picture.execute('page_images', { page: 1 }); assert.ok(JSON.stringify(result(picture)).includes('image'));
+			const originalImage = picture.state().pdfObjects!.find(object => object.kind === 'image')!; assert.ok(originalImage.fullRect);
+			await picture.execute('image_edit', { page: 1, image: originalImage.index, action: 'crop', rect: [40, 40, 300, 400] });
+			const cropped = picture.state().pdfObjects!.find(object => object.kind === 'image')!; assert.deepEqual(cropped.fullRect, originalImage.fullRect); assert.notDeepEqual(cropped.rect, cropped.fullRect);
+			await picture.execute('image_edit', { page: 1, image: cropped.index, action: 'move', rect: cropped.fullRect!.map(value => value * .75) });
+			const resized = picture.state().pdfObjects!.find(object => object.kind === 'image')!;
+			assert.ok(Math.abs(resized.rect[2] - resized.rect[0] - (cropped.rect[2] - cropped.rect[0]) * .75) < .1);
+			await picture.execute('edit_undo', {}); await picture.execute('edit_undo', {});
 			await picture.execute('image_edit', { page: 1, image: 1, action: 'flip_horizontal' });
 			await picture.execute('image_save', { page: 1, image: 1 }); const exported = await readFile(fileURLToPath(String(result(picture)[0].path))); assert.ok(exported.length);
 			await picture.execute('page_enhance_camera', { page: 1, mode: 'greyscale', level: 30, corners: [0, 0, picture.pages()[0][0], 0, picture.pages()[0][0], picture.pages()[0][1], 0, picture.pages()[0][1]] });
@@ -180,4 +187,21 @@ test('PDF private resources accept equivalent Windows namespace paths and reject
 		assert.throws(() => pdfResourcePath(directory, reported, 'raster.raw', win32), /Invalid PDF raster resource/);
 	}
 	assert.throws(() => pdfResourcePath('/tmp/session', '/tmp/other/snapshot.pdf', 'snapshot.pdf', posix), /Invalid PDF export resource/);
+});
+
+test('PDF canvas object snapshots move text without rewriting it and reject stale gestures', async () => {
+	const { engine, close } = await setup();
+	try {
+		const original = engine.state(), object = original.pdfObjects?.find(object => object.kind === 'text'); assert.ok(object);
+		const reference = { kind: object.kind, index: object.index };
+		await engine.execute('object_move', { page: 1, generation: original.revision, objects: [reference], offset: [24, 36] });
+		const moved = engine.state().pdfObjects!.find(item => item.kind === 'text')!;
+		assert.equal(moved.text, object.text); assert.ok(Math.abs(moved.rect[0] - object.rect[0] - 24) < .1); assert.ok(Math.abs(moved.rect[1] - object.rect[1] - 36) < .1);
+		await assert.rejects(engine.execute('object_move', { page: 1, generation: original.revision, objects: [reference], offset: [1, 1] }), /changed/);
+		const reopened = await openEngine('pdf', 'Moved.pdf', await engine.export(), root);
+		try { assert.equal(reopened.state().pdfObjects!.find(item => item.kind === 'text')!.text, object.text); assert.ok((await reopened.renderAsync!(0, 1)).pixels!.length); } finally { reopened.dispose(); }
+		await engine.execute('edit_undo', {}); assert.deepEqual(engine.state().pdfObjects, original.pdfObjects);
+		await engine.execute('page_add_text', { page: 1, at: [100, 300], text: 'Added text', width: 180 });
+		assert.ok(engine.state().pdfObjects!.some(item => item.kind === 'added' && item.text === 'Added text'));
+	} finally { await close(); }
 });

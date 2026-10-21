@@ -24,7 +24,7 @@ The PDF backend is a persistent native worker with a private filesystem root and
 | Reading and history | Native rendering, initial-view/reading-color settings, saved revisions, Undo/Redo and the application history route. Application Save acknowledges the native session without discarding Undo. |
 | Platform printing | Printer enumeration/options and native print layouts. Without an explicit printer, the adapter creates a PDF print artifact. Physical printing and OS certificate stores depend on host configuration. |
 
-All native operations are reachable through **All PDF Tools**, a searchable schema-driven visual form, and through the same agent dispatch. The common page operations retain a smaller dedicated dialog. User-requested inspections have a bounded text-only display; agent reads do not open that panel. This integrates command behavior, not a pixel-for-pixel copy of PdfCraft's desktop interface or every drag gesture.
+All native operations are reachable through **All PDF Tools**, a searchable schema-driven visual form, and through the same agent dispatch. The common page operations retain a smaller dedicated dialog. User-requested inspections have a bounded text-only display; agent reads do not open that panel. The canvas interaction layer below now connects common editing gestures to those same commands. Some specialist workflows still use the visual command forms; full desktop interaction parity is not claimed.
 
 ## File, version and recovery behavior
 
@@ -67,3 +67,16 @@ The host resolves its temporary workspace before opening the native session and 
 A native integration regression reproduces the original `Invalid PDF raster resource` error with a symlinked system temporary directory and checks rendering, rotation and export after the fix. Additional path tests cover Windows namespace/case/UNC handling and foreign-resource rejection. Windows path logic is tested on Linux; this does not substitute for a Windows application run.
 
 The running application was also launched with the symlinked temporary directory: a three-page synthetic PDF rendered visible content, its first page rotated and repainted, and Ctrl+S saved the updated PDF successfully. The shared DOCX-branch regression suite passes 165 tests, including the eight focused native PDF tests.
+
+
+## Interactive canvas
+
+The PDF canvas now uses native `object_list` snapshots with generation-scoped references. Single-click selects; double-click edits text; drag moves existing text, images, grouped Form artwork and added content. Shift-click selects multiple objects for one atomic `object_move`. Arrow keys nudge; Shift+arrows move ten points. Right-click and the selection toolbar expose editing, properties, rotation and deletion. Properties open the exact native form with the selected page/object prefilled.
+
+Text width handles rewrap upright paragraphs through `text_edit`. Corner handles resize added content and native artwork. Image resizing uses the full placement behind the visible clip, preserving crop geometry; images keep their aspect ratio unless Shift is held. Moving uses source-preserving object translation rather than rewriting unchanged text. Drag previews use a local canvas snapshot, do not invoke the engine every frame, and commit once on pointer release. Escape, pointer cancellation and stale revisions cancel gestures.
+
+PDF Tools opens a compact toolbox for drawing text/image placement, links, sticky notes, area highlights, rectangles, ovals, arrows, form fields, crop regions and redaction marks. Geometry is in displayed PDF points and follows zoom. Redaction marking never removes content: application remains a separate explicit tool. Organize Pages and All PDF Tools remain available for the other native operations. These controls use the same commands as agents, without additional permanent model tools.
+
+Text drafts commit on Ctrl/Cmd+Enter, Save or clicking outside the text editor. Escape discards an unfinished draft. Formatting can include the draft text in the same native edit. If an agent changes the document while a user is typing, a conflicting draft stays visible for copying rather than silently overwriting the new document or losing the draft.
+
+Validation: 76 shared document/provider tests and seven focused browser tests pass, including grouped moves, zoom-scaled previews, cancellation/stale references, text rewrapping, draft conflicts, cropped-image resizing, prefilled command forms, native Undo and saved/reopened PDFs. The actual running application also passed drag → text edit → drawn rectangle → Save, with screenshots inspected. The existing platform limitations and external renderer caveats above remain applicable.
