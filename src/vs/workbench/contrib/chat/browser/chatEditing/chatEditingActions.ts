@@ -19,7 +19,7 @@ import { ILanguageFeaturesService } from '../../../../../editor/common/services/
 import { ITextModelService } from '../../../../../editor/common/services/resolverService.js';
 import { localize, localize2 } from '../../../../../nls.js';
 import { Action2, IAction2Options, MenuId, registerAction2 } from '../../../../../platform/actions/common/actions.js';
-import { CommandsRegistry } from '../../../../../platform/commands/common/commands.js';
+import { CommandsRegistry, ICommandService } from '../../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { ContextKeyExpr } from '../../../../../platform/contextkey/common/contextkey.js';
 import { InputFocusedContext } from '../../../../../platform/contextkey/common/contextkeys.js';
@@ -394,20 +394,30 @@ async function restoreSnapshotWithConfirmationByRequestId(accessor: ServicesAcce
 	const requestsToRemove = chatRequests.slice(itemIndex);
 	const requestIdsToRemove = new Set(requestsToRemove.map(request => request.id));
 	const entriesModifiedInRequestsToRemove = session.entries.get().filter((entry) => requestIdsToRemove.has(entry.lastModifyingRequestId)) ?? [];
-	const shouldPrompt = entriesModifiedInRequestsToRemove.length > 0 && configurationService.getValue('chat.editing.confirmEditRequestRemoval') === true;
+	const modifiedUris = entriesModifiedInRequestsToRemove.map(entry => entry.modifiedURI);
+	if (CommandsRegistry.getCommand('aiOffice.word.requestCheckpoints')) {
+		const commands = accessor.get(ICommandService);
+		for (const request of requestsToRemove) {
+			const points = await commands.executeCommand<{ uri: string }[]>('aiOffice.word.requestCheckpoints', request.id);
+			for (const point of points ?? []) {
+				if (!modifiedUris.some(uri => uri.toString() === point.uri)) { modifiedUris.push(URI.parse(point.uri)); }
+			}
+		}
+	}
+	const shouldPrompt = modifiedUris.length > 0 && configurationService.getValue('chat.editing.confirmEditRequestRemoval') === true;
 
 	let message: string;
 	if (editsToUndo === 1) {
-		if (entriesModifiedInRequestsToRemove.length === 1) {
-			message = localize('chat.removeLast.confirmation.message2', "This will remove your last request and undo the edits made to {0}. Do you want to proceed?", basename(entriesModifiedInRequestsToRemove[0].modifiedURI));
+		if (modifiedUris.length === 1) {
+			message = localize('chat.removeLast.confirmation.message2', "This will remove your last request and undo the edits made to {0}. Do you want to proceed?", basename(modifiedUris[0]));
 		} else {
-			message = localize('chat.removeLast.confirmation.multipleEdits.message', "This will remove your last request and undo edits made to {0} files in your working set. Do you want to proceed?", entriesModifiedInRequestsToRemove.length);
+			message = localize('chat.removeLast.confirmation.multipleEdits.message', "This will remove your last request and undo edits made to {0} files in your working set. Do you want to proceed?", modifiedUris.length);
 		}
 	} else {
-		if (entriesModifiedInRequestsToRemove.length === 1) {
-			message = localize('chat.remove.confirmation.message2', "This will remove all subsequent requests and undo edits made to {0}. Do you want to proceed?", basename(entriesModifiedInRequestsToRemove[0].modifiedURI));
+		if (modifiedUris.length === 1) {
+			message = localize('chat.remove.confirmation.message2', "This will remove all subsequent requests and undo edits made to {0}. Do you want to proceed?", basename(modifiedUris[0]));
 		} else {
-			message = localize('chat.remove.confirmation.multipleEdits.message', "This will remove all subsequent requests and undo edits made to {0} files in your working set. Do you want to proceed?", entriesModifiedInRequestsToRemove.length);
+			message = localize('chat.remove.confirmation.multipleEdits.message', "This will remove all subsequent requests and undo edits made to {0} files in your working set. Do you want to proceed?", modifiedUris.length);
 		}
 	}
 

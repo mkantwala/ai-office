@@ -20,7 +20,6 @@ import { IProductService } from '../../platform/product/common/productService.js
 import { IContextKeyService } from '../../platform/contextkey/common/contextkey.js';
 import { IWorkbenchEnvironmentService } from '../../workbench/services/environment/common/environmentService.js';
 import { IAuthenticationService } from '../../workbench/services/authentication/common/authentication.js';
-import { ICommandService } from '../../platform/commands/common/commands.js';
 import { IWorkbenchLayoutService } from '../../workbench/services/layout/browser/layoutService.js';
 import { IKeybindingService } from '../../platform/keybinding/common/keybinding.js';
 import { IHostService } from '../../workbench/services/host/browser/host.js';
@@ -36,8 +35,6 @@ import { Dialog, DialogContentsAlignment } from '../../base/browser/ui/dialog/di
 import { createWorkbenchDialogOptions } from '../../workbench/browser/parts/dialogs/dialog.js';
 import { MarkdownString } from '../../base/common/htmlContent.js';
 import { localize } from '../../nls.js';
-import { createSessionsSignInDialogOptions, SessionsSigningInDialog } from './sessionsSignInDialog.js';
-import { SHOULD_SHOW_RETURN_TO_VSCODE_EDITOR_COMMAND_ID } from '../common/sessionCommands.js';
 import { ISessionsManagementService } from '../services/sessions/common/sessionsManagement.js';
 
 const AIDisabledConfig = 'chat.disableAIFeatures';
@@ -105,13 +102,11 @@ class SessionsSetUpWidget extends Disposable {
 		@IWorkbenchEnvironmentService private readonly environmentService: IWorkbenchEnvironmentService,
 		@IAuthenticationService private readonly authenticationService: IAuthenticationService,
 		@ILogService private readonly logService: ILogService,
-		@ICommandService private readonly commandService: ICommandService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,
 		@IKeybindingService private readonly keybindingService: IKeybindingService,
 		@IHostService private readonly hostService: IHostService,
 		@IMarkdownRendererService private readonly markdownRendererService: IMarkdownRendererService,
-		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@ISessionsManagementService private readonly sessionsManagementService: ISessionsManagementService,
 	) {
 		super();
@@ -234,16 +229,9 @@ class SessionsSetUpWidget extends Disposable {
 			return;
 		}
 		if (!initialAccount) {
-			if (this._canInitializeWithoutGitHub()) {
-				await this._proceedWithoutGitHub();
-				return;
-			}
-			const welcomeComplete = this.storageService.getBoolean(WELCOME_COMPLETE_KEY, StorageScope.APPLICATION, false);
-			if (welcomeComplete && this._allowSignedOutWhenUsable.get()) {
-				await this._proceedWithoutGitHub();
-			} else {
-				this._showWelcome(false);
-			}
+			// AI Office: GitHub sign-in is not offered by this product, so a signed-out
+			// window opens without it.
+			await this._proceedWithoutGitHub();
 			return;
 		}
 		await this._ensureAIFeaturesEnabled();
@@ -451,22 +439,13 @@ class SessionsSetUpWidget extends Disposable {
 
 				await this._showWelcomeDialog();
 			} else {
-				if (this._canInitializeWithoutGitHub()) {
-					this.storageService.store(WELCOME_COMPLETE_KEY, true, StorageScope.APPLICATION, StorageTarget.MACHINE);
-					this.serviceMarkDone();
-					this.dialogRef.clear();
-					await this._proceedWithoutGitHub();
-					return;
-				}
-				const allowContinueWithoutSignIn = this._allowSignedOutWhenUsable.get();
-				const continueWithoutSignIn = await this._showSignInDialog(allowContinueWithoutSignIn);
-				if (continueWithoutSignIn || this._canInitializeWithoutGitHub()) {
-					this.storageService.store(WELCOME_COMPLETE_KEY, true, StorageScope.APPLICATION, StorageTarget.MACHINE);
-					this.serviceMarkDone();
-					this.dialogRef.clear();
-					await this._proceedWithoutGitHub();
-					return;
-				}
+				// AI Office: GitHub sign-in is not offered by this product, so the window
+				// opens for a signed-out user instead of prompting to sign in.
+				this.storageService.store(WELCOME_COMPLETE_KEY, true, StorageScope.APPLICATION, StorageTarget.MACHINE);
+				this.serviceMarkDone();
+				this.dialogRef.clear();
+				await this._proceedWithoutGitHub();
+				return;
 			}
 		} else {
 			await this._showSignInDialog();
@@ -486,70 +465,17 @@ class SessionsSetUpWidget extends Disposable {
 		return { element: overlay, dispose: () => overlay.remove() };
 	}
 
+	/**
+	 * AI Office: GitHub sign-in is not offered by this product, so there is no
+	 * sign-in dialog to show. The window proceeds without GitHub and reports the
+	 * initial phase as handled so callers keep their flow.
+	 */
 	private async _showSignInDialog(allowContinueWithoutSignIn = false): Promise<boolean> {
 		if (this._initialSetupFlow) {
 			this.onInitialSignInDialogShown();
 		}
-		this.logService.info('[sessions welcome] Showing sign-in dialog');
-
-		const setupCancellation = new CancellationTokenSource();
-		this.signInSetupCancellation.value = setupCancellation;
-		while (true) {
-			const attemptDisposables = new DisposableStore();
-			const signingInDialogRef = attemptDisposables.add(new MutableDisposable<SessionsSigningInDialog>());
-			let canceled = false;
-			let continueWithoutSignIn = false;
-			const showReturnToVSCodeEditor = !isWeb && (await this.commandService.executeCommand<boolean>(SHOULD_SHOW_RETURN_TO_VSCODE_EDITOR_COMMAND_ID)) === true;
-			const onContinueWithoutSignIn = () => {
-				if (!this._allowSignedOutWhenUsable.get()) {
-					return;
-				}
-				continueWithoutSignIn = true;
-				setupCancellation.cancel();
-			};
-
-			let success: boolean | undefined;
-			try {
-				success = await this.commandService.executeCommand<boolean>('workbench.action.chat.triggerSetup', undefined, {
-					telemetrySource: 'sessionsSetup',
-					...createSessionsSignInDialogOptions(this.commandService, showReturnToVSCodeEditor, allowContinueWithoutSignIn, onContinueWithoutSignIn),
-					cancellationToken: setupCancellation.token,
-					onSignInStarted: (cancel: () => void) => {
-						signingInDialogRef.value = this.instantiationService.createInstance(SessionsSigningInDialog, () => {
-							canceled = true;
-							cancel();
-						});
-					}
-				});
-			} finally {
-				attemptDisposables.dispose();
-			}
-			if (continueWithoutSignIn) {
-				this.logService.info('[sessions welcome] User chose to continue without GitHub sign-in');
-				this.signInSetupCancellation.clear();
-				return true;
-			}
-			if (setupCancellation.token.isCancellationRequested) {
-				this.logService.info('[sessions welcome] Sign-in dialog retired because another agent became usable');
-				this.signInSetupCancellation.clear();
-				return false;
-			}
-
-			if (canceled) {
-				this.logService.info('[sessions welcome] Sign-in canceled; returning to sign-in dialog');
-				continue;
-			}
-
-			if (success) {
-				this.logService.info('[sessions welcome] Sign-in completed successfully');
-				this.storageService.store(WELCOME_COMPLETE_KEY, true, StorageScope.APPLICATION, StorageTarget.MACHINE);
-				this.serviceMarkDone();
-			} else {
-				this.logService.info('[sessions welcome] Sign-in was canceled or failed');
-			}
-			this.signInSetupCancellation.clear();
-			return false;
-		}
+		this.logService.info('[sessions welcome] Skipping GitHub sign-in; Sangam One opens the window without it');
+		return true;
 	}
 
 	private async _showWelcomeDialog(): Promise<void> {

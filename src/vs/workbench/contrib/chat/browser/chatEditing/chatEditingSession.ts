@@ -26,6 +26,7 @@ import { IModelService } from '../../../../../editor/common/services/model.js';
 import { ITextModelService } from '../../../../../editor/common/services/resolverService.js';
 import { localize } from '../../../../../nls.js';
 import { AccessibilitySignal, IAccessibilitySignalService } from '../../../../../platform/accessibilitySignal/browser/accessibilitySignalService.js';
+import { CommandsRegistry, ICommandService } from '../../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { EditorActivation } from '../../../../../platform/editor/common/editor.js';
 import { IFileService } from '../../../../../platform/files/common/files.js';
@@ -39,14 +40,16 @@ import { MultiDiffEditor } from '../../../multiDiffEditor/browser/multiDiffEdito
 import { MultiDiffEditorInput } from '../../../multiDiffEditor/browser/multiDiffEditorInput.js';
 import { CellUri, ICellEditOperation } from '../../../notebook/common/notebookCommon.js';
 import { INotebookService } from '../../../notebook/common/notebookService.js';
-import { chatEditingSessionIsReady, ChatEditingSessionState, ChatEditKind, getMultiDiffSourceUri, IChatEditingSession, IEditSessionEntryDiff, IModifiedEntryTelemetryInfo, IModifiedFileEntry, ISnapshotEntry, IStreamingEdits, ModifiedFileEntryState } from '../../common/editing/chatEditingService.js';
-import { IChatEditMetadata, IChatResponseModel } from '../../common/model/chatModel.js';
-import { IChatProgress, IChatWorkspaceEdit } from '../../common/chatService/chatService.js';
+import { chatEditingSessionIsReady, ChatEditingSessionState, ChatEditKind, getMultiDiffSourceUri, IChatEditingService, IChatEditingSession, IEditSessionEntryDiff, IModifiedEntryTelemetryInfo, IModifiedFileEntry, ISnapshotEntry, IStreamingEdits, ModifiedFileEntryState } from '../../common/editing/chatEditingService.js';
+import { ChatModel, IChatEditMetadata, IChatResponseModel } from '../../common/model/chatModel.js';
+import { IChatProgress, IChatService, IChatWorkspaceEdit } from '../../common/chatService/chatService.js';
 import { ChatAgentLocation } from '../../common/constants.js';
 import { IChatEditingCheckpointTimeline } from './chatEditingCheckpointTimeline.js';
 import { ChatEditingCheckpointTimelineImpl, IChatEditingTimelineFsDelegate } from './chatEditingCheckpointTimelineImpl.js';
 import { ChatEditingDeletedFileEntry } from './chatEditingDeletedFileEntry.js';
 import { ChatEditingModifiedDocumentEntry } from './chatEditingModifiedDocumentEntry.js';
+import { ChatEditingOfficeDocumentEntry } from './chatEditingOfficeDocumentEntry.js';
+import { IOfficeDocumentReview } from '../../common/editing/officeDocumentReview.js';
 import { AbstractChatEditingModifiedFileEntry } from './chatEditingModifiedFileEntry.js';
 import { ChatEditingModifiedNotebookEntry } from './chatEditingModifiedNotebookEntry.js';
 import { FileOperation, FileOperationType, getKeyForChatSessionResource } from './chatEditingOperations.js';
@@ -150,7 +153,7 @@ function createOpeningEditCodeBlock(uri: URI, isNotebook: boolean, undoStopId: s
 
 
 export class ChatEditingSession extends Disposable implements IChatEditingSession {
-	readonly supportsKeepUndo = false;
+	readonly supportsKeepUndo = true;
 	private readonly _state = observableValue<ChatEditingSessionState>(this, ChatEditingSessionState.Initial);
 	private readonly _timeline: IChatEditingCheckpointTimeline;
 
@@ -222,6 +225,7 @@ export class ChatEditingSession extends Disposable implements IChatEditingSessio
 		@IFileService private readonly _fileService: IFileService,
 		@IChatEditingExplanationModelManager private readonly _explanationModelManager: IChatEditingExplanationModelManager,
 		@ITelemetryService private readonly _telemetryService: ITelemetryService,
+		@ICommandService private readonly _commandService: ICommandService,
 	) {
 		super();
 		this._timeline = this._instantiationService.createInstance(
@@ -240,6 +244,11 @@ export class ChatEditingSession extends Disposable implements IChatEditingSessio
 
 	private _getTimelineDelegate(): IChatEditingTimelineFsDelegate {
 		return {
+			navigateCustomDocuments: async requests => {
+				if (CommandsRegistry.getCommand('aiOffice.word.navigateChatHistory')) {
+					await this._commandService.executeCommand('aiOffice.word.navigateChatHistory', requests);
+				}
+			},
 			createFile: (uri, content) => {
 				return this._bulkEditService.apply({
 					edits: [{
@@ -347,6 +356,8 @@ export class ChatEditingSession extends Disposable implements IChatEditingSessio
 	private _getStoredState(sessionResource = this.chatSessionResource): StoredSessionState {
 		const entries = new ResourceMap<ISnapshotEntry>();
 		for (const entry of this._entriesObs.get()) {
+			// The Word engine owns these private, session-local snapshots.
+			if (entry instanceof ChatEditingOfficeDocumentEntry) { continue; }
 			entries.set(entry.modifiedURI, entry.createSnapshot(sessionResource, undefined, undefined));
 		}
 
@@ -433,6 +444,22 @@ export class ChatEditingSession extends Disposable implements IChatEditingSessio
 			this._accessibilitySignalService.playSignal(AccessibilitySignal.editsKept, { allowManyInParallel: true });
 		}
 
+	}
+
+	async updateOfficeReview(response: IChatResponseModel, data: IOfficeDocumentReview): Promise<void> {
+		await chatEditingSessionIsReady(this);
+		const resource = ChatEditingOfficeDocumentEntry.resource(data.uri);
+		let entry = this._entriesObs.get().find(value => isEqual(value.modifiedURI, resource));
+		if (!entry && !data.changes.length) { return; }
+		if (!entry) {
+			entry = this._lookupExternalEntry(resource);
+			if (!entry) { entry = this._instantiationService.createInstance(ChatEditingOfficeDocumentEntry, data, this._getTelemetryInfoForModel(response)); }
+			this._entriesObs.set([...this._entriesObs.get(), entry], undefined);
+		}
+		if (entry instanceof ChatEditingOfficeDocumentEntry) {
+			entry.updateTelemetryInfo(this._getTelemetryInfoForModel(response));
+			await entry.update(data);
+		}
 	}
 
 	async reject(...uris: URI[]): Promise<void> {
@@ -947,6 +974,8 @@ export class ChatEditingSession extends Disposable implements IChatEditingSessio
 			return entry.getCurrentSnapshot();
 		} else if (entry instanceof ChatEditingModifiedDocumentEntry) {
 			return entry.getCurrentContents();
+		} else if (entry instanceof ChatEditingOfficeDocumentEntry) {
+			return entry.modifiedModel.getValue();
 		} else if (entry instanceof ChatEditingDeletedFileEntry) {
 			return '';
 		} else {
@@ -1265,3 +1294,15 @@ export class ChatEditingSession extends Disposable implements IChatEditingSessio
 		}
 	}
 }
+
+CommandsRegistry.registerCommand('aiOffice.registerDocumentReview', async (accessor, requestId: string, data: IOfficeDocumentReview) => {
+	if (!data || typeof data.uri !== 'string' || !Array.isArray(data.changes) || data.changes.length > 2000) { throw new Error('Invalid document review'); }
+	const chat = accessor.get(IChatService);
+	for (const model of chat.chatModels.get()) {
+		const request = model.getRequests().find(request => request.id === requestId);
+		if (!request?.response || !(model instanceof ChatModel)) { continue; }
+		const session = accessor.get(IChatEditingService).startOrContinueGlobalEditingSession(model);
+		if (session instanceof ChatEditingSession) { await session.updateOfficeReview(request.response, data); return true; }
+	}
+	return false;
+});

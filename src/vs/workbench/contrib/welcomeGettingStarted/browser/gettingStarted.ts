@@ -21,7 +21,7 @@ import { splitRecentLabel } from '../../../../base/common/labels.js';
 import { DisposableStore, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { ILink, LinkedText } from '../../../../base/common/linkedText.js';
 import { parse } from '../../../../base/common/marshalling.js';
-import { Schemas, matchesScheme } from '../../../../base/common/network.js';
+import { FileAccess, Schemas, matchesScheme } from '../../../../base/common/network.js';
 import { OS } from '../../../../base/common/platform.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
 import { assertReturnsDefined } from '../../../../base/common/types.js';
@@ -926,8 +926,9 @@ export class GettingStartedPage extends EditorPane {
 		}));
 
 		const header = $('.header', {},
+			$('img.sangam-one-logo', { src: FileAccess.asBrowserUri('vs/workbench/browser/media/code-icon.svg').toString(true), alt: this.productService.nameLong }),
 			$('h1.product-name.caption', {}, this.productService.nameLong),
-			$('p.subtitle.description', {}, localize({ key: 'gettingStarted.editingEvolved', comment: ['Shown as subtitle on the Welcome page.'] }, "Editing evolved"))
+			$('p.subtitle.description', {}, localize({ key: 'gettingStarted.editingEvolved', comment: ['Shown as subtitle on the Welcome page.'] }, "Write, review and create."))
 		);
 
 		const leftColumn = $('.categories-column.categories-column-left', {},);

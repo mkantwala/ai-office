@@ -157,12 +157,15 @@ export function getAccountTitleBarState(context: IAccountTitleBarStateContext): 
 		};
 	}
 
+	// AI Office: GitHub sign-in is not offered by this product, so a signed-out user
+	// gets a neutral account affordance rather than a sign-in call to action.
 	return {
 		source: 'account',
-		kind: 'prominent',
+		kind: 'default',
 		icon: Codicon.account,
-		label: localize('signInLabel', "Sign In"),
-		ariaLabel: localize('signInAria', "Sign in to your account"),
+		label: localize('accountLabel', "Account"),
+		ariaLabel: localize('accountAria', "Account"),
+		revealLabelOnHover: true,
 	};
 }
 
@@ -177,23 +180,9 @@ function getCopilotPresentation(
 	}
 
 	if (entitlement === ChatEntitlement.Unknown) {
-		if (allowSignedOutWhenUsable) {
-			// Signing in is optional, so present a calm affordance.
-			return {
-				source: 'copilot',
-				kind: 'default',
-				icon: Codicon.account,
-				label: localize('agentsSignInOptional', "Sign In"),
-				ariaLabel: localize('agentsSignInOptionalAria', "Sign in to GitHub to use more agents"),
-			};
-		}
-		return {
-			source: 'copilot',
-			kind: 'prominent',
-			icon: Codicon.account,
-			label: localize('agentsSignedOut', "Agents Signed Out"),
-			ariaLabel: localize('agentsSignedOutAria', "Agents is signed out"),
-		};
+		// AI Office: GitHub sign-in is not offered by this product, so a signed-out
+		// user gets no Copilot sign-in affordance in the title bar.
+		return undefined;
 	}
 
 	if (sentiment.disabled || sentiment.untrusted) {

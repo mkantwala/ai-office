@@ -11,7 +11,7 @@ import type { Engine, State, Command } from './types.js';
 const definitions: Command[] = [
 	{ id: 'select.shape', label: 'Select text box', params: { page: '1-based slide', shape: 'shape id' } },
 	{ id: 'text.replace', label: 'Edit text', params: { page: '1-based slide', shape: 'shape id', text: 'string' } },
-	{ id: 'insert.text', label: 'Insert text', params: { page: '1-based slide', text: 'string' } },
+	{ id: 'insert.text', label: 'Insert text', params: { page: '1-based slide', text: 'string', at: '[x, y] inches (optional, default [1, 1])' } },
 	{ id: 'format.text', label: 'Format text', params: { page: 'slide', shape: 'id', range: '{start,end} UTF-16 offsets (optional)', font: 'name', size: 'points', bold: 'boolean', italic: 'boolean', underline: 'boolean' } },
 	{ id: 'para.align', label: 'Align', params: { value: 'left|center|right|justify', page: 'slide', shape: 'id' } },
 	{ id: 'para.list', label: 'List', params: { value: 'bullet|number|none', page: 'slide', shape: 'id' } },
@@ -84,7 +84,12 @@ export class SlidesEngine implements Engine {
 		try {
 			if (id === 'insert.text') {
 				if (typeof args.text !== 'string' || args.text.length > 100000) { throw new Error('Text missing or too large.'); }
-				ppt.addSlideTextBox(slide, { x: ppt.inches(1), y: ppt.inches(1), w: ppt.inches(6), h: ppt.inches(1), text: args.text });
+				let at = { x: 1, y: 1 };
+				if (args.at !== undefined) {
+					if (!Array.isArray(args.at) || args.at.length !== 2) { throw new Error('at must be an [x, y] pair in inches.'); }
+					at = { x: num(args.at[0], 0, 100), y: num(args.at[1], 0, 100) };
+				}
+				ppt.addSlideTextBox(slide, { x: ppt.inches(at.x), y: ppt.inches(at.y), w: ppt.inches(6), h: ppt.inches(1), text: args.text });
 			} else if (id === 'insert.table') {
 				const rows = num(args.rows, 1, 20), cols = num(args.cols, 1, 10);
 				if (!Number.isInteger(rows) || !Number.isInteger(cols)) { throw new Error('Table dimensions must be integers.'); }
@@ -94,7 +99,7 @@ export class SlidesEngine implements Engine {
 				ppt.addSlideImage(slide, Buffer.from(args.data, 'base64'), { x: ppt.inches(1), y: ppt.inches(1), w: ppt.inches(4), h: ppt.inches(3), fit: 'contain' });
 			} else if (id === 'insert.comment') {
 				if (typeof args.text !== 'string' || !args.text.trim()) { throw new Error('Enter comment text.'); }
-				ppt.addSlideComment(slide, { author: { name: 'AI Office' }, text: args.text });
+				ppt.addSlideComment(slide, { author: { name: 'Sangam One' }, text: args.text });
 			} else {
 				if (!shape) { throw new Error('Select a text box first.'); }
 				const cell = ppt.isTableShape(shape) && args.row !== undefined && args.col !== undefined ? ppt.getTableCell(shape, num(args.row, 0, 1000), num(args.col, 0, 1000)) : undefined;

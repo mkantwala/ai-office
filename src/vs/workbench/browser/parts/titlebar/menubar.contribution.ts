@@ -58,16 +58,6 @@ MenuRegistry.appendMenuItem(MenuId.MenubarMainMenu, {
 });
 
 MenuRegistry.appendMenuItem(MenuId.MenubarMainMenu, {
-	submenu: MenuId.MenubarTerminalMenu,
-	title: {
-		value: 'Terminal',
-		original: 'Terminal',
-		mnemonicTitle: localize({ key: 'mTerminal', comment: ['&& denotes a mnemonic'] }, "&&Terminal")
-	},
-	order: 7
-});
-
-MenuRegistry.appendMenuItem(MenuId.MenubarMainMenu, {
 	submenu: MenuId.MenubarHelpMenu,
 	title: {
 		value: 'Help',

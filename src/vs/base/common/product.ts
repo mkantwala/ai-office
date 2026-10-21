@@ -146,6 +146,8 @@ export interface IProductConfiguration {
 
 	/** Whether the product exposes the extension Marketplace and its discovery UI. */
 	readonly extensionsMarketplaceEnabled?: boolean;
+	/** Built-in extensions omitted from packaging and both desktop and browser discovery. */
+	readonly disabledBuiltinExtensions?: readonly string[];
 	readonly extensionsGallery?: {
 		readonly serviceUrl: string;
 		readonly controlUrl: string;

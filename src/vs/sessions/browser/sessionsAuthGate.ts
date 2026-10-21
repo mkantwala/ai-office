@@ -57,23 +57,16 @@ export const enum SignedOutWindowGate {
 }
 
 export function resolveSignedOutWindowGate(allowSignedOutWhenUsable: boolean, authRequirements: readonly SessionTypeAuthRequirement[], canInitializeWithoutGitHub = false): SignedOutWindowGate {
-	if (canInitializeWithoutGitHub) {
-		return authRequirements.length === 0 ? SignedOutWindowGate.Unresolved : SignedOutWindowGate.Proceed;
-	}
-	if (!allowSignedOutWhenUsable) {
-		return SignedOutWindowGate.ForceGitHubSignIn;
-	}
-	if (authRequirements.length === 0) {
-		return SignedOutWindowGate.Unresolved;
-	}
-	return authRequirements.some(requirement => requirement !== SessionTypeAuthRequirement.GitHub)
-		? SignedOutWindowGate.Proceed
-		: SignedOutWindowGate.ForceGitHubSignIn;
+	// AI Office: GitHub sign-in is not offered by this product, so a signed-out
+	// window never forces it — it opens as soon as providers have published their
+	// session types.
+	return authRequirements.length === 0 ? SignedOutWindowGate.Unresolved : SignedOutWindowGate.Proceed;
 }
 
 /** Whether the GitHub workspace group should offer sign-in. */
 export function shouldShowGitHubWorkspaceGroupSignIn(signedIn: boolean, allowSignedOutWhenUsable: boolean): boolean {
-	return !signedIn && allowSignedOutWhenUsable;
+	// AI Office: GitHub sign-in is not offered by this product.
+	return false;
 }
 
 /**

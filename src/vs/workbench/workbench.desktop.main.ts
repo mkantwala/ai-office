@@ -130,7 +130,7 @@ import './contrib/files/electron-browser/fileActions.contribution.js';
 // CodeEditor Contributions
 import './contrib/codeEditor/electron-browser/codeEditor.contribution.js';
 
-// Debug
+// Extension-host debug API service
 import './contrib/debug/electron-browser/extensionHostDebugService.js';
 
 // Extensions Management
@@ -138,16 +138,13 @@ import './contrib/extensions/electron-browser/extensions.contribution.js';
 import './contrib/extensions/electron-browser/devtoolsExtensionHost.contribution.js';
 
 // Issues
-import './contrib/issue/electron-browser/issue.contribution.js';
+import './contrib/issue/common/issue.service.contribution.js';
 
 // Surveys
 import './contrib/surveys/browser/survey.contribution.js';
 
 // Process Explorer
 import './contrib/processExplorer/electron-browser/processExplorer.contribution.js';
-
-// Remote
-import './contrib/remote/electron-browser/remote.contribution.js';
 
 // Terminal
 import './contrib/terminal/electron-browser/terminal.contribution.js';
@@ -164,8 +161,8 @@ import './contrib/tags/electron-browser/tags.contribution.js';
 // Performance
 import './contrib/performance/electron-browser/performance.contribution.js';
 
-// Tasks
-import './contrib/tasks/electron-browser/taskService.js';
+// Task API service (task UI excluded from AI Office)
+import './contrib/tasks/common/tasks.office.contribution.js';
 
 // External terminal
 import './contrib/externalTerminal/electron-browser/externalTerminal.contribution.js';
@@ -183,18 +180,11 @@ import './contrib/splash/electron-browser/splash.contribution.js';
 // Local History
 import './contrib/localHistory/electron-browser/localHistory.contribution.js';
 
-// Merge Editor
-import './contrib/mergeEditor/electron-browser/mergeEditor.contribution.js';
-
 // Multi Diff Editor
 import './contrib/multiDiffEditor/browser/multiDiffEditor.contribution.js';
 
-// Remote Tunnel
-import './contrib/remoteTunnel/electron-browser/remoteTunnel.contribution.js';
-
 // Chat
 import './contrib/chat/electron-browser/chat.contribution.js';
-import './contrib/chat/electron-browser/tunnelHost.contribution.js';
 
 // Copilot Voice
 import './contrib/agentsVoice/electron-browser/agentsVoiceNativeCommands.js';

@@ -54,7 +54,6 @@ import { language } from '../../../../base/common/platform.js';
 import { AgentHostCodexAgentEnabledSettingId } from '../../../../platform/agentHost/common/agentService.js';
 import { ICodexAccountRateLimitInfo } from '../../../../platform/agentHost/common/codexAccount.js';
 import { ChatAIDisabledSettingId } from '../../../../platform/chat/common/chatSettings.js';
-import { CHAT_SETUP_ACTION_ID } from '../../../../workbench/contrib/chat/browser/actions/chatActions.js';
 import { AGENTIC_SIGN_IN_COMMAND_ID } from '../../../common/sessionCommands.js';
 import { SessionsChatPetAchievementBadges } from './chatPetAchievementBadges.js';
 import { CHAT_PET_OPEN_ACHIEVEMENTS_COMMAND_ID } from '../../../../workbench/contrib/chat/browser/chatPetAchievements.js';
@@ -103,25 +102,8 @@ registerUpdateTitleBarMenuPlacement(Menus.TitleBarLeftLayout, {
 	),
 });
 
-// Sign In (shown when signed out)
-registerAction2(class extends Action2 {
-	constructor() {
-		super({
-			id: AGENTIC_SIGN_IN_COMMAND_ID,
-			title: localize2('signIn', "Sign in with GitHub"),
-			icon: Codicon.signIn,
-			menu: {
-				id: AccountMenu,
-				when: ContextKeyExpr.notEquals('defaultAccountStatus', 'available'),
-				group: '1_account',
-				order: 1,
-			}
-		});
-	}
-	async run(accessor: ServicesAccessor): Promise<void> {
-		await accessor.get(ICommandService).executeCommand(CHAT_SETUP_ACTION_ID);
-	}
-});
+// AI Office: the "Sign in with GitHub" account action is not registered — the Agents
+// window has no GitHub sign-in. Model access is configured through the model picker.
 
 // Sign Out (shown when signed in)
 registerAction2(class extends Action2 {

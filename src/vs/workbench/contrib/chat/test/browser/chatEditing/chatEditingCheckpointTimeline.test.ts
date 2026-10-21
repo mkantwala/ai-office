@@ -131,6 +131,30 @@ suite('ChatEditingCheckpointTimeline', function () {
 		assert.strictEqual(timeline.canRedo.get(), false);
 	});
 
+	test('custom documents follow default restore, redo and start over boundaries', async function () {
+		let applied: readonly { requestId: string; applied: boolean }[] = [];
+		fileDelegate.navigateCustomDocuments = async requests => { applied = requests; };
+		timeline.createCheckpoint('first', undefined, 'First request');
+		timeline.createCheckpoint('second', undefined, 'Second request');
+		await timeline.navigateToCheckpoint(timeline.getCheckpointIdForRequest('second')!);
+		assert.deepStrictEqual(applied, [{ requestId: 'first', applied: true }, { requestId: 'second', applied: false }]);
+		assert.strictEqual(timeline.canRedo.get(), true);
+		while (timeline.canRedo.get()) { await timeline.redoToNextCheckpoint(); }
+		assert.deepStrictEqual(applied, [{ requestId: 'first', applied: true }, { requestId: 'second', applied: true }]);
+		assert.strictEqual(timeline.canRedo.get(), false);
+		await timeline.navigateToCheckpoint(timeline.getCheckpointIdForRequest('first')!);
+		assert.deepStrictEqual(applied, [{ requestId: 'first', applied: false }, { requestId: 'second', applied: false }]);
+	});
+
+	test('custom document restore failures do not advance the chat checkpoint', async function () {
+		timeline.createCheckpoint('first', undefined, 'First request');
+		const initial = timeline.getStateForPersistence().currentEpoch;
+		fileDelegate.navigateCustomDocuments = async () => { throw new Error('Unavailable document history'); };
+		await assert.rejects(timeline.navigateToCheckpoint(timeline.getCheckpointIdForRequest('first')!), /Unavailable document history/);
+		assert.strictEqual(timeline.getStateForPersistence().currentEpoch, initial);
+		assert.strictEqual(timeline.canRedo.get(), false);
+	});
+
 	test('createCheckpoint increments epoch and creates checkpoint', function () {
 		const initialEpoch = timeline.getStateForPersistence().epochCounter;
 

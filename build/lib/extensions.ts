@@ -19,6 +19,7 @@ import ansiColors from 'ansi-colors';
 import * as jsoncParser from 'jsonc-parser';
 import { getProductionDependencies } from './dependencies.ts';
 import { type IExtensionDefinition, getExtensionStream } from './builtInExtensions.ts';
+import { isBuiltinExtensionEnabled, isBuiltinExtensionBuildEnabled } from './builtinExtensionPolicy.ts';
 import { fetchUrls, fetchGithub } from './fetch.ts';
 import { createTsgoStream, spawnTsgo } from './tsgo.ts';
 import watcher from './watch/index.ts';
@@ -422,6 +423,7 @@ function doPackageLocalExtensionsStream(forWeb: boolean, native: boolean): Strea
 			})
 			.filter(({ name }) => native ? nativeExtensionsSet.has(name) : !nativeExtensionsSet.has(name))
 			.filter(({ name }) => excludedExtensions.indexOf(name) === -1)
+			.filter(({ manifestPath }) => isBuiltinExtensionEnabled(require(manifestPath)))
 			.filter(({ name }) => builtInExtensions.every(b => b.name !== name))
 			.filter(({ manifestPath }) => (forWeb ? isWebExtension(require(manifestPath)) : true))
 	);
@@ -535,7 +537,7 @@ export function scanBuiltinExtensions(extensionsRoot: string, exclude: string[] 
 				continue;
 			}
 			const packageJSON = JSON.parse(fs.readFileSync(packageJSONPath).toString('utf8'));
-			if (!isWebExtension(packageJSON)) {
+			if (!isWebExtension(packageJSON) || !isBuiltinExtensionEnabled(packageJSON)) {
 				continue;
 			}
 			const children = fs.readdirSync(path.join(extensionsRoot, extensionFolder));
@@ -623,15 +625,13 @@ export async function esbuildExtensions(taskName: string, isWatch: boolean, scri
 
 // Additional projects to run esbuild on. These typically build code for webviews
 const esbuildMediaScripts: { script: string; tsconfig: string }[] = [
-	{ script: 'ipynb/esbuild.notebook.mts', tsconfig: 'ipynb/notebook-src/tsconfig.json' },
 	{ script: 'markdown-language-features/esbuild.notebook.mts', tsconfig: 'markdown-language-features/notebook/tsconfig.json' },
 	{ script: 'markdown-language-features/esbuild.webview.mts', tsconfig: 'markdown-language-features/preview-src/tsconfig.json' },
 	{ script: 'markdown-language-features/esbuild.markdownEditor.mts', tsconfig: 'markdown-language-features/markdown-editor-src/tsconfig.json' },
 	{ script: 'markdown-math/esbuild.notebook.mts', tsconfig: 'markdown-math/notebook/tsconfig.json' },
 	{ script: 'mermaid-markdown-features/esbuild.webview.mts', tsconfig: 'mermaid-markdown-features/preview-src/tsconfig.json' },
-	{ script: 'notebook-renderers/esbuild.notebook.mts', tsconfig: 'notebook-renderers/tsconfig.json' },
 	{ script: 'simple-browser/esbuild.webview.mts', tsconfig: 'simple-browser/preview-src/tsconfig.json' },
-];
+].filter(({ script }) => isBuiltinExtensionBuildEnabled(path.join(extensionsPath, script)));
 
 export function buildExtensionMedia(isWatch: boolean, outputRoot?: string): Promise<void> {
 	const esbuildTask = esbuildExtensions('esbuilding extension media', isWatch, esbuildMediaScripts.map(({ script }) => ({

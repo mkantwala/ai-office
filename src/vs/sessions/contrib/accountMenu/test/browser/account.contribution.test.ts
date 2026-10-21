@@ -11,12 +11,9 @@ import { constObservable, observableValue } from '../../../../../base/common/obs
 import { mock } from '../../../../../base/test/common/mock.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import { isIMenuItem, MenuRegistry } from '../../../../../platform/actions/common/actions.js';
-import { CommandsRegistry } from '../../../../../platform/commands/common/commands.js';
 import { IHoverService } from '../../../../../platform/hover/browser/hover.js';
-import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { NullLogService } from '../../../../../platform/log/common/log.js';
 import { TestThemeService } from '../../../../../platform/theme/test/common/testThemeService.js';
-import { CHAT_SETUP_ACTION_ID } from '../../../../../workbench/contrib/chat/browser/actions/chatActions.js';
 import { ChatPetAccessoryId, ChatPetAccessoryIds, ChatPetAchievementId, ChatPetAchievementIds } from '../../../../../workbench/contrib/chat/browser/chatPetAchievements.js';
 import { ChatPetVariant, IChatPetService } from '../../../../../workbench/contrib/chat/browser/chatPetService.js';
 import { ChatPetCustomizationTab } from '../../../../../workbench/contrib/chat/browser/chatPetAchievementsEditorInput.js';
@@ -29,30 +26,12 @@ suite('Sessions - Account Menu', () => {
 
 	const store = ensureNoDisposablesAreLeakedInTestSuite();
 
-	test('labels the signed-out Copilot account action', () => {
+	test('AI Office does not offer GitHub sign-in in the account menu', () => {
 		const signIn = MenuRegistry.getMenuItems(Menus.AccountMenu)
 			.filter(isIMenuItem)
 			.find(item => item.command.id === 'workbench.action.agenticSignIn');
 
-		assert.ok(signIn);
-		assert.strictEqual(typeof signIn.command.title === 'string' ? signIn.command.title : signIn.command.title.value, 'Sign in with GitHub');
-	});
-
-	test('uses the shared Chat setup flow for Copilot sign-in', async () => {
-		const executedCommands: string[] = [];
-		const command = CommandsRegistry.getCommand('workbench.action.agenticSignIn');
-		assert.ok(command);
-		const accessor = {
-			get: () => ({
-				executeCommand: async (commandId: string) => {
-					executedCommands.push(commandId);
-				},
-			}),
-		} as ServicesAccessor;
-
-		await command.handler(accessor);
-
-		assert.deepStrictEqual(executedCommands, [CHAT_SETUP_ACTION_ID]);
+		assert.strictEqual(signIn, undefined);
 	});
 
 	test('omits the redundant signed-out summary', () => {

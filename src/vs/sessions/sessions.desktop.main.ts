@@ -107,7 +107,6 @@ import '../workbench/services/process/electron-browser/processService.js';
 import '../workbench/services/power/electron-browser/powerService.js';
 import '../workbench/services/localTranscription/electron-browser/localTranscriptionService.js';
 
-import { ILocalGitService } from '../platform/git/common/localGitService.js';
 import { InstantiationType, registerSingleton } from '../platform/instantiation/common/extensions.js';
 import { IRemoteAgentHostService } from '../platform/agentHost/common/remoteAgentHostService.js';
 import { AgentsWindowRemoteAgentHostService } from '../platform/agentHost/browser/remoteAgentHostServiceImpl.js';
@@ -115,21 +114,14 @@ import { IRemoteAgentHostLocationPreferenceService } from '../platform/agentHost
 import { RemoteAgentHostLocationPreferenceService } from '../platform/agentHost/browser/remoteAgentHostLocationPreferenceService.js';
 import { ISSHHostKeyTrustService } from '../platform/agentHost/common/sshHostKeyTrust.js';
 import { SSHHostKeyTrustService } from '../platform/agentHost/browser/sshHostKeyTrustService.js';
-import { registerSharedProcessRemoteService } from '../platform/ipc/electron-browser/services.js';
-import { IPluginGitService } from '../workbench/contrib/chat/common/plugins/pluginGitService.js';
-import { NativePluginGitCommandService } from '../workbench/contrib/chat/electron-browser/pluginGitCommandService.js';
 import { IUserDataInitializationService, UserDataInitializationService } from '../workbench/services/userData/browser/userDataInit.js';
 import { SyncDescriptor } from '../platform/instantiation/common/descriptors.js';
 
 registerSingleton(IUserDataInitializationService, new SyncDescriptor(UserDataInitializationService, [[]], true));
 
-// Override the browser PluginGitCommandService with the native one that always
-// runs git locally via the shared process.
-registerSingleton(IPluginGitService, NativePluginGitCommandService, InstantiationType.Delayed);
 registerSingleton(IRemoteAgentHostService, AgentsWindowRemoteAgentHostService, InstantiationType.Delayed);
 registerSingleton(IRemoteAgentHostLocationPreferenceService, RemoteAgentHostLocationPreferenceService, InstantiationType.Delayed);
 registerSingleton(ISSHHostKeyTrustService, SSHHostKeyTrustService, InstantiationType.Delayed);
-registerSharedProcessRemoteService(ILocalGitService, 'localGit');
 
 
 //#endregion
@@ -160,16 +152,13 @@ import '../workbench/contrib/extensions/electron-browser/extensions.contribution
 
 
 // Issues
-import '../workbench/contrib/issue/electron-browser/issue.contribution.js';
+import '../workbench/contrib/issue/common/issue.service.contribution.js';
 
 // Surveys
 import '../workbench/contrib/surveys/browser/survey.contribution.js';
 
 // Process Explorer
 import '../workbench/contrib/processExplorer/electron-browser/processExplorer.contribution.js';
-
-// Remote
-import '../workbench/contrib/remote/electron-browser/remote.contribution.js';
 
 // Terminal
 import '../workbench/contrib/terminal/electron-browser/terminal.contribution.js';
@@ -188,7 +177,7 @@ import '../workbench/contrib/tags/electron-browser/tags.contribution.js';
 import '../workbench/contrib/performance/electron-browser/performance.contribution.js';
 
 // Tasks
-import '../workbench/contrib/tasks/electron-browser/taskService.js';
+import '../workbench/contrib/tasks/common/tasks.office.contribution.js';
 
 // External terminal
 import '../workbench/contrib/externalTerminal/electron-browser/externalTerminal.contribution.js';
@@ -208,14 +197,8 @@ import '../workbench/contrib/localHistory/electron-browser/localHistory.contribu
 // Onboarding
 import '../workbench/contrib/onboarding/electron-browser/onboardingTryout.contribution.js';
 
-// Merge Editor
-import '../workbench/contrib/mergeEditor/electron-browser/mergeEditor.contribution.js';
-
 // Multi Diff Editor
 import '../workbench/contrib/multiDiffEditor/browser/multiDiffEditor.contribution.js';
-
-// Remote Tunnel
-import '../workbench/contrib/remoteTunnel/electron-browser/remoteTunnel.contribution.js';
 
 // Encryption
 import '../workbench/contrib/encryption/electron-browser/encryption.contribution.js';
@@ -273,9 +256,6 @@ import './contrib/providers/agentHost/browser/agentMergeActions.js';
 import './contrib/providers/agentHost/browser/agentHostSkillButtons.js';
 import './contrib/providers/agentHost/browser/openSubagentChat.js';
 import './contrib/providers/agentHost/electron-browser/agentHost.contribution.js';
-
-// Tunnel Host (allow remote connections to local agent host)
-import './contrib/tunnelHost/electron-browser/tunnelHost.contribution.js';
 
 // Sessions (desktop only)
 import './contrib/sessions/electron-browser/sessions.contribution.js';

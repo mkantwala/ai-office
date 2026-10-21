@@ -13,6 +13,7 @@ import { URI } from '../../../../../base/common/uri.js';
 import { IRequestContext, IRequestOptions } from '../../../../../base/parts/request/common/request.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import { ICommandService } from '../../../../../platform/commands/common/commands.js';
+import { IDefaultAccountService } from '../../../../../platform/defaultAccount/common/defaultAccount.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { TestConfigurationService } from '../../../../../platform/configuration/test/common/testConfigurationService.js';
 import { IContextKeyService } from '../../../../../platform/contextkey/common/contextkey.js';
@@ -23,6 +24,7 @@ import { ILogService, NullLogService } from '../../../../../platform/log/common/
 import { COPILOT_FORCE_REMOTE_SETTINGS_REFRESH_KEY, IFileManagedSettingsService, INativeManagedSettingsService, ManagedSettingsData, NullFileManagedSettingsService, NullNativeManagedSettingsService } from '../../../../../platform/policy/common/copilotManagedSettings.js';
 import { IManagedSettingsFreshness, ManagedSettingsFreshnessFailure, ManagedSettingsFreshnessState } from '../../../../../platform/policy/common/managedSettingsFreshness.js';
 import { IProductService } from '../../../../../platform/product/common/productService.js';
+import { IQuickInputService, IQuickPickItem } from '../../../../../platform/quickinput/common/quickInput.js';
 import { IRequestService } from '../../../../../platform/request/common/request.js';
 import { InMemoryStorageService, IStorageService } from '../../../../../platform/storage/common/storage.js';
 import { ITelemetryService } from '../../../../../platform/telemetry/common/telemetry.js';
@@ -31,7 +33,7 @@ import { AuthenticationSession, AuthenticationSessionsChangeEvent, IAuthenticati
 import { IWorkbenchEnvironmentService } from '../../../environment/common/environmentService.js';
 import { IExtensionService } from '../../../extensions/common/extensions.js';
 import { IHostService } from '../../../host/browser/host.js';
-import { DefaultAccountProvider, DefaultAccountService } from '../../browser/defaultAccount.js';
+import { DefaultAccountProvider, DefaultAccountService, OptionalAccountSignInAction } from '../../browser/defaultAccount.js';
 import { TestProductService } from '../../../../test/common/workbenchTestServices.js';
 import { AccountPolicyGateState, AccountPolicyService } from '../../../policies/common/accountPolicyService.js';
 
@@ -1956,6 +1958,31 @@ suite('DefaultAccountProvider sign in scopes', () => {
 			options: { provider: 'google' },
 		}]);
 	});
+});
+
+suite('Optional account sign-in', () => {
+	const disposables = ensureNoDisposablesAreLeakedInTestSuite();
+
+	for (const [name, selectedIndex, expected] of [
+		['Google', 0, [{ provider: 'google' }]],
+		['GitHub', 1, [undefined]],
+		['continue without signing in', 2, []],
+		['dismiss', -1, []],
+	] as const) {
+		test(name, async () => {
+			const instantiationService = disposables.add(new TestInstantiationService());
+			const calls: ({ provider?: string } | undefined)[] = [];
+			instantiationService.stub(IQuickInputService, {}, 'pick', async (items: IQuickPickItem[]) => items[selectedIndex]);
+			instantiationService.stub(IDefaultAccountService, {
+				signIn: async (options?: { provider?: string }) => {
+					calls.push(options);
+					return null;
+				},
+			});
+			await instantiationService.invokeFunction(accessor => new OptionalAccountSignInAction().run(accessor));
+			assert.deepStrictEqual(calls, expected);
+		});
+	}
 });
 
 class TestRequestService implements IRequestService {

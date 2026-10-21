@@ -15,6 +15,7 @@ import { gulp, filter, plumber, sourcemaps } from './lib/gulp/facade.ts';
 import * as path from 'path';
 import * as nodeUtil from 'util';
 import * as ext from './lib/extensions.ts';
+import { isBuiltinExtensionBuildEnabled } from './lib/builtinExtensionPolicy.ts';
 import { getVersion } from './lib/getVersion.ts';
 import { createReporter } from './lib/reporter.ts';
 import * as task from './lib/gulp/task.ts';
@@ -55,36 +56,26 @@ const compilations = [
 	'extensions/configuration-editing/tsconfig.json',
 	'extensions/css-language-features/client/tsconfig.json',
 	'extensions/css-language-features/server/tsconfig.json',
-	'extensions/debug-auto-launch/tsconfig.json',
-	'extensions/debug-server-ready/tsconfig.json',
 	'extensions/emmet/tsconfig.json',
 	'extensions/extension-editing/tsconfig.json',
 	'extensions/git/tsconfig.json',
 	'extensions/git-base/tsconfig.json',
 	'extensions/github/tsconfig.json',
 	'extensions/github-authentication/tsconfig.json',
-	'extensions/grunt/tsconfig.json',
-	'extensions/gulp/tsconfig.json',
 	'extensions/html-language-features/client/tsconfig.json',
 	'extensions/html-language-features/server/tsconfig.json',
-	'extensions/ipynb/tsconfig.json',
-	'extensions/jake/tsconfig.json',
 	'extensions/json-language-features/client/tsconfig.json',
 	'extensions/json-language-features/server/tsconfig.json',
 	'extensions/markdown-language-features/tsconfig.json',
 	'extensions/markdown-math/tsconfig.json',
 	'extensions/media-preview/tsconfig.json',
-	'extensions/merge-conflict/tsconfig.json',
 	'extensions/mermaid-markdown-features/tsconfig.json',
 	'extensions/terminal-suggest/tsconfig.json',
 	'extensions/microsoft-authentication/tsconfig.json',
-	'extensions/notebook-renderers/tsconfig.json',
-	'extensions/npm/tsconfig.json',
 	'extensions/php-language-features/tsconfig.json',
 	'extensions/references-view/tsconfig.json',
 	'extensions/search-result/tsconfig.json',
 	'extensions/simple-browser/tsconfig.json',
-	'extensions/tunnel-forwarding/tsconfig.json',
 	'extensions/typescript-language-features/web/tsconfig.json',
 	'extensions/typescript-language-features/tsconfig.json',
 	'extensions/vscode-api-tests/tsconfig.json',
@@ -96,7 +87,7 @@ const compilations = [
 	'.vscode/extensions/vscode-selfhost-import-aid/tsconfig.json',
 	'.vscode/extensions/vscode-extras/tsconfig.json',
 	'.vscode/extensions/vscode-pr-pinger/tsconfig.json',
-];
+].filter(isBuiltinExtensionBuildEnabled);
 
 const getBaseUrl = (out: string) => `https://main.vscode-cdn.net/sourcemaps/${commit}/${out}`;
 
@@ -318,10 +309,10 @@ async function buildWebExtensions(isWatch: boolean): Promise<void> {
 	const extensionsPath = path.join(root, 'extensions');
 
 	// Find all esbuild.browser.mts files
-	const esbuildConfigLocations = await nodeUtil.promisify(glob)(
+	const esbuildConfigLocations = (await nodeUtil.promisify(glob)(
 		path.join(extensionsPath, '**', 'esbuild.browser.mts'),
 		{ ignore: ['**/node_modules'] }
-	);
+	)).filter(isBuiltinExtensionBuildEnabled);
 
 	const promises: Promise<unknown>[] = [];
 

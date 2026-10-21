@@ -44,6 +44,8 @@ type IReconstructedFileStateWithNotebook = IReconstructedFileNotExistsState | (M
  * navigating in the timeline tracks the changes as agent-initiated.
  */
 export interface IChatEditingTimelineFsDelegate {
+	/** Align live custom documents with the same request boundary as text snapshots. */
+	navigateCustomDocuments?: (requests: readonly { requestId: string; applied: boolean }[]) => Promise<void>;
 	/** Creates a file with initial content. */
 	createFile: (uri: URI, initialContent: string) => Promise<unknown>;
 	/** Delete a URI */
@@ -280,6 +282,9 @@ export class ChatEditingCheckpointTimelineImpl implements IChatEditingCheckpoint
 
 	private async _navigateToEpoch(restoreToEpoch: number, navigateToEpoch = restoreToEpoch): Promise<void> {
 		const currentEpoch = this._currentEpoch.get();
+		await this._delegate.navigateCustomDocuments?.(this._checkpoints.get()
+			.filter(cp => cp.requestId !== undefined && cp.undoStopId === undefined)
+			.map(cp => ({ requestId: cp.requestId!, applied: cp.epoch < navigateToEpoch })));
 		if (currentEpoch !== restoreToEpoch) {
 			const urisToRestore = await this._applyFileSystemOperations(currentEpoch, restoreToEpoch);
 

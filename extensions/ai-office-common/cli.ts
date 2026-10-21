@@ -21,7 +21,7 @@ async function main() {
 	const action = args.shift();
 	const file = args.shift();
 	if (!file || !['commands', 'inspect', 'run'].includes(action || '')) {
-		process.stdout.write('AI Office CLI\n  node cli.cjs commands FILE\n  node cli.cjs inspect FILE\n  node cli.cjs run FILE --script commands.json --output result.docx [--root DIR]\nUse --in-place instead of --output to overwrite the input after a conflict check.\nCommand script: [{"command":"select.text","params":{"text":"Hello"}},{"command":"format.bold","params":{}}]\n');
+		process.stdout.write('Sangam One CLI\n  node cli.cjs commands FILE\n  node cli.cjs inspect FILE\n  node cli.cjs run FILE --script commands.json --output result.docx [--root DIR]\nUse --in-place instead of --output to overwrite the input after a conflict check.\nCommand script: [{"command":"select.text","params":{"text":"Hello"}},{"command":"format.bold","params":{}}]\n');
 		return;
 	}
 	const option = (name: string) => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };

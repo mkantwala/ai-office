@@ -82,7 +82,10 @@ export const RETURN_TO_VSCODE_EDITOR_COMMAND_ID = 'agents.returnToVSCodeEditor';
 /** Checks whether the Agents window is the only open main window. Registered in `vscodeActions.ts`. */
 export const SHOULD_SHOW_RETURN_TO_VSCODE_EDITOR_COMMAND_ID = 'agents.shouldShowReturnToVSCodeEditor';
 
-/** Starts GitHub Copilot sign-in. Registered in `account.contribution.ts`. */
+/**
+ * Starts GitHub Copilot sign-in. AI Office does not offer sign-in, so this command
+ * is no longer registered; the id is kept for the account panel's action partition.
+ */
 export const AGENTIC_SIGN_IN_COMMAND_ID = 'workbench.action.agenticSignIn';
 
 /** Opens the managed Files editor. Registered in `addTabActions.ts`. */

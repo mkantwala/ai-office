@@ -167,28 +167,6 @@ export const startEntries: GettingStartedStartEntryContent = [
 		}
 	},
 	{
-		id: 'topLevelGitClone',
-		title: localize('gettingStarted.topLevelGitClone.title', "Clone Git Repository..."),
-		description: localize('gettingStarted.topLevelGitClone.description', "Clone a remote repository to a local folder"),
-		when: 'config.git.enabled && !git.missing',
-		icon: Codicon.sourceControl,
-		content: {
-			type: 'startEntry',
-			command: 'command:git.clone',
-		}
-	},
-	{
-		id: 'topLevelGitOpen',
-		title: localize('gettingStarted.topLevelGitOpen.title', "Open Repository..."),
-		description: localize('gettingStarted.topLevelGitOpen.description', "Connect to a remote repository or pull request to browse, search, edit, and commit"),
-		when: 'workspacePlatform == \'webworker\'',
-		icon: Codicon.sourceControl,
-		content: {
-			type: 'startEntry',
-			command: 'command:remoteHub.openRepository',
-		}
-	},
-	{
 		id: 'topLevelRemoteOpen',
 		title: localize('gettingStarted.topLevelRemoteOpen.title', "Connect to..."),
 		description: localize('gettingStarted.topLevelRemoteOpen.description', "Connect to remote development workspaces."),
@@ -252,12 +230,12 @@ function createCopilotSetupStep(id: string, button: string, when: string, includ
 export const walkthroughs: GettingStartedWalkthroughContent = [
 	{
 		id: 'Setup',
-		title: localize('gettingStarted.setup.title', "Get started with VS Code"),
-		description: localize('gettingStarted.setup.description', "Customize your editor, learn the basics, and start coding"),
+		title: localize('gettingStarted.setup.title', "Get Started with Sangam One"),
+		description: localize('gettingStarted.setup.description', "Personalize your workspace and learn the basics"),
 		isFeatured: true,
 		icon: setupIcon,
 		when: '!isWeb',
-		walkthroughPageTitle: localize('gettingStarted.setup.walkthroughPageTitle', 'Setup VS Code'),
+		walkthroughPageTitle: localize('gettingStarted.setup.walkthroughPageTitle', 'Set Up Sangam One'),
 		next: 'Beginner',
 		content: {
 			type: 'steps',
@@ -288,8 +266,8 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 
 	{
 		id: 'SetupWeb',
-		title: localize('gettingStarted.setupWeb.title', "Get Started with VS Code for the Web"),
-		description: localize('gettingStarted.setupWeb.description', "Customize your editor, learn the basics, and start coding"),
+		title: localize('gettingStarted.setupWeb.title', "Get Started with Sangam One"),
+		description: localize('gettingStarted.setupWeb.description', "Personalize your workspace and learn the basics"),
 		isFeatured: true,
 		icon: setupIcon,
 		when: 'isWeb',
@@ -524,45 +502,6 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 					media: {
 						type: 'svg', altText: 'Run and debug view.', path: 'debug.svg',
 					},
-				},
-				{
-					id: 'scmClone',
-					title: localize('gettingStarted.scm.title', "Track your code with Git"),
-					description: localize('gettingStarted.scmClone.description.interpolated', "Set up the built-in version control for your project to track your changes and collaborate with others.\n{0}", Button(localize('cloneRepo', "Clone Repository"), 'command:git.clone')),
-					when: 'config.git.enabled && !git.missing && workspaceFolderCount == 0',
-					media: {
-						type: 'svg', altText: 'Source Control view.', path: 'git.svg',
-					},
-				},
-				{
-					id: 'scmSetup',
-					title: localize('gettingStarted.scm.title', "Track your code with Git"),
-					description: localize('gettingStarted.scmSetup.description.interpolated', "Set up the built-in version control for your project to track your changes and collaborate with others.\n{0}", Button(localize('initRepo', "Initialize Git Repository"), 'command:git.init')),
-					when: 'config.git.enabled && !git.missing && workspaceFolderCount != 0 && gitOpenRepositoryCount == 0',
-					media: {
-						type: 'svg', altText: 'Source Control view.', path: 'git.svg',
-					},
-				},
-				{
-					id: 'scm',
-					title: localize('gettingStarted.scm.title', "Track your code with Git"),
-					description: localize('gettingStarted.scm.description.interpolated', "No more looking up Git commands! Git and GitHub workflows are seamlessly integrated.\n{0}", Button(localize('openSCM', "Open Source Control"), 'command:workbench.view.scm')),
-					when: 'config.git.enabled && !git.missing && workspaceFolderCount != 0 && gitOpenRepositoryCount != 0 && activeViewlet != \'workbench.view.scm\'',
-					media: {
-						type: 'svg', altText: 'Source Control view.', path: 'git.svg',
-					},
-				},
-				{
-					id: 'installGit',
-					title: localize('gettingStarted.installGit.title', "Install Git"),
-					description: localize({ key: 'gettingStarted.installGit.description.interpolated', comment: ['The placeholders are command link items should not be translated'] }, "Install Git to track changes in your projects.\n{0}\n{1}Reload window{2} after installation to complete Git setup.", Button(localize('installGit', "Install Git"), 'https://aka.ms/vscode-install-git'), '[', '](command:workbench.action.reloadWindow)'),
-					when: 'git.missing',
-					media: {
-						type: 'svg', altText: 'Install Git.', path: 'git.svg',
-					},
-					completionEvents: [
-						'onContext:git.state == initialized'
-					]
 				},
 
 				{

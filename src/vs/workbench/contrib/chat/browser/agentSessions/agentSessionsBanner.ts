@@ -84,8 +84,9 @@ export function createAgentsBanner(
 			updateVisibility();
 		}
 	}));
-	let accountResolved = false;
-	const shouldOfferSignIn = () => accountResolved && defaultAccountService?.currentDefaultAccount === null && configurationService.getValue<boolean>(ChatConfiguration.WelcomePageSignInEnabled) === true;
+	// AI Office: GitHub sign-in is not offered by this product, so the banner always
+	// opens the Agents window instead of offering to sign in.
+	const shouldOfferSignIn = () => false;
 	const updateButton = () => {
 		const offerSignIn = shouldOfferSignIn();
 		const buttonText = offerSignIn ? localize('agentsBanner.signIn', "Sign in to GitHub") : label;
@@ -97,7 +98,6 @@ export function createAgentsBanner(
 	updateButton();
 	if (defaultAccountService) {
 		disposables.add(defaultAccountService.onDidChangeDefaultAccount(() => {
-			accountResolved = true;
 			updateButton();
 		}));
 		disposables.add(configurationService.onDidChangeConfiguration(e => {
@@ -107,7 +107,6 @@ export function createAgentsBanner(
 		}));
 		defaultAccountService.getDefaultAccount().then(() => {
 			if (!disposables.isDisposed) {
-				accountResolved = true;
 				updateButton();
 			}
 		}).catch(onUnexpectedError);

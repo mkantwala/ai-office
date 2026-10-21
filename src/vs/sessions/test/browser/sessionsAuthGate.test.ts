@@ -12,7 +12,7 @@ suite('Sessions - Auth Gate', () => {
 
 	ensureNoDisposablesAreLeakedInTestSuite();
 
-	test('blocking sign-in allows the opt-in or provider initialization without GitHub', () => {
+	test('AI Office opens signed out: the gate never forces GitHub sign-in', () => {
 		assert.deepStrictEqual({
 			featureDisabled: resolveSignedOutWindowGate(false, [SessionTypeAuthRequirement.None]),
 			featureDisabledBeforeProviders: resolveSignedOutWindowGate(false, []),
@@ -23,24 +23,24 @@ suite('Sessions - Auth Gate', () => {
 			nativeProvider: resolveSignedOutWindowGate(true, [SessionTypeAuthRequirement.GitHub, SessionTypeAuthRequirement.None]),
 			nativeProviderInitializing: resolveSignedOutWindowGate(true, [SessionTypeAuthRequirement.GitHub, SessionTypeAuthRequirement.Unusable]),
 		}, {
-			featureDisabled: SignedOutWindowGate.ForceGitHubSignIn,
-			featureDisabledBeforeProviders: SignedOutWindowGate.ForceGitHubSignIn,
+			featureDisabled: SignedOutWindowGate.Proceed,
+			featureDisabledBeforeProviders: SignedOutWindowGate.Unresolved,
 			initializesWithoutGitHub: SignedOutWindowGate.Proceed,
 			initializationBeforeProviders: SignedOutWindowGate.Unresolved,
 			providersUnresolved: SignedOutWindowGate.Unresolved,
-			allRequireGitHub: SignedOutWindowGate.ForceGitHubSignIn,
+			allRequireGitHub: SignedOutWindowGate.Proceed,
 			nativeProvider: SignedOutWindowGate.Proceed,
 			nativeProviderInitializing: SignedOutWindowGate.Proceed,
 		});
 	});
 
-	test('GitHub workspace group offers sign-in only for signed-out opted-in users', () => {
+	test('the GitHub workspace group never offers sign-in', () => {
 		assert.deepStrictEqual([
 			shouldShowGitHubWorkspaceGroupSignIn(false, false),
 			shouldShowGitHubWorkspaceGroupSignIn(false, true),
 			shouldShowGitHubWorkspaceGroupSignIn(true, false),
 			shouldShowGitHubWorkspaceGroupSignIn(true, true),
-		], [false, true, false, false]);
+		], [false, false, false, false]);
 	});
 
 	test('conditionalAuthState treats an unresolved account as unknown, never signed out', () => {
