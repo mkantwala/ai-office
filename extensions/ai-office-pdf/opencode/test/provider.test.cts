@@ -10,7 +10,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const documentTools = JSON.parse(fs.readFileSync('extensions/ai-office-pdf/package.json', 'utf8')).contributes.languageModelTools.filter(tool => tool.name.startsWith('office_document_'));
 
-function harness(saved = [], trusted = true, activeDocument = undefined) {
+function harness(saved = [], trusted = true, activeDocument = undefined, transcript = undefined) {
 	const disposables = [], commands = new Map(), connections = [], calls = [], items = new Map();
 	let provider, controller, participant;
 	const statusButton = { show() { this.visible = true; }, dispose() { this.disposed = true; } };
@@ -68,8 +68,9 @@ function harness(saved = [], trusted = true, activeDocument = undefined) {
 			async open(servers, nativeId) {
 				this.alive = true; this.servers = servers; this.loaded = nativeId;
 				if (nativeId) {
-					client.sessionUpdate({ sessionId: nativeId, update: { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'Previous request' } } });
-					client.sessionUpdate({ sessionId: nativeId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Previous reply' } } });
+					for (const turn of transcript || [{ role: 'user', text: 'Previous request' }, { role: 'agent', text: 'Previous reply' }]) {
+						client.sessionUpdate({ sessionId: nativeId, update: { sessionUpdate: turn.role + '_message_chunk', content: { type: 'text', text: turn.text } } });
+					}
 				}
 				return { sessionId: nativeId || 'native-id', configOptions };
 			},
@@ -258,5 +259,38 @@ test('OpenCode treats structured document refusals as failed MCP tool calls', as
 		await h.participant.handler({ prompt: 'tool-error', references: [] }, { history: [], chatSessionContext: { chatSessionItem: item, inputState: h.input() } }, h.stream(), h.token().token);
 		assert.equal(h.connections[0].structuredError.isError, true);
 		assert.match(h.connections[0].structuredError.content[0].text, /Document changed/);
+	} finally { h.dispose(); }
+});
+
+test('OpenCode restores exact user messages across chunked replay without private context or attachment text', async () => {
+	const original = 'Please revise the proposal.\n\nKeep this literal: Active Word document for this request: example\n日本語 ✓';
+	const h = harness([], true, { uri: 'file:///c%3A/work/proposal.docx', name: 'proposal.docx' });
+	let saved, wire;
+	try {
+		const item = await h.newSession();
+		await h.participant.handler({ prompt: original, references: [{ value: h.vscode.Uri.file('/notes.txt') }], toolInvocationToken: { requestId: 'history' } }, { history: [], chatSessionContext: { chatSessionItem: item, inputState: h.input() } }, h.stream(), h.token().token);
+		saved = h.saved(); wire = h.connections[0].promptText;
+		assert.match(wire, /Active Word document for this request/);
+		assert.match(wire, /Attached file paths/);
+	} finally { h.dispose(); }
+	const restored = harness(saved, true, undefined, [{ role: 'user', text: 'An older backend turn.' }, { role: 'agent', text: 'An older reply.' }, { role: 'user', text: wire.slice(0, 83) }, { role: 'user', text: wire.slice(83) }, { role: 'agent', text: 'Finished.' }]);
+	try {
+		const item = [...restored.items.values()][0];
+		const session = await restored.provider.provideChatSessionContent(item.resource, restored.token().token, { inputState: restored.input() });
+		assert.deepEqual(session.history.map(turn => turn.prompt || turn.response[0].value), ['An older backend turn.', 'An older reply.', original, 'Finished.']);
+	} finally { restored.dispose(); }
+});
+
+test('OpenCode migrates legacy internal prefixes without altering ordinary user prose', async () => {
+	const original = 'Update the agenda\n\nActive Word document for this request: is a sentence I typed.';
+	const transcript = [
+		{ role: 'user', text: 'You are running inside Sangam One. For Word document content, use the sangam-docs MCP tools, not filesystem rewrites of DOCX files. Legacy instructions.\n\n\nActive Word document for this request: {"uri":"file:///old.docx"}. Private routing.\n' + original },
+		{ role: 'agent', text: 'Done.' },
+		{ role: 'user', text: 'Active Word document for this request: preserve this ordinary message.' }
+	];
+	const h = harness([{ id: 'legacy', nativeId: 'native-id', cwd: '/workspace/example', title: 'Legacy', created: 1, modified: 2 }], true, undefined, transcript);
+	try {
+		const session = await h.provider.provideChatSessionContent([...h.items.values()][0].resource, h.token().token, { inputState: h.input() });
+		assert.deepEqual(session.history.filter(turn => turn.prompt).map(turn => turn.prompt), [original, transcript[2].text]);
 	} finally { h.dispose(); }
 });

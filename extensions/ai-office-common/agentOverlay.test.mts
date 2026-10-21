@@ -92,3 +92,43 @@ test('Review never fabricates a page-one location when geometry is missing', asy
 		await page.evaluate(`review.dispose()`);
 	} finally { await browser.close(); }
 });
+
+test('Activity covers each batch region without masking unrelated content between them', async () => {
+	const bundle = await build({ entryPoints: ['extensions/ai-office-common/agentOverlay.ts'], bundle: true, platform: 'browser', format: 'iife', globalName: 'OfficeActivity', write: false });
+	const browser = await chromium.launch({ ...(process.env.OFFICE_BROWSER_PATH ? { executablePath: process.env.OFFICE_BROWSER_PATH } : {}), headless: true, args: ['--no-sandbox'] });
+	try {
+		const page = await browser.newPage();
+		await page.setContent('<main id="pages"><section style="position:relative;width:600px;height:800px"><p>Untouched content</p></section></main>');
+		await page.addScriptTag({ content: bundle.outputFiles[0].text });
+		const result = await page.evaluate(`(() => {
+			const pages=document.getElementById('pages');
+			OfficeActivity.renderAgentActivity(pages,[{page:0,x:40,y:50,width:200,height:20},{page:0,x:40,y:70,width:180,height:20},{page:0,x:40,y:400,width:200,height:20}],(node,page,x,y,width,height)=>{Object.assign(node.style,{left:x+'px',top:y+'px',width:width+'px',height:height+'px'});pages.children[page].append(node);},'OpenCode','Updating related items');
+			return {regions:[...pages.querySelectorAll('.agent-edit-preview')].map(node=>[node.style.top,node.style.height]),cursors:pages.querySelectorAll('.agent-cursor').length,text:pages.querySelector('p').textContent};
+		})()`);
+		assert.deepEqual(result, { regions: [['50px', '40px'], ['400px', '20px']], cursors: 2, text: 'Untouched content' });
+	} finally { await browser.close(); }
+});
+
+test('Related block changes share one Keep or Undo action while independent regions stay separate', async () => {
+	const bundle = await build({ entryPoints: ['extensions/ai-office-common/wordReview.ts'], bundle: true, platform: 'browser', format: 'iife', globalName: 'OfficeReview', write: false });
+	const browser = await chromium.launch({ ...(process.env.OFFICE_BROWSER_PATH ? { executablePath: process.env.OFFICE_BROWSER_PATH } : {}), headless: true, args: ['--no-sandbox'] });
+	try {
+		const page = await browser.newPage();
+		await page.setContent('<main id="pages"><section style="position:relative;width:600px;height:800px"><canvas></canvas></section></main>');
+		await page.addScriptTag({ content: bundle.outputFiles[0].text });
+		await page.evaluate(`(() => {
+			window.calls=[];window.review=new OfficeReview.WordReview(document.getElementById('pages'),(data,action,ids)=>calls.push({action,ids}),()=>{},()=>{});
+			window.changes=Array.from({length:7},(_,i)=>({id:'block-'+i,groupId:i<4?'insert:section-one':'insert:section-two',label:'Paragraph change',before:'',after:'Item '+i,beforeText:'',afterText:'Item '+i,rects:[{page:0,x:40,y:50+i*30,width:180,height:20}]}));
+			review.update({version:'1',reviewVersion:1,changes});review.layout([[600,800]]);
+		})()`);
+		assert.equal(await page.locator('.word-review-zone').count(), 2);
+		assert.equal(await page.evaluate('review.count'), 2);
+		await page.locator('.word-review-zone').first().getByRole('button', { name: 'Keep This Change' }).click();
+		assert.deepEqual(await page.evaluate('calls'), [{ action: 'keep', ids: ['block-0', 'block-1', 'block-2', 'block-3'] }]);
+		await page.evaluate(`review.update({version:'2',reviewVersion:2,changes:changes.slice(4)});review.layout([[600,800]])`);
+		await page.getByRole('button', { name: 'Undo This Change' }).click();
+		assert.deepEqual(await page.evaluate('calls[1]'), { action: 'undo', ids: ['block-4', 'block-5', 'block-6'] });
+		assert.equal(await page.locator('.word-review-insert').count(), 3);
+		await page.evaluate('review.dispose()');
+	} finally { await browser.close(); }
+});

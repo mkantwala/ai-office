@@ -26,7 +26,7 @@ Use `operation: insert`, an existing paragraph/table `id`, `position: before|aft
 - Heading: `{kind:"heading", text:"…", style:"Heading1"}` (Heading1–Heading3 are standard choices).
 - Table: `{kind:"table", rows:[["Phase","Duration"],["Planning","1 week"]]}`.
 
-Use separate blocks for paragraphs, not newline-separated text. Insert at most 50 blocks per call; tables allow 1–20 rows and 1–10 columns with equal cell counts. Table text can be edited afterward by reading its row, cell, and paragraph children. Use paragraph formatting commands afterward to make list items. Unsupported styles must not be guessed.
+Use separate blocks for paragraphs, not newline-separated text. Choose the native structure that matches the content: a paragraph for one thought, list formatting for related list items, and a table for tabular data. Insert related items at the same anchor together in one `blocks` array; batch different anchors in one atomic call. Consecutive new blocks between existing blocks share a Keep/Undo review action while retaining individual IDs. Do not combine unrelated sections just to reduce the number of review controls. Insert at most 50 blocks per call; tables allow 1–20 rows and 1–10 columns with equal cell counts. Table text can be edited afterward by reading its row, cell, and paragraph children. Use paragraph formatting commands afterward to make list items. Unsupported styles must not be guessed.
 
 ## Read
 
@@ -54,3 +54,5 @@ History also supports `operation:checkpoint` with a fresh version to record the 
 ## Append at the document end
 
 For “at the end”, use `office_document_edit` with `{operation:"append",uri:<document URI>,version:<fresh version>,blocks:[{kind:"paragraph",text:"hello world"}]}`. Omit `id`, `position` and `ifHash`. The native engine appends to the actual body end inside the transaction; no pagination or guessed anchor is involved. This also works after tables and in a batch. `office_document_read` with `operation:tail` inspects the actual last top-level body block. Do not use the last result of a paginated read as the document end. Verify the returned created block and URI before claiming success.
+
+Before composing a write, start `office_document_activity` with the current target `id`, `version` and a concise `intent`. For several known targets, include additional `ids` in that same call. This is only a visual preview; it does not edit or group the document. A receipt with `located:false` reports missing layout geometry. Stop activity after finishing.

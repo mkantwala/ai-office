@@ -49,6 +49,7 @@ export interface DocumentAgent {
 export interface DraftViewSection { id: string; title: string; intent: string; anchor: { id: string; position: 'before' | 'after' }; anchorRects?: State['rects'] }
 export interface DocumentReviewChange {
 	id: string; label: string; before: string; after: string;
+	groupId?: string;
 	beforeText?: string; afterText?: string;
 	anchor?: { id: string; after: boolean };
 	rects?: NonNullable<State['rects']>;

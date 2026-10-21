@@ -1039,7 +1039,7 @@
 				"toolReferenceName": "officeDocumentActivity",
 				"displayName": "Show Word Agent Activity",
 				"userDescription": "Show Word Agent Activity in the live Word editor.",
-				"modelDescription": "Before preparing an edit, start an in-place preview on its target block with a short plain-text intent describing the change. The preview shimmers without modifying the document; stop when done. Automatically expires in 30 seconds and clears after edits. IDs remain internal.",
+				"modelDescription": "Before preparing an edit, start an in-place preview on its target block with a short plain-text intent describing the change. The preview shimmers without modifying the document; stop when done. Automatically expires in 30 seconds and clears after edits. IDs remain internal. Start BEFORE composing replacement content. Include ids for multiple planned targets. located=false means the block has no current layout geometry; do not claim a visible preview.",
 				"canBeReferencedInPrompt": true,
 				"inputSchema": {
 					"type": "object",
@@ -1068,6 +1068,15 @@
 						"version": {
 							"type": "string",
 							"description": "Exact version returned by the latest read. Required for edits and activity start."
+						},
+						"ids": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							},
+							"minItems": 1,
+							"maxItems": 200,
+							"description": "Additional current block IDs to preview together while preparing a batch. The primary id remains included."
 						}
 					},
 					"required": [
@@ -1378,7 +1387,7 @@
 		"languageModelChatProviders": [
 			{
 				"vendor": "ai-office-cloudflare",
-				"displayName": "Cloudflare · Sangam One",
+				"displayName": "Cloudflare \u00b7 Sangam One",
 				"managementCommand": "aiOffice.cloudflare.configure"
 			}
 		],

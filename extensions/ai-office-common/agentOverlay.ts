@@ -10,7 +10,7 @@ type Place = (node: HTMLElement, page: number, x: number, y: number, width: numb
 /** Screen blending lights the canvas glyphs while leaving the white document paper unchanged. */
 export function renderAgentActivity(pages: HTMLElement, rects: NonNullable<State['rects']>, place: Place, label = 'Agent', intent?: string) {
 	pages.querySelectorAll('.agent-shimmer').forEach(node => node.remove());
-	const bounds = new Map<number, { left: number; top: number; right: number; bottom: number }>();
+	const bounds: { page: number; left: number; top: number; right: number; bottom: number }[] = [];
 	for (const rect of rects.slice(0, 200)) {
 		if (!Number.isInteger(rect.page) || rect.page < 0 || !pages.children[rect.page] || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) || rect.width <= 0 || rect.height <= 0) { continue; }
 		const node = document.createElement('div'); node.className = intent ? 'agent-shimmer agent-preview-anchor' : 'agent-shimmer agent-shimmer-text'; node.setAttribute('aria-hidden', 'true');
@@ -18,10 +18,13 @@ export function renderAgentActivity(pages: HTMLElement, rects: NonNullable<State
 		// Use placed coordinates so the outline includes any inline review view zones.
 		const left = parseFloat(node.style.left), top = parseFloat(node.style.top);
 		const right = left + parseFloat(node.style.width), bottom = top + parseFloat(node.style.height);
-		const previous = bounds.get(rect.page);
-		bounds.set(rect.page, previous ? { left: Math.min(left, previous.left), top: Math.min(top, previous.top), right: Math.max(right, previous.right), bottom: Math.max(bottom, previous.bottom) } : { left, top, right, bottom });
+		// Join adjacent lines, but never mask untouched text between distant targets.
+		const previous = bounds.find(box => box.page === rect.page && left < box.right && right > box.left && top <= box.bottom + 8 && bottom >= box.top - 8);
+		if (previous) { previous.left = Math.min(left, previous.left); previous.top = Math.min(top, previous.top); previous.right = Math.max(right, previous.right); previous.bottom = Math.max(bottom, previous.bottom); }
+		else { bounds.push({ page: rect.page, left, top, right, bottom }); }
 	}
-	for (const [page, box] of bounds) {
+	for (const box of bounds) {
+		const page = box.page;
 		if (intent) {
 			const preview = document.createElement('div'); preview.className = 'agent-shimmer agent-edit-preview'; preview.setAttribute('aria-hidden', 'true');
 			Object.assign(preview.style, { left: `${box.left}px`, top: `${box.top}px`, width: `${box.right - box.left}px`, height: `${box.bottom - box.top}px` });
@@ -37,7 +40,7 @@ export function renderAgentActivity(pages: HTMLElement, rects: NonNullable<State
 		cursor.style.left = `${box.left - 2}px`; cursor.style.top = `${box.top}px`; cursor.style.height = '20px';
 		const tag = document.createElement('span'); tag.textContent = label.slice(0, 40); cursor.append(tag); pages.children[page].append(cursor);
 	}
-	return bounds.size > 0;
+	return bounds.length > 0;
 }
 
 /** Reveal committed raster text quickly. This never types into or mutates the native document. */

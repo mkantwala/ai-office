@@ -219,6 +219,14 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		assert.ok(messages.some(message => message.type === 'agentActivity' && message.rects.length));
 		assert.ok(messages.some(message => message.type === 'agentCommit' && message.rects.length && message.revision === doc.view.state.revision), 'Committed edits publish bounded geometry for visual reveal');
 		assert.deepEqual(messages.at(-1), { type: 'agentActivity', rects: [], label: 'Agent' });
+		await withAgentRequest('retry-preview', async () => {
+			const beforeRetry = await invoke('read', {});
+			await invoke('activity', { operation: 'start', id: 'internal-id', version: beforeRetry.version, intent: 'Revising this section' });
+			const failed = await invoke('edit', { operation: 'update', id: 'internal-id', version: beforeRetry.version, text: 'fail' });
+			assert.match(failed.error, /Invalid edit/);
+			assert.equal(doc.activity.intent, 'Revising this section', 'A refused write preserves an announced preview while the agent corrects its arguments');
+			await invoke('activity', { operation: 'stop' });
+		});
 		await edits[0].undo();
 		assert.equal((await invoke('history', { operation: 'status' })).redo, true);
 		await edits[0].redo();
@@ -351,6 +359,21 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 			assert.equal(doc.activity, undefined);
 			await commands.get('_aiOffice.word.renewActivity')({ requestId: 'owner-B' }, ['/memo.docx']);
 			assert.equal(doc.activity, undefined, 'Heartbeat never resurrects a stopped preview');
+			await withAgentRequest('batch-preview', () => invoke('activity', { uri: '/memo.docx', operation: 'start', id: 'internal-id', ids: ['second-target', 'internal-id'], intent: 'Updating the related sections', version: now.version }));
+			assert.deepEqual(doc.activity.ids, ['internal-id', 'second-target']);
+			assert.equal(doc.activity.rects.length, 2, 'Every planned target contributes geometry to the preview');
+			assert.match((await invoke('activity', { uri: '/memo.docx', operation: 'start', id: 'internal-id', ids: [], version: now.version })).error, /Activity ids/);
+			await withAgentRequest('batch-preview', () => invoke('activity', { uri: '/memo.docx', operation: 'stop' }));
+			await withAgentRequest('draft-owner', () => invoke('draft', { uri: '/memo.docx', operation: 'plan', id: 'internal-id', version: now.version, sections: [{ title: 'Findings', intent: 'Preparing the findings' }] }));
+			doc.draftWorkingUntil = Date.now() - 1;
+			await commands.get('_aiOffice.word.renewActivity')({ requestId: 'other-owner' }, ['/memo.docx']);
+			assert.ok(doc.draftWorkingUntil < Date.now(), 'Another request cannot renew pending draft previews');
+			await commands.get('_aiOffice.word.renewActivity')({ requestId: 'draft-owner' }, ['/memo.docx']);
+			assert.ok(doc.draftWorkingUntil > Date.now(), 'Pending drafts renew while the owning agent is still composing');
+			await withAgentRequest('draft-owner', () => invoke('activity', { uri: '/memo.docx', operation: 'stop' }));
+			await commands.get('_aiOffice.word.renewActivity')({ requestId: 'draft-owner' }, ['/memo.docx']);
+			assert.equal(doc.draftWorkingUntil, 0, 'An explicitly stopped draft cannot be resurrected');
+			await invoke('draft', { uri: '/memo.docx', operation: 'discard' });
 		} finally { panel.active = true; parallelDoc.dispose(); }
 
 		let opened;

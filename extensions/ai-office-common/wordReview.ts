@@ -6,6 +6,19 @@
 import type { DocumentReview, DocumentReviewChange, DraftViewSection } from './types.js';
 
 interface Zone { at: number; height: number; node: HTMLElement }
+interface ReviewGroup extends DocumentReviewChange { memberIds: string[] }
+/** A run inserted between existing blocks is one review action; native block identities stay independent. */
+function groupChanges(changes: DocumentReviewChange[]): ReviewGroup[] {
+	const groups: ReviewGroup[] = [], byId = new Map<string, ReviewGroup>();
+	for (const change of changes) {
+		const key = change.groupId || change.id, group = byId.get(key);
+		if (!group) { const first = { ...change, memberIds: [change.id] }; groups.push(first); byId.set(key, first); continue; }
+		group.memberIds.push(change.id); group.label = `${group.memberIds.length} Block Changes`;
+		for (const field of ['before', 'after', 'beforeText', 'afterText'] as const) { group[field] = [group[field], change[field]].filter(Boolean).join('\n'); }
+		group.rects = [...(group.rects || []), ...(change.rects || [])];
+	}
+	return groups;
+}
 /** Like code-editor view zones: insert deleted text without changing document layout or bytes. */
 export class WordReview {
 	private data?: DocumentReview;
@@ -32,7 +45,7 @@ export class WordReview {
 	dispose() { clearTimeout(this.draftTimer); this.unplaced.remove(); }
 
 	update(data: DocumentReview) { this.data = data; if (this.busy) { this.layoutKey = ''; } this.busy = false; }
-	get count() { return this.data?.changes.length || 0; }
+	get count() { return groupChanges(this.data?.changes || []).length; }
 	decideAll(action: 'keep' | 'undo') { if (this.data && !this.busy) { this.decide(this.data, action, this.data.changes.map(change => change.id)); } }
 	toView(page: number, y: number) { return y + (this.zones.get(page) || []).filter(zone => zone.at <= y).reduce((sum, zone) => sum + zone.height, 0); }
 	toDocument(page: number, y: number) {
@@ -44,7 +57,7 @@ export class WordReview {
 		}
 		return y - offset;
 	}
-	private controls(change: DocumentReviewChange) {
+	private controls(change: ReviewGroup) {
 		const row = document.createElement('div'); row.className = 'word-review-controls';
 		const label = document.createElement('span'); label.textContent = change.label; row.append(label);
 		for (const action of ['keep', 'undo'] as const) {
@@ -55,7 +68,7 @@ export class WordReview {
 				if (this.busy || !this.data) { return; }
 				this.busy = true;
 				this.pages.querySelectorAll<HTMLButtonElement>('.word-review-controls button').forEach(item => item.disabled = true);
-				this.decide(this.data, action, [change.id]);
+				this.decide(this.data, action, change.memberIds);
 			}); row.append(button);
 		}
 		return row;
@@ -73,7 +86,7 @@ export class WordReview {
 			const source = node.querySelector('canvas'); if (source) { source.style.height = ''; }
 		}
 		if (!this.data?.changes.length && !this.drafts.length) { return; }
-		for (const change of this.data?.changes || []) {
+		for (const change of groupChanges(this.data?.changes || [])) {
 			const anchors = change.anchorRects?.length ? change.anchorRects : change.rects;
 			const anchor = change.anchor?.after ? anchors?.at(-1) : anchors?.[0];
 			if (!anchor) {

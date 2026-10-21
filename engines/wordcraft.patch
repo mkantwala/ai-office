@@ -1268,10 +1268,10 @@ index 0000000..26dc9de
 +}
 diff --git a/apps/ai-office-preview/src/review.rs b/apps/ai-office-preview/src/review.rs
 new file mode 100644
-index 0000000..d6a8998
+index 0000000..97cd3c6
 --- /dev/null
 +++ b/apps/ai-office-preview/src/review.rs
-@@ -0,0 +1,348 @@
+@@ -0,0 +1,365 @@
 +//! Document review over private native snapshots; exported only to local version storage.
 +use serde_json::{Value, json};
 +use std::collections::BTreeMap;
@@ -1537,6 +1537,23 @@ index 0000000..d6a8998
 +        }
 +        let original = roots(base);
 +        let proposed = roots(after);
++        // Group only uninterrupted inserted/deleted runs in a single story. Existing
++        // blocks are semantic boundaries; paragraph IDs and native decisions stay intact.
++        let mut groups = BTreeMap::new();
++        for (doc, other, kind) in [(after, &original, "insert"), (base, &proposed, "delete")] {
++            let mut run: Option<(String, String)> = None;
++            for key in ordered_roots(doc) {
++                if other.contains_key(&key) {
++                    run = None;
++                    continue;
++                }
++                let story = key.split(':').next().unwrap_or("").to_string();
++                if run.as_ref().is_none_or(|(previous, _)| previous != &story) {
++                    run = Some((story, format!("{kind}:{key}")));
++                }
++                groups.insert(key, run.as_ref().unwrap().1.clone());
++            }
++        }
 +        let mut keys = ordered_roots(base);
 +        for key in ordered_roots(after) {
 +            if !keys.contains(&key) {
@@ -1544,7 +1561,7 @@ index 0000000..d6a8998
 +            }
 +        }
 +        let changes: Vec<_> = keys.iter().filter(|key| original.get(*key) != proposed.get(*key)).map(|key| json!({
-+            "id":key,"label":if proposed.get(key).or_else(||original.get(key)).is_some_and(|block|matches!(block.as_ref(),Block::Table(_))) {"Table change"} else {"Paragraph change"},
++            "id":key,"groupId":groups.get(key),"label":if proposed.get(key).or_else(||original.get(key)).is_some_and(|block|matches!(block.as_ref(),Block::Table(_))) {"Table change"} else {"Paragraph change"},
 +            "before":original.get(key).map(|block|display(block)).unwrap_or_default(),"after":proposed.get(key).map(|block|display(block)).unwrap_or_default(),
 +            "beforeText":original.get(key).map(|block|plain_text(block)).unwrap_or_default(),"afterText":proposed.get(key).map(|block|plain_text(block)).unwrap_or_default(),"anchor":anchor(base,after,key)
 +        })).collect();

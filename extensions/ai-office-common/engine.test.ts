@@ -1212,3 +1212,36 @@ test('Word concurrent agent request contexts retain their own identity and label
 	}, id + ' agent')));
 	assert.equal(seen.length, 8); assert.equal(activeAgentRequest(), undefined); assert.equal(activeAgentLabel(), 'Agent');
 });
+
+test('Word review groups consecutive insertion runs at separate anchors without merging paragraph identities', async () => {
+	const engine = await openEngine('word', 'Grouped review.docx', docx, root);
+	try {
+		const agent = engine.agent!, original = (agent.read({ parentId: 'body', limit: 20 }) as { blocks: { id: string; text: string }[] }).blocks;
+		agent.reviewStart!();
+		await agent.edit({ operation: 'batch', revision: engine.state().revision, edits: [
+			{ operation: 'insert', id: original[0].id, position: 'after', blocks: ['Discovery', 'Design', 'Delivery', 'Review'].map(text => ({ kind: 'paragraph', text })) },
+			{ operation: 'insert', id: original[1].id, position: 'after', blocks: ['Owner', 'Deadline', 'Status'].map(text => ({ kind: 'paragraph', text })) }
+		] });
+		agent.reviewFinish!();
+		let changes = agent.reviewRead!().changes;
+		assert.equal(changes.length, 7);
+		assert.equal(new Set(changes.map(change => change.id)).size, 7, 'Every paragraph retains its own identity');
+		assert.equal(new Set(changes.map(change => change.groupId)).size, 2, 'Existing content divides meaningful insertion groups');
+		assert.equal(changes.filter(change => change.groupId === changes[0].groupId).length, 4);
+		const rejected = changes.filter(change => change.groupId === changes[0].groupId).map(change => change.id);
+		agent.reviewDecide!(engine.state().revision, 'undo', rejected);
+		changes = agent.reviewRead!().changes;
+		assert.equal(changes.length, 3);
+		const content = (agent.read({ parentId: 'body', limit: 20 }) as { blocks: { id: string; text: string }[] }).blocks;
+		assert.deepEqual(content.filter(block => original.some(before => before.id === block.id)), original);
+		assert.ok(content.some(block => block.text === 'Owner'));
+		assert.ok(!content.some(block => block.text === 'Discovery'));
+		await engine.execute('edit.undo', {});
+		assert.equal((agent.read({ parentId: 'body', limit: 20 }) as { blocks: { id: string }[] }).blocks.length, original.length + 7, 'Native Undo restores every paragraph in the rejected group');
+		const restored = await openEngine('word', 'Grouped review.docx', await engine.export(), root);
+		try {
+			const after = (restored.agent!.read({ parentId: 'body', limit: 20 }) as { blocks: { id: string; text: string }[] }).blocks;
+			assert.deepEqual(after.map(block => [block.id, block.text]), (agent.read({ parentId: 'body', limit: 20 }) as { blocks: { id: string; text: string }[] }).blocks.map(block => [block.id, block.text]));
+		} finally { restored.dispose(); }
+	} finally { engine.dispose(); }
+});

@@ -129,7 +129,7 @@ function clearActivityPreview() {
 	if (!agentRects.length && agentIntent === undefined && activityTimer === undefined) { return; }
 	clearTimeout(activityTimer); activityTimer = undefined; agentIntent = undefined; agentRects = []; agentOverlay();
 }
-window.addEventListener('pointerdown', () => { followAgent = false; agentReveal.clear(); clearActivityPreview(); });
+window.addEventListener('pointerdown', () => { followAgent = false; agentReveal.clear(); });
 window.addEventListener('wheel', () => { followAgent = false; }, { passive: true });
 window.addEventListener('focus', () => { if (initialized && (document.activeElement === document.body || document.activeElement === keyboard)) { focusWordInput(); } });
 function send(type: string, data: Record<string, unknown> = {}) { if (type !== 'render' && type !== 'ready') { flushWordInput(); } api.postMessage({ type, ...data }); }
