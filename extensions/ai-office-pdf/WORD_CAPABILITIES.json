@@ -1662,13 +1662,13 @@
       "command": "list.define",
       "label": "Define New Multilevel List",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "list.get",
       "label": "List Definition",
       "readOnly": true,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "mailings.addressBlock",
@@ -1938,7 +1938,7 @@
       "command": "para.addSpaceBefore",
       "label": "Add Space Before Paragraph",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.align",
@@ -1950,31 +1950,31 @@
       "command": "para.alignCenter",
       "label": "Center",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.alignLeft",
       "label": "Align Left",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.alignRight",
       "label": "Align Right",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.asianTypography",
       "label": "Asian Typography",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.borders",
       "label": "Borders",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.bullets",
@@ -1986,19 +1986,19 @@
       "command": "para.defineBullet",
       "label": "Define New Bullet",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.defineNumber",
       "label": "Define New Number Format",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.demote",
       "label": "Demote",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.dialog",
@@ -2010,67 +2010,67 @@
       "command": "para.distribute",
       "label": "Distributed",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.double",
       "label": "Double Spacing",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.hangingIndent",
       "label": "Hanging Indent",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.heading1",
       "label": "Heading 1",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.heading2",
       "label": "Heading 2",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.heading3",
       "label": "Heading 3",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.indent",
       "label": "Increase Indent",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.indents",
       "label": "Indents",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.justify",
       "label": "Justify",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.keepLines",
       "label": "Keep Lines Together",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.keepNext",
       "label": "Keep with Next",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.lineSpacing",
@@ -2082,37 +2082,37 @@
       "command": "para.listLevel",
       "label": "Change List Level",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.ltr",
       "label": "Left-to-Right Text Direction",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.moveDown",
       "label": "Move Paragraph Down",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.moveUp",
       "label": "Move Paragraph Up",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.multilevel",
       "label": "Multilevel List",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.normal",
       "label": "Normal Style",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.numbering",
@@ -2124,31 +2124,31 @@
       "command": "para.oneAndHalf",
       "label": "1.5 Line Spacing",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.outdent",
       "label": "Decrease Indent",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.outlineLevel",
       "label": "Outline Level",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.pageBreakBefore",
       "label": "Page Break Before",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.promote",
       "label": "Promote",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.properties",
@@ -2160,55 +2160,55 @@
       "command": "para.removeHanging",
       "label": "Reduce Hanging Indent",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.removeSpaceAfter",
       "label": "Remove Space After Paragraph",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.reset",
       "label": "Reset Paragraph Formatting",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.restartNumbering",
       "label": "Restart at 1",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.rtl",
       "label": "Right-to-Left Text Direction",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.set",
       "label": "Set Paragraph Formatting",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.setNumberingValue",
       "label": "Set Numbering Value",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.shading",
       "label": "Shading",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.single",
       "label": "Single Spacing",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.sort",
@@ -2220,7 +2220,7 @@
       "command": "para.spacing",
       "label": "Paragraph Spacing",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.style",
@@ -2232,13 +2232,13 @@
       "command": "para.tabs",
       "label": "Tabs",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "para.widowControl",
       "label": "Widow/Orphan Control",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "picture.altText",
@@ -2928,7 +2928,7 @@
       "command": "styles.addToGallery",
       "label": "Add to Style Gallery",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "styles.apply",
@@ -2946,19 +2946,19 @@
       "command": "styles.create",
       "label": "Create a Style",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "styles.delete",
       "label": "Delete Style",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "styles.inspect",
       "label": "Inspect Styles at Selection",
       "readOnly": true,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "styles.inspector",
@@ -2970,7 +2970,7 @@
       "command": "styles.inspectorClear",
       "label": "Clear Formatting Level",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "styles.list",
@@ -2988,7 +2988,7 @@
       "command": "styles.modify",
       "label": "Modify Style",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "styles.organizer",
@@ -3006,19 +3006,19 @@
       "command": "styles.rename",
       "label": "Rename Style",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "styles.setVisibility",
       "label": "Show or Hide Style",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "styles.updateToMatch",
       "label": "Update Style to Match Selection",
       "readOnly": false,
-      "integration": "pending"
+      "integration": "block-command"
     },
     {
       "command": "table.altText",

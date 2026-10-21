@@ -21,6 +21,8 @@ import { DocumentVersions } from './documentVersions.js';
 import { activeAgentRequest, activeAgentLabel, withAgentRequest } from './agentRequest.js';
 import type { Block, State } from './types.js';
 
+interface WordAgentBlock { id: string; text: string; kind: string }
+
 const root = resolve('extensions');
 const demo = resolve('.build/office-edit-demo');
 // Original single blue pixel; no external artwork or font assets.
@@ -1312,31 +1314,31 @@ for (const [name, params, expected] of wordParityFormats) {
 		const engine = await openEngine('word', 'Formatting parity.docx', docx, root);
 		try {
 			const agent = engine.agent!;
-			const before = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks;
+			const before = (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks;
 			const id = before[0].id;
 			assert.ok(engine.commands().some(command => command.id === 'format.' + name));
 			if (name === 'resetChar') { await agent.edit({ revision: engine.state().revision, operation: 'command', id, command: 'format.bold', params: { value: true } }); }
-			const original = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks;
+			const original = (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks;
 			const revision = engine.state().revision;
 			const args = { operation: 'command', revision, id, command: 'format.' + name, params, ...(name === 'enclose' || name === 'phonetic' ? { start: 0, end: name === 'enclose' ? 1 : 2 } : {}) };
 			await agent.edit(args);
 			assert.ok(engine.state().revision > revision);
-			const current = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks;
+			const current = (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks;
 			assert.equal(current[0].id, id);
 			assert.deepEqual(current[1], before[1], 'The neighboring paragraph stays untouched');
 			const saved = await engine.export(), xml = strFromU8(unzipSync(saved)['word/document.xml']);
 			assert.match(xml, expected);
 			const reopened = await openEngine('word', 'Reopened.docx', saved, root);
 			try {
-				const content = (blocks: Block[]) => blocks.map(block => Object.fromEntries(Object.entries(block).filter(([key]) => key !== 'ifHash')));
-				assert.deepEqual(content((reopened.agent!.read({ parentId: 'body' }) as { blocks: Block[] }).blocks), content(current));
+				const content = (blocks: WordAgentBlock[]) => blocks.map(block => Object.fromEntries(Object.entries(block).filter(([key]) => key !== 'ifHash')));
+				assert.deepEqual(content((reopened.agent!.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks), content(current));
 				assert.equal(strFromU8(unzipSync(await reopened.export())['word/document.xml']), xml, 'Native DOCX formatting is stable after import normalization; hashes belong to a fresh read');
 			} finally { reopened.dispose(); }
 			await assert.rejects(agent.edit(args), /changed|version|guard/i);
 			await engine.execute('edit.undo', {});
-			assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks, original);
+			assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks, original);
 			await engine.execute('edit.redo', {});
-			assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks, current);
+			assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks, current);
 		} finally { engine.dispose(); }
 	});
 }
@@ -1345,7 +1347,7 @@ test('Word phonetic commands require explicit content instead of opening an upst
 	const engine = await openEngine('word', 'Phonetic.docx', docx, root);
 	try {
 		const agent = engine.agent!, revision = engine.state().revision;
-		const id = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks[0].id;
+		const id = (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks[0].id;
 		await assert.rejects(agent.edit({ revision, operation: 'command', id, command: 'format.phonetic', params: {} }), /params.ruby/);
 		assert.equal(engine.state().revision, revision);
 		assert.ok(!engine.commands().some(command => command.id === 'format.fontDialog'));
@@ -1369,27 +1371,27 @@ test('Word extended formatting batches preserve comments and use one review and 
 		const agent = engine.agent!;
 		await engine.execute('select.text', { text: 'AI Office' });
 		await engine.execute('review.newComment', { text: 'Keep this comment' });
-		const original = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks;
+		const original = (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks;
 		const id = original[0].id;
 		const edit = (command: string, params: Record<string, unknown>) => ({ operation: 'command', id, start: 0, end: 9, command, params });
 		const edits = [edit('format.smallCaps', { value: true }), edit('format.spacing', { points: 1.5 }), edit('format.textEffects', { style: 'shadowed' })];
 		agent.reviewStart!();
 		await agent.edit({ revision: engine.state().revision, operation: 'batch', edits });
 		agent.reviewFinish!();
-		const changed = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks;
+		const changed = (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks;
 		assert.equal(agent.reviewRead!().changes.length, 1);
 		assert.equal(engine.state().comments?.[0].text, 'Keep this comment');
 		await engine.execute('edit.undo', {});
-		assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks, original);
+		assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks, original);
 		await engine.execute('edit.redo', {});
-		assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks, changed);
+		assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks, changed);
 		await agent.reviewDecide!(engine.state().revision, 'undo', agent.reviewRead!().changes.map(change => change.id));
-		assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks, original);
+		assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks, original);
 		assert.equal(engine.state().comments?.[0].text, 'Keep this comment');
 		const revision = engine.state().revision;
 		await assert.rejects(agent.edit({ revision, operation: 'batch', edits: [edits[0], edit('format.enclose', { shape: 'invalid' })] }));
 		assert.equal(engine.state().revision, revision);
-		assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks, original);
+		assert.deepEqual((agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks, original);
 	} finally { engine.dispose(); }
 });
 
@@ -1397,7 +1399,7 @@ test('Word effective formatting inspection is Unicode-aware and never changes se
 	const engine = await openEngine('word', 'Read formatting.docx', docx, root);
 	try {
 		const agent = engine.agent!;
-		const id = (agent.read({ parentId: 'body' }) as { blocks: Block[] }).blocks[0].id;
+		const id = (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks[0].id;
 		await agent.edit({ revision: engine.state().revision, operation: 'update', id, text: '😀 AI Office unchanged' });
 		await agent.edit({ revision: engine.state().revision, operation: 'batch', edits: [
 			{ operation: 'command', id, start: 2, end: 11, command: 'format.smallCaps', params: { value: true } },
@@ -1415,5 +1417,189 @@ test('Word effective formatting inspection is Unicode-aware and never changes se
 		assert.throws(() => agent.read({ operation: 'formatting' }), /paragraph ID/);
 		assert.equal(engine.state().revision, revision);
 		assert.match(String(engine.commands().find(command => command.id === 'format.smallCaps')?.params), /value/);
+	} finally { engine.dispose(); }
+});
+
+const paragraphParityCases: [string, Record<string, unknown>, RegExp, string?][] = [
+	['alignLeft', {}, /w:jc[^>]*left/], ['alignCenter', {}, /w:jc[^>]*center/], ['alignRight', {}, /w:jc[^>]*right/], ['justify', {}, /w:jc[^>]*both/], ['distribute', {}, /w:jc[^>]*distribute/],
+	['rtl', { value: true }, /w:bidi/], ['ltr', { value: true }, /w:bidi/, 'rtl'],
+	['indent', {}, /w:left="720"/], ['outdent', {}, /w:left="0"/, 'indent'], ['hangingIndent', {}, /w:hanging="720"/], ['removeHanging', {}, /w:firstLine="0"/, 'hangingIndent'],
+	['indents', { left: 24, right: 12, firstLine: -6 }, /w:hanging="120"/], ['single', {}, /w:line="240"/], ['double', {}, /w:line="480"/], ['oneAndHalf', {}, /w:line="360"/],
+	['spacing', { before: 6, after: 9 }, /w:after="180"/], ['addSpaceBefore', {}, /w:before="240"/], ['removeSpaceAfter', {}, /w:after="0"/], ['reset', {}, /AI Office editing/, 'hangingIndent'],
+	['heading1', {}, /w:pStyle[^>]*Heading1/], ['heading2', {}, /w:pStyle[^>]*Heading2/], ['heading3', {}, /w:pStyle[^>]*Heading3/], ['normal', {}, /w:pStyle[^>]*Normal/, 'heading1'],
+	['multilevel', { kind: 'legal' }, /w:numPr/], ['listLevel', { level: 1 }, /w:ilvl[^>]*1/, 'numbering'], ['restartNumbering', {}, /w:numPr/, 'numbering'],
+	['moveUp', {}, /AI Office editing/], ['moveDown', {}, /AI Office editing/], ['promote', {}, /w:pStyle[^>]*Heading1/, 'heading2'], ['demote', {}, /w:pStyle[^>]*Heading2/, 'heading1'],
+	['shading', { color: 'DDEEFF' }, /w:shd[^>]*DDEEFF/], ['borders', { kind: 'bottom', width: 1, color: '2255AA' }, /w:bottom[^>]*2255AA/],
+	['keepNext', { value: true }, /w:keepNext/], ['keepLines', { value: true }, /w:keepLines/], ['pageBreakBefore', { value: true }, /w:pageBreakBefore/], ['widowControl', { value: false }, /w:widowControl/],
+	['asianTypography', { kinsoku: false, autoSpaceDE: false }, /w:kinsoku/], ['tabs', { tabs: [{ pos: 144, align: 'right', leader: 'dot' }] }, /w:tab[^>]*w:pos="2880"/],
+	['outlineLevel', { level: 2 }, /w:outlineLvl[^>]*2/], ['set', { props: { keepNext: true, indentLeft: 24 } }, /w:left="480"/],
+	['defineBullet', { char: '◆' }, /w:numPr/], ['defineNumber', { format: 'upperLetter', text: '%1)', start: 3 }, /w:numPr/], ['setNumberingValue', { value: 7 }, /w:numPr/, 'numbering']
+];
+for (const [name, params, expected, prepare] of paragraphParityCases) {
+	test(`Word paragraph parity para.${name} preserves identities, scoped edits and native history`, async () => {
+		const engine = await openEngine('word', 'Paragraph parity.docx', docx, root);
+		try {
+			const agent = engine.agent!, blocks = () => (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks;
+			const initial = blocks(), id = initial[name === 'moveUp' ? 1 : 0].id;
+			if (prepare) { await agent.edit({ revision: engine.state().revision, operation: 'command', id, command: 'para.' + prepare, params: {} }); }
+			const before = blocks(), revision = engine.state().revision;
+			await agent.edit({ revision, operation: 'command', id, command: 'para.' + name, params });
+			assert.ok(engine.state().revision > revision);
+			const current = blocks(); assert.ok(current.some(block => block.id === id));
+			assert.deepEqual(current.find(block => block.id !== id), before.find(block => block.id !== id));
+			if (name === 'moveUp') { assert.equal(current[0].id, id); }
+			if (name === 'moveDown') { assert.equal(current[1].id, id); }
+			const bytes = await engine.export(), xml = strFromU8(unzipSync(bytes)['word/document.xml']); assert.match(xml, expected);
+			const reopened = await openEngine('word', 'Reopened.docx', bytes, root);
+			try { assert.deepEqual((reopened.agent!.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks.map(({ id, text }) => ({ id, text })), current.map(({ id, text }) => ({ id, text }))); assert.match(strFromU8(unzipSync(await reopened.export())['word/document.xml']), expected); } finally { reopened.dispose(); }
+			await engine.execute('edit.undo', {}); assert.deepEqual(blocks(), before);
+			await engine.execute('edit.redo', {}); assert.deepEqual(blocks(), current);
+		} finally { engine.dispose(); }
+	});
+}
+
+for (const action of ['create', 'modify', 'updateToMatch', 'delete', 'setVisibility', 'addToGallery', 'rename', 'inspectorClear']) {
+	test(`Word style parity styles.${action} preserves block IDs, comments and shared review`, async () => {
+		const engine = await openEngine('word', 'Style parity.docx', docx, root);
+		try {
+			const agent = engine.agent!, blocks = () => (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks;
+			const id = blocks()[0].id;
+			await engine.execute('select.text', { text: 'AI Office' }); await engine.execute('review.newComment', { text: 'Preserve this style comment' });
+			const run = (command: string, params: Record<string, unknown>) => agent.edit({ revision: engine.state().revision, operation: 'command', id, command, params });
+			const created = await run('styles.create', { name: 'Parity Style', fromSelection: true });
+			const style = (created.agentCommandResult as { id: string }).id;
+			assert.ok(style);
+			await run('format.bold', { value: true });
+			await run('para.indents', { left: 24 });
+			const params: Record<string, Record<string, unknown>> = {
+				create: { name: 'Second Parity', fromSelection: true }, modify: { style, chr: { italic: true, size: 14 }, para: { align: 'center', spaceBefore: 7 } },
+				updateToMatch: { style }, delete: { style }, setVisibility: { style, gallery: false, hidden: true }, addToGallery: { style, value: false }, rename: { style, name: 'Renamed Parity' }, inspectorClear: { level: 'paragraphFormatting' }
+			};
+			const before = blocks(); const previous = unzipSync(await engine.export());
+			agent.reviewStart!(); await run('styles.' + action, params[action]); agent.reviewFinish!();
+			const current = blocks(); assert.deepEqual(current.map(block => block.id), before.map(block => block.id));
+			assert.equal(engine.state().comments?.[0].text, 'Preserve this style comment');
+			const bytes = await engine.export(), files = unzipSync(bytes), styles = strFromU8(files['word/styles.xml']);
+			if (action === 'rename') { assert.match(styles, /Renamed Parity/); }
+			if (action === 'create') { assert.match(styles, /Second Parity/); }
+			if (action === 'modify') { assert.match(styles, /w:sz[^>]*28/); assert.match(styles, /w:jc[^>]*center/); }
+			if (action === 'delete') { assert.doesNotMatch(styles, /w:name[^>]*Parity Style/); }
+			if (action === 'setVisibility') { assert.match(styles, /w:semiHidden/); }
+			if (action === 'updateToMatch') { assert.match(styles, /w:b(?:\s|\/|>)/); }
+			if (action === 'inspectorClear') { assert.doesNotMatch(strFromU8(files['word/document.xml']), /w:left="480"/); }
+			assert.ok(agent.reviewRead!().changes.length);
+			const reopened = await openEngine('word', 'Reopened.docx', bytes, root);
+			try { assert.deepEqual((reopened.agent!.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks.map(({ id, text }) => ({ id, text })), current.map(({ id, text }) => ({ id, text }))); } finally { reopened.dispose(); }
+			await engine.execute('edit.undo', {}); assert.deepEqual(blocks(), before);
+			await engine.execute('edit.redo', {}); assert.deepEqual(blocks(), current);
+			await agent.reviewDecide!(engine.state().revision, 'undo', agent.reviewRead!().changes.map(change => change.id));
+			assert.deepEqual(blocks(), before);
+			assert.equal(strFromU8(unzipSync(await engine.export())['word/styles.xml']), strFromU8(previous['word/styles.xml']));
+		} finally { engine.dispose(); }
+	});
+}
+
+test('Word multilevel lists and style inspection are native, bounded and read-only', async () => {
+	const engine = await openEngine('word', 'List parity.docx', docx, root);
+	try {
+		const agent = engine.agent!, id = (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks[0].id;
+		await agent.edit({ revision: engine.state().revision, operation: 'command', id, command: 'list.define', params: { name: 'Parity List', levels: [{ format: 'upperLetter', text: '%1)', start: 3, alignedAt: 0, indentAt: 24, follow: 'space', bold: true }, { format: 'lowerRoman', text: '%1.%2)', indentAt: 48 }], apply: true } });
+		const state = engine.state();
+		const read = () => agent.read({ operation: 'inspect', id, command: 'list.get' }) as { result: { num: number; levels: { format: string; text: string; start: number; bold: boolean }[] } };
+		const list = read().result; assert.equal(list.levels.length, 9); assert.equal(list.levels[0].format, 'upperLetter'); assert.equal(list.levels[0].start, 3); assert.equal(list.levels[1].format, 'lowerRoman');
+		const inspector = agent.read({ operation: 'inspect', id, command: 'styles.inspect' }) as { result: { paragraph: { direct: unknown[] } } };
+		assert.ok(inspector.result.paragraph); assert.doesNotMatch(JSON.stringify(inspector.result), /officeId/);
+		assert.deepEqual(engine.state(), state);
+		const bytes = await engine.export(); assert.match(strFromU8(unzipSync(bytes)['word/numbering.xml']), /Parity List/);
+		const reopened = await openEngine('word', 'Reopened.docx', bytes, root);
+		try { assert.deepEqual((reopened.agent!.read({ operation: 'inspect', id, command: 'list.get' }) as { result: typeof list }).result, list); } finally { reopened.dispose(); }
+		await assert.rejects(agent.edit({ revision: engine.state().revision, operation: 'command', id, command: 'list.get', params: {} }), /operation=inspect/);
+		assert.throws(() => agent.read({ operation: 'inspect', id, command: 'styles.delete', params: { style: 'Normal' } }), /mutations require guarded edits/);
+		assert.deepEqual(engine.state(), state);
+	} finally { engine.dispose(); }
+});
+
+test('Word numbering restarts include only the contiguous list and preserve later content', async () => {
+	const engine = await openEngine('word', 'Numbering scope.docx', docx, root);
+	try {
+		const agent = engine.agent!, read = () => (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks;
+		const ids = read().map(block => block.id);
+		for (const id of ids) { await agent.edit({ revision: engine.state().revision, operation: 'command', id, command: 'para.numbering', params: {} }); }
+		await agent.edit({ revision: engine.state().revision, operation: 'append', blocks: [{ kind: 'paragraph', text: 'Outside the list' }] });
+		const before = read(), revision = engine.state().revision;
+		const list = (id: string) => (agent.read({ operation: 'inspect', id, command: 'list.get' }) as { result: { num: number } }).result.num;
+		assert.equal(list(ids[0]), list(ids[1]));
+		await agent.edit({ revision, operation: 'command', id: ids[0], command: 'para.setNumberingValue', params: { value: 7 } });
+		assert.equal(list(ids[0]), list(ids[1]));
+		assert.deepEqual(read().at(-1), before.at(-1));
+		assert.deepEqual(read().map(block => block.id), before.map(block => block.id));
+		const xml = strFromU8(unzipSync(await engine.export())['word/numbering.xml']); assert.match(xml, /w:startOverride[^>]*7/);
+		await engine.execute('edit.undo', {}); assert.deepEqual(read(), before);
+	} finally { engine.dispose(); }
+});
+
+test('Word shared style and list batches roll back on failure and reject stale definitions', async () => {
+	const engine = await openEngine('word', 'Shared resources.docx', docx, root);
+	try {
+		const agent = engine.agent!, id = (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks[0].id;
+		const revision = engine.state().revision;
+		const before = unzipSync(await engine.export());
+		await assert.rejects(agent.edit({ revision, operation: 'batch', edits: [
+			{ operation: 'command', id, command: 'styles.create', params: { name: 'Must not survive' } },
+			{ operation: 'command', id, command: 'list.define', params: { levels: [{ text: '%1)' }] } },
+			{ operation: 'command', id, command: 'styles.modify', params: { style: 'Missing style', chr: { bold: true } } }
+		] }));
+		assert.equal(engine.state().revision, revision);
+		const after = unzipSync(await engine.export());
+		assert.equal(strFromU8(after['word/styles.xml']), strFromU8(before['word/styles.xml']));
+		assert.equal(strFromU8(after['word/document.xml']), strFromU8(before['word/document.xml']));
+		assert.deepEqual(after['word/numbering.xml'], before['word/numbering.xml']);
+		await agent.edit({ revision, operation: 'command', id, command: 'styles.create', params: { name: 'Valid style' } });
+		await assert.rejects(agent.edit({ revision, operation: 'command', id, command: 'list.define', params: { levels: [{}] } }), /fresh document version/);
+	} finally { engine.dispose(); }
+});
+
+test('Word style inspector clears an exact Unicode character range without clearing its neighbors', async () => {
+	const engine = await openEngine('word', 'Clear range.docx', docx, root);
+	try {
+		const agent = engine.agent!, id = (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks[0].id;
+		await agent.edit({ revision: engine.state().revision, operation: 'update', id, text: '😀 Alpha Beta' });
+		await agent.edit({ revision: engine.state().revision, operation: 'command', id, command: 'format.bold', params: { value: true } });
+		await agent.edit({ revision: engine.state().revision, operation: 'command', id, start: 2, end: 7, command: 'styles.inspectorClear', params: { level: 'characterFormatting' } });
+		const read = (start: number, end: number) => (agent.read({ operation: 'formatting', id, start, end }) as { formatting: { bold: boolean } }).formatting.bold;
+		assert.equal(read(2, 7), false); assert.equal(read(8, 12), true);
+		await assert.rejects(agent.edit({ revision: engine.state().revision, operation: 'command', id, start: 2, end: 7, command: 'styles.inspectorClear', params: { level: 'paragraphFormatting' } }), /Ranges require/);
+		await engine.execute('edit.undo', {}); assert.equal(read(2, 7), true);
+	} finally { engine.dispose(); }
+});
+
+test('Word paragraph moves refuse to split comment spans and leave all anchors and history intact', async () => {
+	const engine = await openEngine('word', 'Move comments.docx', docx, root);
+	try {
+		const agent = engine.agent!;
+		await engine.execute('select.all', {}); await engine.execute('review.newComment', { text: 'Comment across paragraphs' });
+		const before = agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }, state = engine.state();
+		await assert.rejects(agent.edit({ revision: state.revision, operation: 'command', id: before.blocks[0].id, command: 'para.moveDown', params: {} }), /comment span/);
+		assert.deepEqual(agent.read({ parentId: 'body' }), before); assert.deepEqual(engine.state(), state);
+		await engine.execute('caret.docStart', {});
+		await assert.rejects(engine.execute('para.moveDown', {}), /comment span/);
+		assert.equal(engine.state().revision, state.revision);
+	} finally { engine.dispose(); }
+});
+
+test('Word native paragraph moves can move a complete commented selection as one unit', async () => {
+	const engine = await openEngine('word', 'Move complete comment.docx', docx, root);
+	try {
+		const agent = engine.agent!, read = () => (agent.read({ parentId: 'body' }) as { blocks: WordAgentBlock[] }).blocks;
+		await engine.execute('select.all', {}); await engine.execute('review.newComment', { text: 'Move this entire range' });
+		await agent.edit({ revision: engine.state().revision, operation: 'append', blocks: [{ kind: 'paragraph', text: 'Outside annotation' }] });
+		const before = read();
+		await engine.execute('select.range', { anchor: { story: 'body', path: [0], off: 0 }, focus: { story: 'body', path: [2], off: 0 } });
+		await engine.execute('para.moveDown', {});
+		assert.deepEqual(read().map(block => block.id), [before[2].id, before[0].id, before[1].id]);
+		assert.equal(engine.state().comments?.[0].text, 'Move this entire range');
+		const reopened = await openEngine('word', 'Reopened.docx', await engine.export(), root);
+		try { assert.equal(reopened.state().comments?.[0].text, 'Move this entire range'); } finally { reopened.dispose(); }
+		await engine.execute('edit.undo', {}); assert.deepEqual(read(), before);
 	} finally { engine.dispose(); }
 });

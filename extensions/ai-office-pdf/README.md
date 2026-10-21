@@ -71,4 +71,6 @@ Build the platform worker with `node extensions/ai-office-pdf/build.mts --native
 
 ## WordCraft command parity
 
-The first parity batch exposes 28 additional native character-formatting commands through guarded block edits, the command API and CLI. The running registry inventory accounts for 622 pinned commands, with 127 currently integrated; full parity remains in progress. See [Word implementation plan](WORD_IMPLEMENTATION_PLAN.md) and [command inventory](WORD_CAPABILITIES.json). After a Word build, `node scripts/audit-word-commands.mts` verifies that inventory against the actual WASM registry.
+The first parity batch exposes 28 additional native character-formatting commands through guarded block edits, the command API and CLI. The running registry inventory accounts for 622 pinned commands, with 181 currently integrated; full parity remains in progress. See [Word implementation plan](WORD_IMPLEMENTATION_PLAN.md) and [command inventory](WORD_CAPABILITIES.json). After a Word build, `node scripts/audit-word-commands.mts` verifies that inventory against the actual WASM registry.
+
+The paragraph/list/style batch adds 54 more commands and read-only list/style inspection. Reset and style operations preserve internal block IDs; paragraph movement protects comment spans. Refer to the Word implementation plan for shared style/list scope and remaining gaps.

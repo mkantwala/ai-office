@@ -66,10 +66,10 @@ index 0000000..d390497
 +wasm-bindgen = "0.2"
 diff --git a/apps/ai-office-preview/src/agent.rs b/apps/ai-office-preview/src/agent.rs
 new file mode 100644
-index 0000000..54f53c5
+index 0000000..f2faf32
 --- /dev/null
 +++ b/apps/ai-office-preview/src/agent.rs
-@@ -0,0 +1,678 @@
+@@ -0,0 +1,694 @@
 +//! Internal, revision-checked block editing for the AI Office agent.
 +use serde_json::{Value, json};
 +use sha2::{Digest, Sha256};
@@ -355,7 +355,7 @@ index 0000000..54f53c5
 +}
 +
 +/// Inspect the exact target without changing the user's selection, history or document.
-+pub fn formatting(doc: &Document, args: &Value) -> Result<Value, String> {
++fn inspection_session(doc: &Document, args: &Value) -> Result<(Session, usize, usize), String> {
 +    let id = args["id"].as_str().ok_or("Formatting inspection requires a paragraph ID")?;
 +    let node = target(doc, id)?;
 +    let paragraph = doc.para(node.story, &node.path).ok_or("Formatting inspection requires a paragraph, heading or list-item ID")?;
@@ -366,7 +366,21 @@ index 0000000..54f53c5
 +    let (Some(&first), Some(&last)) = (offsets.get(start), offsets.get(end)) else { return Err("Invalid character range".into()); };
 +    let mut session = Session::new(doc.clone());
 +    session.sel = Selection { anchor: Pos::new(node.story, node.path.clone(), first), focus: Pos::new(node.story, node.path, last) };
-+    Ok(json!({"id":id,"start":start,"end":end,"formatting":wordcraft_engine::cmd::format::state(&session)}))
++    Ok((session, start, end))
++}
++
++pub fn formatting(doc: &Document, args: &Value) -> Result<Value, String> {
++    let (session, start, end) = inspection_session(doc, args)?;
++    Ok(json!({"id":args["id"],"start":start,"end":end,"formatting":wordcraft_engine::cmd::format::state(&session)}))
++}
++
++pub fn inspect(doc: &Document, args: &Value) -> Result<Value, String> {
++    let command = args["command"].as_str().ok_or("Inspection requires a command")?;
++    if !matches!(command, "list.get" | "styles.inspect") { return Err("Inspection supports list.get and styles.inspect; mutations require guarded edits".into()); }
++    let (mut session, start, end) = inspection_session(doc, args)?;
++    let result = session.run(command, args.get("params").unwrap_or(&json!({}))).map_err(|error|error.to_string())?;
++    if result.to_string().len() > 24000 { return Err("Inspection exceeds its context budget. Narrow the range or use the styles/formatting reads".into()); }
++    Ok(json!({"id":args["id"],"start":start,"end":end,"command":command,"result":result}))
 +}
 +
 +pub fn read(doc: &Document, args: &Value) -> Value {
@@ -610,12 +624,14 @@ index 0000000..54f53c5
 +            if !super::allowed(command) || command.starts_with("edit.") || command.starts_with("caret.") || command.starts_with("select.") || command == "picture.select" {
 +                return Err("Command cannot be used as a targeted agent edit; use help for supported commands".into());
 +            }
++            if matches!(command, "list.get" | "styles.inspect") { return Err("Use office_document_read operation=inspect with command and paragraph ID; inspection never edits".into()); }
 +            if command == "para.properties" && session.doc.para(node.story, &node.path).is_none() {
 +                return Err("Paragraph properties require a paragraph, heading or list-item ID".into());
 +            }
 +            if command == "format.phonetic" && args.get("params").and_then(|params| params.get("ruby")).is_none() {
 +                return Err("Provide params.ruby (text, or null to remove) for a targeted phonetic-guide command".into());
 +            }
++            let character_command = command.starts_with("format.") || command == "styles.inspectorClear" && matches!(args["params"]["level"].as_str(), Some("characterStyle" | "characterFormatting"));
 +            let paragraphs = session.doc.para_paths(node.story);
 +            let paths: Vec<_> = paragraphs.iter().filter(|p| p.0.starts_with(&node.path.0)).collect();
 +            let first = paths.first().ok_or("Target has no editable paragraph")?;
@@ -623,7 +639,7 @@ index 0000000..54f53c5
 +            let len = session.doc.para(node.story, last).map_or(0, |p| p.text.len());
 +            session.sel = Selection { anchor: Pos::new(node.story, (*first).clone(), 0), focus: Pos::new(node.story, (*last).clone(), len) };
 +            if args.get("start").is_some() || args.get("end").is_some() {
-+                if first != last || !(command.starts_with("format.") || command.starts_with("picture.") || command.starts_with("arrange.") || command == "object.altText" || command == "references.caption") {
++                if first != last || !(character_command || command.starts_with("picture.") || command.starts_with("arrange.") || command == "object.altText" || command == "references.caption") {
 +                    return Err("Ranges require one paragraph and a formatting or image command".into());
 +                }
 +                let paragraph = session.doc.para(node.story, first).ok_or("Paragraph missing")?;
@@ -636,7 +652,7 @@ index 0000000..54f53c5
 +                if start > end {
 +                    return Err("Invalid character range".into());
 +                }
-+                if !command.starts_with("format.") && (end != start + wordcraft_doc::para::OBJ.len_utf8() || !matches!(paragraph.object_at(start), Some(InlineObject::Image { .. }))) {
++                if !character_command && (end != start + wordcraft_doc::para::OBJ.len_utf8() || !matches!(paragraph.object_at(start), Some(InlineObject::Image { .. }))) {
 +                    return Err("Image commands require the exact image start/end from a fresh read".into());
 +                }
 +                session.sel = Selection { anchor: Pos::new(node.story, (*first).clone(), start), focus: Pos::new(node.story, (*last).clone(), end) };
@@ -783,10 +799,10 @@ index 0000000..84a7a0f
 +}
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..7e3180b
+index 0000000..ce18deb
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,537 @@
+@@ -0,0 +1,594 @@
 +//! Content-only Word pagination and rendering for AI Office.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -873,7 +889,7 @@ index 0000000..7e3180b
 +    pub fn commands(&self) -> Result<String, JsValue> {
 +        let list: Vec<_> =
 +            self.session.registry.all().iter().filter(|c| allowed(c.id)).map(|c| {
-+                let params = if matches!(c.id, "format.doubleStrikethrough" | "format.subscript" | "format.superscript" | "format.allCaps" | "format.smallCaps" | "format.hidden" | "format.outline" | "format.shadow" | "format.emboss" | "format.engrave") { r#"{"value"?: bool}"# } else { c.params };
++                let params = if matches!(c.id, "format.doubleStrikethrough" | "format.subscript" | "format.superscript" | "format.allCaps" | "format.smallCaps" | "format.hidden" | "format.outline" | "format.shadow" | "format.emboss" | "format.engrave" | "para.keepNext" | "para.keepLines" | "para.pageBreakBefore" | "para.widowControl") { r#"{"value"?: bool}"# } else if c.id == "para.outlineLevel" { r#"{"level"?: 0-9 | null (clear)}"# } else if c.id == "styles.addToGallery" { r#"{"style": string, "value"?: bool}"# } else { c.params };
 +                json!({"id": c.id, "label": c.label, "description":c.location,"params":params,"readOnly":!c.mutates})
 +            }).collect();
 +        serde_json::to_string(&list).map_err(|e| JsValue::from_str(&e.to_string()))
@@ -1041,6 +1057,9 @@ index 0000000..7e3180b
 +
 +    pub fn agent_read(&self, args: &str) -> Result<String, JsValue> {
 +        let args: Value = serde_json::from_str(args).map_err(|e| JsValue::from_str(&e.to_string()))?;
++        if args["operation"] == "inspect" {
++            return agent::inspect(&self.session.doc, &args).map(|value| value.to_string()).map_err(|error| JsValue::from_str(&error));
++        }
 +        if args["operation"] == "formatting" {
 +            return agent::formatting(&self.session.doc, &args).map(|value| value.to_string()).map_err(|error| JsValue::from_str(&error));
 +        }
@@ -1243,6 +1262,60 @@ index 0000000..7e3180b
 +            | "format.underline"
 +            | "format.font"
 +            | "format.size"
++            | "para.addSpaceBefore"
++            | "para.alignCenter"
++            | "para.alignLeft"
++            | "para.alignRight"
++            | "para.asianTypography"
++            | "para.borders"
++            | "para.defineBullet"
++            | "para.defineNumber"
++            | "para.demote"
++            | "para.distribute"
++            | "para.double"
++            | "para.hangingIndent"
++            | "para.heading1"
++            | "para.heading2"
++            | "para.heading3"
++            | "para.indent"
++            | "para.indents"
++            | "para.justify"
++            | "para.keepLines"
++            | "para.keepNext"
++            | "para.listLevel"
++            | "para.ltr"
++            | "para.moveDown"
++            | "para.moveUp"
++            | "para.multilevel"
++            | "para.normal"
++            | "para.oneAndHalf"
++            | "para.outdent"
++            | "para.outlineLevel"
++            | "para.pageBreakBefore"
++            | "para.promote"
++            | "para.removeHanging"
++            | "para.removeSpaceAfter"
++            | "para.reset"
++            | "para.restartNumbering"
++            | "para.rtl"
++            | "para.set"
++            | "para.setNumberingValue"
++            | "para.shading"
++            | "para.single"
++            | "para.spacing"
++            | "para.tabs"
++            | "para.widowControl"
++            | "styles.create"
++            | "styles.modify"
++            | "styles.updateToMatch"
++            | "styles.delete"
++            | "styles.setVisibility"
++            | "styles.addToGallery"
++            | "styles.inspectorClear"
++            | "styles.rename"
++            | "list.define"
++            | "list.get"
++            | "styles.inspect"
 +            | "para.properties"
 +            | "para.align"
 +            | "para.style"
@@ -1764,7 +1837,7 @@ index 0000000..becad6b
 +    Ok(json!({"kind":kind,"rects":[bounds]}))
 +}
 diff --git a/crates/doc/src/props.rs b/crates/doc/src/props.rs
-index 768625d..7007150 100644
+index 768625d..b517560 100644
 --- a/crates/doc/src/props.rs
 +++ b/crates/doc/src/props.rs
 @@ -686,6 +686,9 @@ pub struct TextFrame {
@@ -1777,6 +1850,15 @@ index 768625d..7007150 100644
      /// Paragraph style id.
      #[serde(skip_serializing_if = "Option::is_none")]
      pub style: Option<String>,
+@@ -821,7 +824,7 @@ impl ParaProps {
+     }
+     /// Just the formatting: without the tracked changes.
+     pub fn formatting(&self) -> ParaProps {
+-        ParaProps { num_change: None, fmt_change: None, ..self.clone() }
++        ParaProps { office_id: String::new(), num_change: None, fmt_change: None, ..self.clone() }
+     }
+ }
+ 
 @@ -947,6 +950,9 @@ pub fn anchor_ooxml(a: VAlign) -> &'static str {
  #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
  #[serde(default, rename_all = "camelCase")]
@@ -1807,6 +1889,22 @@ index 768625d..7007150 100644
      /// Preferred width, points.
      pub width: Option<f32>,
      /// Preferred width as a percentage of the table's (`w:tcW w:type="pct"`).
+@@ -1093,6 +1105,15 @@ pub struct CellProps {
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn paragraph_formatting_excludes_editor_identity() {
++        let props = ParaProps { office_id: "private-block".into(), keep_next: Some(true), ..Default::default() };
++        let formatting = props.formatting();
++        assert!(formatting.office_id.is_empty());
++        assert_eq!(formatting.keep_next, Some(true));
++        assert_eq!(props.office_id, "private-block");
++    }
++
+     #[test]
+     fn rgb_hex() {
+         assert_eq!(Rgb(255, 0, 16).hex(), "FF0010");
 diff --git a/crates/docbin/src/table.rs b/crates/docbin/src/table.rs
 index e341618..bf36563 100644
 --- a/crates/docbin/src/table.rs
@@ -1949,6 +2047,28 @@ index 1bc36b0..a7b7f50 100644
  }
  
  fn page_number(s: &mut Session, v: &Value) -> CmdResult {
+diff --git a/crates/engine/src/cmd/inspector.rs b/crates/engine/src/cmd/inspector.rs
+index 9aae42f..4002613 100644
+--- a/crates/engine/src/cmd/inspector.rs
++++ b/crates/engine/src/cmd/inspector.rs
+@@ -15,7 +15,7 @@ pub const LEVELS: [&str; 4] = ["paragraphStyle", "paragraphFormatting", "charact
+ /// Direct character properties that aren't formatting (links, revisions, proofing, direction).
+ const CHAR_SKIP: [&str; 8] = ["style", "link", "ins", "del", "fmtChange", "lang", "noProof", "rtl"];
+ /// Direct paragraph properties the inspector doesn't list (lists have their own UI).
+-const PARA_SKIP: [&str; 4] = ["style", "numbering", "numChange", "fmtChange"];
++const PARA_SKIP: [&str; 5] = ["officeId", "style", "numbering", "numChange", "fmtChange"];
+ 
+ pub fn specs() -> Vec<CommandSpec> {
+     vec![
+@@ -121,7 +121,7 @@ fn clear(s: &mut Session, v: &Value) -> CmdResult {
+         }
+         "paragraphFormatting" => {
+             s.doc.format_paragraphs(&a, &b, &|p| {
+-                *p = ParaProps { style: p.style.clone(), numbering: p.numbering, ..Default::default() };
++                *p = ParaProps { office_id: p.office_id.clone(), style: p.style.clone(), numbering: p.numbering, ..Default::default() };
+             })?;
+         }
+         "characterStyle" => return super::format::apply(s, &|c| c.style = None),
 diff --git a/crates/engine/src/cmd/mod.rs b/crates/engine/src/cmd/mod.rs
 index 33dffa5..a69135c 100644
 --- a/crates/engine/src/cmd/mod.rs
@@ -2102,7 +2222,7 @@ index 0000000..3288d9a
 +    super::sel_result(s)
 +}
 diff --git a/crates/engine/src/cmd/para.rs b/crates/engine/src/cmd/para.rs
-index cdbe790..f8b1798 100644
+index cdbe790..00a7912 100644
 --- a/crates/engine/src/cmd/para.rs
 +++ b/crates/engine/src/cmd/para.rs
 @@ -12,6 +12,7 @@ use crate::{CmdError, CmdResult, CommandSpec, Session, p};
@@ -2113,6 +2233,15 @@ index cdbe790..f8b1798 100644
          CommandSpec::new("para.alignLeft", "Align Left", "Home › Paragraph", |s, _| align(s, Align::Left)).key("Mod+L"),
          CommandSpec::new("para.alignCenter", "Center", "Home › Paragraph", |s, _| align(s, Align::Center)).key("Mod+E"),
          CommandSpec::new("para.alignRight", "Align Right", "Home › Paragraph", |s, _| align(s, Align::Right)).key("Mod+R"),
+@@ -125,7 +126,7 @@ pub fn specs() -> Vec<CommandSpec> {
+         // membership and drop cap stay. ⌘Q quits on macOS, so Word for Mac uses ⌃Q.
+         CommandSpec::new("para.reset", "Reset Paragraph Formatting", "Home › Paragraph", |s, _| {
+             fmt(s, &|p| {
+-                *p = ParaProps { style: p.style.take(), numbering: p.numbering.take(), drop_cap: p.drop_cap.take(), ..Default::default() }
++                *p = ParaProps { office_id: p.office_id.clone(), style: p.style.take(), numbering: p.numbering.take(), drop_cap: p.drop_cap.take(), ..Default::default() }
+             })
+         })
+         .key(super::mac_or("Ctrl+Q", "Mod+Q")),
 @@ -418,6 +419,23 @@ fn apply_styles(s: &mut Session, v: &Value) -> CmdResult {
  
  fn apply_style(s: &mut Session, v: &Value) -> CmdResult {
@@ -2137,6 +2266,48 @@ index cdbe790..f8b1798 100644
      let id = style_id(s, name)?;
      let kind = s.doc.styles.get(&id).map(|x| x.kind).unwrap_or_default();
      if kind == StyleKind::Character {
+@@ -664,6 +682,32 @@ fn move_paras(s: &mut Session, up: bool) -> CmdResult {
+     if slice.iter().any(|b| b.as_para().is_some_and(|p| p.section.is_some())) {
+         return Err(CmdError::Failed("paragraphs don't move across a section break".into()));
+     }
++    // Move a complete annotated selection, without changing which content a comment covers.
++    let balanced = |blocks: &[std::sync::Arc<Block>]| {
++        let mut ranges = std::collections::BTreeMap::<u32, i32>::new();
++        for block in blocks {
++            if let Some(paragraph) = block.as_para() {
++                for object in &paragraph.objects {
++                    match object {
++                        wordcraft_doc::InlineObject::CommentStart { id } => *ranges.entry(*id).or_default() += 1,
++                        wordcraft_doc::InlineObject::CommentEnd { id } => *ranges.entry(*id).or_default() -= 1,
++                        _ => {}
++                    }
++                }
++            }
++        }
++        ranges.values().all(|count| *count == 0)
++    };
++    let (outside, selected) = if up {
++        let (first, rest) = slice.split_first().ok_or_else(|| CmdError::Failed("bad range".into()))?;
++        (std::slice::from_ref(first), rest)
++    } else {
++        let (last, rest) = slice.split_last().ok_or_else(|| CmdError::Failed("bad range".into()))?;
++        (std::slice::from_ref(last), rest)
++    };
++    if !balanced(outside) || !balanced(selected) {
++        return Err(CmdError::Failed("Move would split a comment span; select the complete commented range".into()));
++    }
+     if up {
+         slice.rotate_left(1);
+     } else {
+@@ -1000,7 +1044,7 @@ fn update_to_match(s: &mut Session, v: &Value) -> CmdResult {
+ const CHAR_KEEP: &[&str] = &["style", "link", "ins", "del", "fmtChange"];
+ /// Paragraph properties Update to Match leaves alone: the style, its outline level (a heading
+ /// stays a heading), list numbering and revisions.
+-const PARA_KEEP: &[&str] = &["style", "outlineLevel", "numbering", "numChange", "fmtChange"];
++const PARA_KEEP: &[&str] = &["officeId", "style", "outlineLevel", "numbering", "numChange", "fmtChange"];
+ 
+ fn props_map<T: serde::Serialize>(t: &T) -> serde_json::Map<String, Value> {
+     match serde_json::to_value(t) {
 diff --git a/crates/engine/src/cmd/paragraph_properties.rs b/crates/engine/src/cmd/paragraph_properties.rs
 new file mode 100644
 index 0000000..b354661
