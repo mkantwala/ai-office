@@ -408,6 +408,7 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 
 		const pdf = await providers.get('aiOffice.pdf').openCustomDocument(uri('/audit.pdf'), {}); pdfForHistory = pdf;
 		try {
+			pdf.panels.add({ visible: false, webview: { postMessage: () => { throw new Error('Hidden PDF webviews must not gate engine commands'); } } });
 			const catalog = await invoke('tools', { uri: '/audit.pdf' });
 			assert.equal(catalog.kind, 'pdf');
 			assert.deepEqual(catalog.categories, [{ category: 'pages', count: 1 }, { category: 'content', count: 1 }].sort((a, b) => a.category.localeCompare(b.category)));

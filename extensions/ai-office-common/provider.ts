@@ -81,12 +81,12 @@ class Document implements vscode.CustomDocument {
 		return this.latestBytes;
 	}
 	async broadcast(command?: string) {
-		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'state', kind: this.kind, ...this.view, ...(this.kind === 'pdf' ? { state: { ...this.view.state, pdfNewArtifacts: undefined, pdfArtifacts: this.view.state.pdfArtifacts?.slice(0, 20), pdfArtifactCount: this.view.state.pdfArtifacts?.length || 0 } } : {}), name: basename(this.uri.path), command })));
+		await Promise.all([...this.panels].filter(panel => this.kind !== 'pdf' || panel.visible !== false).map(panel => panel.webview.postMessage({ type: 'state', kind: this.kind, ...this.view, ...(this.kind === 'pdf' ? { state: { ...this.view.state, pdfNewArtifacts: undefined, pdfArtifacts: this.view.state.pdfArtifacts?.slice(0, 20), pdfArtifactCount: this.view.state.pdfArtifacts?.length || 0 } } : {}), name: basename(this.uri.path), command })));
 		if (this.kind === 'word') {
 			const changes = this.review?.changes.length ? await this.client.request<DocumentReview['changes']>('reviewLayout', { changes: this.review.changes }) : [];
-			await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'review', review: { ...this.review, version: this.version, reviewVersion: this.reviewVersion, changes } })));
+			await Promise.all([...this.panels].filter(panel => this.kind !== 'pdf' || panel.visible !== false).map(panel => panel.webview.postMessage({ type: 'review', review: { ...this.review, version: this.version, reviewVersion: this.reviewVersion, changes } })));
 			const drafts = await Promise.all(this.drafts.pending().map(async section => ({ ...section, anchorRects: await this.client.request<State['rects']>('agentRects', { blockId: section.anchor.id }).catch(() => []) })));
-			await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'draft', sections: drafts, label: this.draftAgentLabel, request: this.draftRequest, workingId: this.draftWorkingUntil > Date.now() ? this.draftWorkingId || drafts[0]?.id : undefined, expiresAt: this.draftWorkingUntil })));
+			await Promise.all([...this.panels].filter(panel => this.kind !== 'pdf' || panel.visible !== false).map(panel => panel.webview.postMessage({ type: 'draft', sections: drafts, label: this.draftAgentLabel, request: this.draftRequest, workingId: this.draftWorkingUntil > Date.now() ? this.draftWorkingId || drafts[0]?.id : undefined, expiresAt: this.draftWorkingUntil })));
 		}
 		if (this.activity) { await this.sendActivity(this.activity.rects); }
 	}
@@ -99,7 +99,7 @@ class Document implements vscode.CustomDocument {
 			if (this.activity !== activity || revision !== this.view.state.revision) { return; }
 			activity.rects = rects; activity.insertions = located.insertions; activity.revision = revision;
 		}
-		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'agentActivity', rects: rects || [], label: activity?.label || activeAgentLabel(), ...(activity ? { insertions: activity.insertions, intent: activity.intent, expiresAt: activity.expiresAt, request: activity.request, revision: activity.revision } : {}) })));
+		await Promise.all([...this.panels].filter(panel => this.kind !== 'pdf' || panel.visible !== false).map(panel => panel.webview.postMessage({ type: 'agentActivity', rects: rects || [], label: activity?.label || activeAgentLabel(), ...(activity ? { insertions: activity.insertions, intent: activity.intent, expiresAt: activity.expiresAt, request: activity.request, revision: activity.revision } : {}) })));
 	}
 	async stopActivity(force = false) { if (!force && activeAgentRequest() && this.activity?.request && this.activity.request !== activeAgentRequest()) { return; } if (this.activity) { clearTimeout(this.activity.timer); this.activity = undefined; } await this.sendActivity([]); }
 	async renewActivity(request: string) {
@@ -142,7 +142,7 @@ class Document implements vscode.CustomDocument {
 		if (!region && this.agentActivity?.region && now - this.agentActivity.updated < 3000) { region = this.agentActivity.region; }
 		this.agentActivity = { region, updated: now };
 		if (!region || !this.panels.size) { return; }
-		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'agent', label: command, region })));
+		await Promise.all([...this.panels].filter(panel => this.kind !== 'pdf' || panel.visible !== false).map(panel => panel.webview.postMessage({ type: 'agent', label: command, region })));
 	}
 	dispose() { if (this.activity) { clearTimeout(this.activity.timer); } this.onDispose(); this.client.dispose(); }
 }
@@ -387,7 +387,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				if (appToolbar) { toolbarPanels.set(panelId, { doc, panel }); }
 				doc.panels.add(panel);
 				if (panel.active) { lastActive.set(kind, doc); }
-				panel.onDidChangeViewState(() => { if (panel.active) { lastActive.set(kind, doc); if (appToolbar) { void panel.webview.postMessage({ type: 'publishToolbar' }); } } });
+				panel.onDidChangeViewState(() => { if (kind === 'pdf' && panel.visible) { void doc.broadcast(); } if (panel.active) { lastActive.set(kind, doc); if (appToolbar) { void panel.webview.postMessage({ type: 'publishToolbar' }); } } });
 				const output = vscode.Uri.joinPath(context.extensionUri, 'out');
 				panel.webview.options = { enableScripts: true, localResourceRoots: [output] };
 				const nonce = randomBytes(24).toString('hex');
