@@ -8,6 +8,7 @@ import type { Kind, State, Block } from './types.js';
 import { arrangeWordToolbar } from './wordToolbar.js';
 import { renderAgentActivity, WordAgentReveal } from './agentOverlay.js';
 import type { DocumentToolbarAction, DocumentToolbarControl } from '../../src/vs/base/browser/ui/documentToolbar/documentToolbar.js';
+import { PdfTools } from './pdfTools.js';
 import { WordImage } from './wordImage.js';
 import { WordTable } from './wordTable.js';
 import { WordParagraph } from './wordParagraph.js';
@@ -67,6 +68,7 @@ const wordTable = new WordTable(pages, point, place, execute, ask, focusWordInpu
 	(request, args) => send('tablePreview', { request, args }),
 	at => !!state.rects?.some(r => r.page === at.page && at.x >= r.x && at.x <= r.x + r.width && at.y >= r.y && at.y <= r.y + r.height));
 const wordImage = new WordImage(pages, point, place, execute, target => send('image', { replace: true, target }), focusWordInput, page => page.clientWidth / dimensions[Number(page.dataset.page)][0]);
+const pdfTools = new PdfTools(() => ({ total: dimensions.length, page: currentPage, revision: state.revision }), (command, args, revision) => send('execute', { command, args, revision }));
 let wordParagraph: WordParagraph | undefined;
 let kind: Kind;
 let state: State = { revision: -1 };
@@ -123,7 +125,7 @@ function typeWordText(text: string) {
 	wordText += text;
 	if (!wordTextTimer) { wordTextTimer = setTimeout(flushWordInput, 0); }
 }
-window.addEventListener('pagehide', () => { flushWordInput(); disposeToolbar?.(); wordParagraph?.dispose(); wordPageSetup?.dispose(); wordReview.dispose(); wordTable.dispose(); wordImage.dispose(); clearTimeout(activityTimer); agentReveal.clear(); clearAgent(); }, { once: true });
+window.addEventListener('pagehide', () => { flushWordInput(); disposeToolbar?.(); wordParagraph?.dispose(); wordPageSetup?.dispose(); wordReview.dispose(); wordTable.dispose(); wordImage.dispose(); pdfTools.dispose(); clearTimeout(activityTimer); agentReveal.clear(); clearAgent(); }, { once: true });
 window.addEventListener('blur', flushWordInput);
 function clearActivityPreview() {
 	if (!agentRects.length && agentIntent === undefined && activityTimer === undefined) { return; }
@@ -249,7 +251,7 @@ function buildToolbar() {
 	const header = kind === 'word' ? button('Header', 'Edit Header', () => execute('insert.editHeader', { page: currentPage })) : undefined;
 	const footer = kind === 'word' ? button('Footer', 'Edit Footer', () => execute('insert.editFooter', { page: currentPage })) : undefined;
 	const versions = kind === 'word' ? button('History', 'Document Version History', () => send('versions')) : undefined;
-	let properties: HTMLButtonElement | undefined;
+	let properties: HTMLButtonElement | undefined = kind === 'pdf' ? button('PDF Tools', 'PDF Tools · Organize Pages, Crop, Watermarks and Page Numbers', () => { closeText(); pdfTools.open(); }) : undefined;
 	if (kind === 'word') {
 		document.body.classList.add('word-document');
 		wordPageSetup = new WordPageSetup((patch, snapshot) => execute('layout.pageProperties', { ...patch, ifRevision: snapshot.revision, ifSelection: snapshot.selection }), focusWordInput);
@@ -457,7 +459,7 @@ window.addEventListener('message', event => {
 		const regionChanged = state.editingRegion !== data.state.editingRegion;
 		if (changed) { agentReveal.clear(); clearActivityPreview(); }
 		const repaginated = JSON.stringify(dimensions) !== JSON.stringify(data.pages);
-		state = data.state; dimensions = data.pages; wordTable.update(state.revision); wordImage.update(state.revision, state.image);
+		state = data.state; dimensions = data.pages; if (kind === 'pdf') { currentPage = Math.min(state.page ?? currentPage, Math.max(0, dimensions.length - 1)); } wordTable.update(state.revision); wordImage.update(state.revision, state.image);
 		revealWordCaret = kind === 'word' && (data.command?.startsWith('text.') || data.command === 'insert.table' || data.command === 'insert.editHeader' || data.command === 'insert.editFooter');
 		const commentsOpen = comments.open;
 		comments.replaceChildren(); comments.open = commentsOpen; comments.hidden = kind === 'word' || !state.comments?.length;

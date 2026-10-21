@@ -717,6 +717,54 @@ test('Word frame patches reconstruct full pixels and reject stale bases', () => 
 	assert.equal(cache.update(edited, 1, 2, 7).height, 10);
 });
 
+test('PDF page operations keep page geometry, native Undo and saved output synchronized', async () => {
+	const engine = await openEngine('pdf', 'Pages.pdf', pdfFixture(), root);
+	try {
+		const rotate = engine.commands().find(command => command.id === 'page_rotate');
+		assert.ok(rotate && rotate.params && rotate.readOnly === false);
+		assert.equal((rotate.params as { properties: Record<string, unknown> }).properties.doc, undefined, 'Session IDs stay inside the engine');
+		await engine.execute('page_insert_blank', { at: 2, width: 400, height: 600 });
+		assert.deepEqual(engine.pages(), [[612, 792], [400, 600]]);
+		await engine.execute('page_rotate', { pages: [2], degrees: 90 });
+		assert.deepEqual(engine.pages()[1], [600, 400]);
+		await engine.execute('page_duplicate', { pages: [1] });
+		assert.equal(engine.pages().length, 3);
+		await engine.execute('page_move', { pages: [3], to: 1 });
+		assert.deepEqual(engine.pages()[0], [600, 400]);
+		await engine.execute('page_set_box', { pages: [1], box: 'crop', margins: [12, 12, 12, 12] });
+		assert.deepEqual(engine.pages()[0], [576, 376]);
+		await engine.execute('page_delete', { pages: [2] }); assert.equal(engine.pages().length, 2);
+		await engine.execute('edit_undo', {}); assert.equal(engine.pages().length, 3);
+		await engine.execute('edit_redo', {}); assert.equal(engine.pages().length, 2);
+		const version = engine.state().revision;
+		const extracted = await engine.execute('text_extract', { pages: [2] });
+		assert.equal(extracted.revision, version, 'Read-only commands never change history');
+		assert.match(JSON.stringify(extracted.agentCommandResult), /AI Office editing/);
+		const reopened = await openEngine('pdf', 'Saved-pages.pdf', await engine.export(), root);
+		try { assert.deepEqual(reopened.pages(), engine.pages()); assert.ok(reopened.render(0, .5).pixels!.length); } finally { reopened.dispose(); }
+		const original = await engine.export();
+		await assert.rejects(engine.execute('page_rotate', { pages: [99], degrees: 90 }), /page/i);
+		await assert.rejects(engine.execute('doc_watermark', { text: 'X', file: '/secret.png' }), /host document workflow/);
+		await assert.rejects(engine.execute('doc_save', { path: '/tmp/not-allowed.pdf' }), /not enabled/);
+		assert.deepEqual(await engine.export(), original, 'Refused edits leave document bytes unchanged');
+	} finally { engine.dispose(); }
+});
+
+test('PDF watermarks, printed page numbers and backgrounds survive save and reopen', async () => {
+	const engine = await openEngine('pdf', 'Marks.pdf', pdfFixture(), root);
+	try {
+		await engine.execute('doc_watermark', { pages: [1], text: 'SYNTHETIC DRAFT', opacity: .25, rotation: 45 });
+		await engine.execute('doc_header_footer', { pages: [1], footer_center: '<<Page 1 of n>>', font_size: 10 });
+		await engine.execute('doc_background', { pages: [1], color: '#fafafa' });
+		const reopened = await openEngine('pdf', 'Saved-marks.pdf', await engine.export(), root);
+		try {
+			const text = JSON.stringify((await reopened.execute('text_extract', { pages: [1] })).agentCommandResult);
+			assert.match(text, /SYNTHETIC DRAFT/); assert.match(text, /Page 1 of 1/);
+			assert.match(text, /AI Office editing/); assert.ok(reopened.render(0, .5).pixels!.length);
+		} finally { reopened.dispose(); }
+	} finally { engine.dispose(); }
+});
+
 test('PDF: edit paragraph, format, comments, links, undo and reopen', async () => {
 	await mkdir(demo, { recursive: true }); const source = pdfFixture(); await writeFile(resolve(demo, 'Contract.pdf'), source);
 	const engine = await openEngine('pdf', 'Contract.pdf', source, root);

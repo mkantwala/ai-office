@@ -48,3 +48,19 @@ The `sangam-docs` MCP bridge exposes the eight existing document tools. Calls ca
 OpenCode owns durable conversation history. Sangam One stores only its session ID, folder and display metadata, then reloads the conversation through ACP. Empty sessions start no process; idle processes and tool bridges shut down after two minutes and reconnect on the next request. Session metadata is bounded to the latest 200 entries.
 
 Build the extension with `node extensions/ai-office-pdf/build.mts --ui-only` from the repository root, or through the normal built-in extension esbuild pipeline. The build includes the small stdio MCP adapter and dependency licenses. Run offline integration checks with `node extensions/ai-office-pdf/opencode/test.mts`; they cover the wire protocol, approvals, cancellation, failures, native session registration, document-tool routing, model selection and restoration.
+
+## PDF integration
+
+The PDF Tools button in the application formatting toolbar opens scoped page operations: rotate, duplicate, delete, move, insert a blank page, crop, text watermark, printed page numbering and background color. They use the same PdfCraft automation commands exposed to agents and retain native document Undo/Redo. A dialog captured before another edit refuses to apply to the changed document.
+
+`office_document_tools` lists category counts, bounded command summaries and one requested command schema. `office_document_run` executes a discovered PDF command using the current document version. The engine command table stays out of the permanent model tool list. Text reads require explicit ranges of at most ten pages; oversized results return a narrowing instruction. OpenCode and the built-in agent can use both entry points. Existing Word semantic tools remain available.
+
+The reference checkout is `../pdfcraft-upstream`. Builds use the pinned source and checked patch in `engines/sources.json`. See [PDF implementation plan](PDF_IMPLEMENTATION_PLAN.md) for the iLovePDF feature inventory, conversion and file-workflow gaps, PDF review work and the format-neutral tool design for future spreadsheets and presentations. This milestone does not implement complete iLovePDF parity.
+
+Validation:
+
+```sh
+node extensions/ai-office-pdf/build.mts
+node extensions/ai-office-common/test.mts
+OFFICE_BROWSER_PATH=/usr/bin/chromium node --experimental-transform-types --test extensions/ai-office-common/pdfTools.test.mts
+```

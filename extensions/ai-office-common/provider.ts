@@ -15,6 +15,7 @@ import { activeAgentRequest, activeAgentLabel, DocumentHistory, withAgentToolReq
 import { prepareWordFormatting, canRebaseTextEdits } from './wordFormatting.js';
 import { DocumentVersions } from './documentVersions.js';
 import { DocumentDrafts } from './documentDrafts.js';
+import { discoverCommands, boundedCommandResult } from './documentCapabilities.js';
 
 interface View { state: State; pages: number[][]; commands?: Command[] }
 class Document implements vscode.CustomDocument {
@@ -403,7 +404,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 									const result = await doc.client.request('render', { page: message.page, scale: message.scale, ...(kind === 'word' ? { frame: message.request, base: message.base } : {}) });
 									await panel.webview.postMessage({ type: 'rendered', request: message.request, page: message.page, result }); break;
 								}
-								case 'execute': await execute(doc, message.command, message.args || {}); break;
+								case 'execute': if (message.revision !== undefined && message.revision !== doc.view.state.revision) { throw new Error('Document changed. Reopen the PDF tools before applying.'); } await execute(doc, message.command, message.args || {}); break;
 								case 'reviewDecide':
 									void vscode.commands.executeCommand('aiOffice.word.reviewDecide', doc.uri.toString(), message.version, message.reviewVersion, message.action, message.ids).then(undefined, async error => {
 										await panel.webview.postMessage({ type: 'error', error: String(error) });
@@ -500,6 +501,27 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			if (matches.length > 1) { throw new Error(`"${target}" matches more than one open document: ${list(matches)}.`); }
 			throw new Error(`No open ${kind} document matches "${target}". Open: ${list(candidates)}.`);
 		};
+		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.' + kind + '.capabilities', async (input: { uri?: string; command?: string; category?: string; offset?: number; limit?: number; version?: string; params?: Record<string, unknown>; run?: boolean }, token: vscode.CancellationToken) => {
+			checkAgentAccess(token);
+			const request = activeAgentRequest(), bound = request ? requestDocuments.get(request) : undefined;
+			const doc = resolveDocument(input.uri || bound);
+			if (doc.kind !== kind) { throw new Error('The requested document format does not match this command.'); }
+			if (request && !bound) { requestDocuments.set(request, doc.uri.toString()); if (requestDocuments.size > 256) { requestDocuments.delete(requestDocuments.keys().next().value!); } }
+			if (input.run && kind === 'pdf' && ['edit_undo', 'edit_redo'].includes(input.command || '')) { return history(doc, { operation: input.command === 'edit_redo' ? 'redo' : 'undo', version: input.version }, token); }
+			return doc.enqueue(async () => {
+				checkAgentAccess(token);
+				if (!input.run) { return { uri: doc.uri.toString(), kind, version: doc.version, ...discoverCommands(doc.view.commands || [], input) }; }
+				if (kind !== 'pdf') { throw new Error('Use the guarded document tools for Word. Generic command execution currently supports PDF only.'); }
+				const definition = doc.view.commands?.find(command => command.id === input.command);
+				if (!definition) { throw new Error('Discover the command schema before running a supported command.'); }
+				if (!definition.readOnly && input.version !== doc.version) { throw new Error('Document changed. Discover its current version before editing.'); }
+				if (!input.params || typeof input.params !== 'object' || Array.isArray(input.params) || JSON.stringify(input.params).length > 100000) { throw new Error('params must be an object within 100,000 characters.'); }
+				const params = { ...input.params };
+				if (input.command === 'text_extract' && (!Array.isArray(params.pages) || !params.pages.length || params.pages.length > 10)) { throw new Error('Read text in explicit page ranges of 1–10 pages.'); }
+				const result = await execute(doc, definition.id, params, true, true, token);
+				return { uri: doc.uri.toString(), kind, version: doc.version, completed: true, modified: !definition.readOnly, saved: false, pages: result.pages.length, result: boundedCommandResult(result.state.agentCommandResult), guidance: definition.readOnly ? undefined : 'Applied to the open document through native undo. Verify the affected pages; save normally when ready.' };
+			});
+		}));
 		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.' + kind + '.execute', async (uriOrName: string | undefined, command: string, args: Record<string, unknown> = {}, token?: vscode.CancellationToken) => {
 			checkAgentAccess(token);
 			if (typeof command !== 'string' || !command) { throw new Error(`A command id is required: 'aiOffice.${kind}.execute(fileNameOrUri, command, params)'.`); }
@@ -530,6 +552,23 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			const viewType = (vscode.window.tabGroups.activeTabGroup?.activeTab?.input as { viewType?: string } | undefined)?.viewType;
 			return viewType?.startsWith('aiOffice.') ? viewType.slice('aiOffice.'.length) as Kind : undefined;
 		};
+		for (const tool of ['tools', 'run'] as const) {
+			context.subscriptions.push(vscode.lm.registerTool<DocumentToolInput>('office_document_' + tool, {
+				prepareInvocation: () => ({ invocationMessage: tool === 'tools' ? 'Discovering document tools' : 'Working on the PDF document' }),
+				async invoke(options, token) {
+					try {
+						const input = options.input;
+						const kind = input.kind !== undefined ? input.kind as Kind : kindOfTarget(input.uri);
+						if (!kind || !kinds.includes(kind)) { throw new Error('Open a supported document or specify its URI and kind.'); }
+						const result = await withAgentToolRequest(options.toolInvocationToken, async () => vscode.commands.executeCommand('aiOffice.' + kind + '.capabilities', { ...input, run: tool === 'run' }, token));
+						return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result))]);
+					} catch (error) {
+						if (token.isCancellationRequested) { throw error; }
+						return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify({ error: String(error), guidance: 'Use discovery for the current version and exact command schema. Do not repeat an unchanged refused call.' }))]);
+					}
+				}
+			}));
+		}
 		context.subscriptions.push(vscode.lm.registerTool<{ command: string; file?: string; params?: Record<string, unknown> }>('aiOfficeEdit', {
 			invoke: async (options, token) => {
 				checkAgentAccess(token);
@@ -659,6 +698,11 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			const request = activeAgentRequest(); if (!request || !Array.isArray(uris)) { return; }
 			await Promise.all(uris.slice(0, 200).map(uri => { const doc = documents.get(uri); return doc?.enqueue(() => doc.renewActivity(request)); }));
 		})));
+		context.subscriptions.push(vscode.commands.registerCommand('_aiOffice.document.activeDocument', () => {
+			const candidates = [...documents.values()];
+			const doc = focusedReviewDocument() || candidates.find(doc => [...doc.panels].some(panel => panel.active)) || (candidates.length === 1 ? candidates[0] : undefined);
+			return doc ? { uri: doc.uri.toString(), name: basename(doc.uri.path), kind: doc.kind } : undefined;
+		}));
 		context.subscriptions.push(vscode.commands.registerCommand('_aiOffice.word.activeDocument', () => {
 			const candidates = [...documents.values()].filter(doc => doc.kind === 'word');
 			const doc = focusedReviewDocument() || candidates.find(doc => [...doc.panels].some(panel => panel.active)) || (candidates.includes(lastActive.get('word')!) ? lastActive.get('word') : undefined) || (candidates.length === 1 ? candidates[0] : undefined);

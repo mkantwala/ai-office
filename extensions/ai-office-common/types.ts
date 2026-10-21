@@ -33,7 +33,7 @@ export interface State {
 	paragraphStyle?: string;
 	comments?: { commentId?: number; parentId?: number | null; resolved?: boolean; author?: string; text: string }[];
 }
-export interface Command { id: string; label: string; params?: unknown }
+export interface Command { id: string; label: string; description?: string; params?: unknown; readOnly?: boolean; destructive?: boolean }
 export interface DocumentAgent {
 	read(args: Record<string, unknown>): unknown;
 	edit(args: Record<string, unknown>): Promise<State>;

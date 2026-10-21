@@ -36,7 +36,7 @@ interface WasmDocument {
  * or shape ids between inspect and run.
  */
 const contentCommands: Command[] = [
-	{ id: 'content.find', label: 'Find text', params: { find: 'string', occurrence: 'match number (default 1)', page: 'PDF/slides page (default current)' } },
+	{ id: 'content.find', label: 'Find text', readOnly: true, params: { find: 'string', occurrence: 'match number (default 1)', page: 'PDF/slides page (default current)' } },
 	{ id: 'content.replace', label: 'Replace text', params: { find: 'string', text: 'replacement string', occurrence: 'match number (default 1)', all: 'replace every match (default false)', page: 'PDF/slides page (default current)' } },
 	{ id: 'content.delete', label: 'Delete text', params: { find: 'string', occurrence: 'match number (default 1)', all: 'delete every match (default false)', page: 'PDF/slides page (default current)' } },
 	{ id: 'content.append', label: 'Append text', params: { text: 'string', page: 'PDF/slides page (default last)' } }
@@ -235,7 +235,7 @@ export async function openEngine(kind: Kind, name: string, bytes: Uint8Array, ex
 		pages: () => JSON.parse(doc.pages()), state,
 		commands: () => {
 			const commands: Command[] = JSON.parse(doc.commands());
-			if (kind === 'pdf') { commands.push({ id: 'image.insert', label: 'Image', params: { page: '1-based page', data: 'base64 image', name: 'filename' } }, { id: 'select.page', label: 'Select page', params: { page: '1-based page' } }); }
+			if (kind === 'pdf') { commands.push({ id: 'image.insert', label: 'Image', params: { page: '1-based page', data: 'base64 image', name: 'filename' } }, { id: 'select.page', label: 'Select page', readOnly: true, params: { page: '1-based page' } }); }
 			return commands;
 		},
 		execute: async (id, args) => {

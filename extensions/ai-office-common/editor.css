@@ -194,3 +194,19 @@ html::-webkit-scrollbar-track, html::-webkit-scrollbar-corner { background: var(
 .word-unplaced-review { margin: 8px 16px; padding: 12px; border: 1px solid var(--vscode-widget-border, #8886); border-radius: 6px; }
 .word-unplaced-review pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .agent-commit-target { position: absolute; pointer-events: none; }
+
+.pdf-tools-dialog { width: min(480px, calc(100vw - 40px)); max-height: calc(100vh - 40px); overflow: auto; box-sizing: border-box; padding: 24px; border: 1px solid var(--vscode-widget-border, #8885); border-radius: 12px; color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); box-shadow: 0 16px 48px #0005; }
+.pdf-tools-dialog::backdrop { background: #0005; }
+.pdf-tools-dialog h2 { margin: 0 0 8px; font-size: 20px; }
+.pdf-tools-dialog p { color: var(--vscode-descriptionForeground); line-height: 1.5; }
+.pdf-tools-dialog label { display: flex; flex-direction: column; gap: 6px; margin: 16px 0; font-size: 13px; }
+.pdf-tools-dialog form > .pdf-tool-options { display: block; }
+.pdf-tools-dialog label[hidden] { display: none; }
+.pdf-tools-dialog input, .pdf-tools-dialog select { box-sizing: border-box; width: 100%; margin: 0; min-height: 36px; padding: 6px 10px; border: 1px solid var(--vscode-input-border, #8886); border-radius: 6px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); font: inherit; }
+.pdf-tools-dialog footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+.pdf-tools-dialog button { min-height: 34px; padding: 6px 16px; cursor: pointer; border: 1px solid var(--vscode-button-border, transparent); border-radius: 6px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); transition: background 120ms, transform 120ms; }
+.pdf-tools-dialog button[type=submit] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.pdf-tools-dialog button:hover { filter: brightness(1.08); }
+.pdf-tools-dialog button:active { transform: scale(.98); }
+.pdf-tools-dialog .pdf-tool-error { color: var(--vscode-errorForeground); }
+@media (prefers-reduced-motion: reduce) { .pdf-tools-dialog button { transition: none; transform: none; } }

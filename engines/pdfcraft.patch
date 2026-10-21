@@ -60,10 +60,10 @@ index 0000000..48ed9dd
 +wasm-bindgen = "0.2"
 diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
 new file mode 100644
-index 0000000..922d4fe
+index 0000000..6ea7320
 --- /dev/null
 +++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,232 @@
 +//! PDF editing and rendering for AI Office, using the CLI's automation commands.
 +#![cfg(target_arch = "wasm32")]
 +#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -84,6 +84,7 @@ index 0000000..922d4fe
 +    id: pdfcraft_engine::DocId,
 +    password: Option<String>,
 +    page: usize,
++    command_result: Value,
 +}
 +
 +#[wasm_bindgen]
@@ -106,7 +107,7 @@ index 0000000..922d4fe
 +        let id = automation.open_bytes(name, bytes.as_ref().clone(), password.as_deref()).map_err(js_error)?;
 +        let renderer =
 +            PageRenderer::new(bytes, RenderConfig { password: password.clone().map(Arc::from), reject_oversize: true, ..Default::default() });
-+        Ok(Self { renderer, sizes, width: 0, height: 0, automation, id, password, page: 0 })
++        Ok(Self { renderer, sizes, width: 0, height: 0, automation, id, password, page: 0, command_result: Value::Null })
 +    }
 +
 +    pub fn execute(&mut self, command: &str, params: &str) -> Result<String, JsValue> {
@@ -129,8 +130,17 @@ index 0000000..922d4fe
 +                return Err(JsValue::from_str("Command is not enabled in AI Office"));
 +            }
 +            args["doc"] = json!(self.id.0);
-+            self.automation.call(command, &args).map_err(js_error)?;
-+            self.refresh()?;
++            if args.get("file").is_some() || args.get("path").is_some() {
++                return Err(JsValue::from_str("File inputs require the host document workflow"));
++            }
++            let definition =
++                pdfcraft_automation::tools().into_iter().find(|tool| tool.name == command).ok_or_else(|| JsValue::from_str("Unknown command"))?;
++            let result = self.automation.call(command, &args).map_err(js_error)?;
++            self.command_result =
++                Value::Array(result.into_iter().filter_map(|part| if let Content::Json(value) = part { Some(value) } else { None }).collect());
++            if !definition.read_only {
++                self.refresh()?;
++            }
 +        }
 +        self.state()
 +    }
@@ -145,7 +155,18 @@ index 0000000..922d4fe
 +        let commands: Vec<_> = pdfcraft_automation::tools()
 +            .into_iter()
 +            .filter(|t| allowed(t.name))
-+            .map(|t| json!({"id":t.name,"label":t.title,"params":t.input_schema}))
++            .map(|t| {
++                let mut schema = t.input_schema;
++                if let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut) {
++                    properties.remove("doc");
++                    properties.remove("file");
++                    properties.remove("file_page");
++                }
++                if let Some(required) = schema.get_mut("required").and_then(Value::as_array_mut) {
++                    required.retain(|value| value != "doc");
++                }
++                json!({"id":t.name,"label":t.title,"description":t.description,"readOnly":t.read_only,"destructive":t.destructive,"params":schema})
++            })
 +            .collect();
 +        serde_json::to_string(&commands).map_err(js_error)
 +    }
@@ -162,7 +183,7 @@ index 0000000..922d4fe
 +            .filter(|a| a.page == self.page && a.contents.is_some())
 +            .map(|a| json!({"author":a.author,"text":a.contents}))
 +            .collect();
-+        serde_json::to_string(&json!({"page":self.page,"blocks":paragraphs,"comments":comments,"revision":doc.edit_generation(),"undo":doc.can_undo().is_some(),"redo":doc.can_redo().is_some()})).map_err(js_error)
++        serde_json::to_string(&json!({"agentCommandResult":self.command_result,"page":self.page,"blocks":paragraphs,"comments":comments,"revision":doc.edit_generation(),"undo":doc.can_undo().is_some(),"redo":doc.can_redo().is_some()})).map_err(js_error)
 +    }
 +
 +    pub fn export(&self) -> Result<Vec<u8>, JsValue> {
@@ -171,6 +192,8 @@ index 0000000..922d4fe
 +
 +    fn refresh(&mut self) -> Result<(), JsValue> {
 +        let doc = self.automation.session().get(self.id).ok_or_else(|| JsValue::from_str("Document closed"))?;
++        self.sizes = doc.info.pages.iter().map(|page| [page.width, page.height]).collect();
++        self.page = self.page.min(self.sizes.len().saturating_sub(1));
 +        self.renderer = PageRenderer::new(
 +            doc.bytes.clone(),
 +            RenderConfig { password: self.password.clone().map(Arc::from), reject_oversize: true, ..Default::default() },
@@ -220,7 +243,58 @@ index 0000000..922d4fe
 +    JsValue::from_str(&error.to_string())
 +}
 +fn allowed(command: &str) -> bool {
-+    matches!(command, "text_edit" | "page_add_text" | "content_update" | "comment_add" | "link_add" | "edit_undo" | "edit_redo")
++    matches!(
++        command,
++        "text_edit"
++            | "page_add_text"
++            | "text_paragraphs"
++            | "text_extract"
++            | "text_find"
++            | "object_list"
++            | "object_move"
++            | "content_list"
++            | "content_update"
++            | "content_delete"
++            | "comment_add"
++            | "comment_list"
++            | "comment_edit"
++            | "comment_delete"
++            | "comment_reply"
++            | "comment_set_status"
++            | "link_add"
++            | "link_list"
++            | "link_edit"
++            | "link_delete"
++            | "links_from_urls"
++            | "links_remove"
++            | "page_rotate"
++            | "page_delete"
++            | "page_move"
++            | "page_insert_blank"
++            | "page_duplicate"
++            | "page_set_box"
++            | "page_number"
++            | "doc_header_footer"
++            | "doc_watermark"
++            | "doc_background"
++            | "doc_remove_marks"
++            | "doc_set_info"
++            | "doc_info"
++            | "form_fields"
++            | "form_fill"
++            | "form_reset"
++            | "doc_flatten"
++            | "redact_mark"
++            | "redact_apply"
++            | "redact_clear"
++            | "doc_hidden_info"
++            | "doc_remove_hidden"
++            | "doc_audit_redactions"
++            | "page_images"
++            | "image_edit"
++            | "edit_undo"
++            | "edit_redo"
++    )
 +}
 diff --git a/crates/automation/src/lib.rs b/crates/automation/src/lib.rs
 index eb681a9..3b77a49 100644
