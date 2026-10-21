@@ -1059,6 +1059,11 @@
 							"type": "string",
 							"description": "Internal block ID returned by read. Never invent it or show it to the user."
 						},
+						"position": {
+							"type": "string",
+							"enum": ["before", "after"],
+							"description": "For insertions, preview before or after the actual anchor. For append, read operation=tail and use after. Omit for changing existing content."
+						},
 						"intent": {
 							"type": "string",
 							"minLength": 1,

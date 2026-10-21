@@ -32,6 +32,10 @@ export class WordReview {
 	private draftWorkingId?: string;
 	private draftTimer?: ReturnType<typeof setTimeout>;
 	private draftKey = '';
+	private activitySections: DraftViewSection[] = [];
+	private activityLabel = 'Agent';
+	private activityKey = '';
+	private activityTimer?: ReturnType<typeof setTimeout>;
 	constructor(private readonly pages: HTMLElement, private readonly decide: (data: DocumentReview, action: 'keep' | 'undo', ids: string[]) => void, private readonly onLayout: () => void, private readonly discardDraft: (id: string) => void) { this.unplaced.className = 'word-unplaced-review'; this.unplaced.hidden = true; this.pages.before(this.unplaced); }
 	updateDrafts(sections: DraftViewSection[], label = 'Agent', workingId?: string, expiresAt = 0) {
 		clearTimeout(this.draftTimer); this.drafts = sections; this.draftLabel = label.slice(0, 40);
@@ -39,10 +43,16 @@ export class WordReview {
 		this.draftKey = JSON.stringify([sections, this.draftLabel, this.draftWorkingId]);
 		if (this.draftWorkingId) { this.draftTimer = setTimeout(() => {
 			this.draftWorkingId = undefined;
-			this.pages.querySelectorAll<HTMLElement>('.word-draft-zone').forEach(zone => { zone.dataset.working = 'false'; const label = zone.querySelector('small'); if (label) { label.textContent = 'Draft preview'; } });
+			this.pages.querySelectorAll<HTMLElement>('.word-draft-zone:not(.word-activity-zone)').forEach(zone => { zone.dataset.working = 'false'; const label = zone.querySelector('small'); if (label) { label.textContent = 'Draft preview'; } });
 		}, Math.min(30000, expiresAt - Date.now())); }
 	}
-	dispose() { clearTimeout(this.draftTimer); this.unplaced.remove(); }
+	updateActivity(sections: DraftViewSection[], label = 'Agent', expiresAt = 0) {
+		clearTimeout(this.activityTimer);
+		this.activitySections = expiresAt > Date.now() ? sections : []; this.activityLabel = label.slice(0, 40);
+		this.activityKey = JSON.stringify([this.activitySections, this.activityLabel]);
+		if (this.activitySections.length) { this.activityTimer = setTimeout(() => { this.updateActivity([]); this.onLayout(); }, Math.min(30000, expiresAt - Date.now())); }
+	}
+	dispose() { clearTimeout(this.draftTimer); clearTimeout(this.activityTimer); this.unplaced.remove(); }
 
 	update(data: DocumentReview) { this.data = data; if (this.busy) { this.layoutKey = ''; } this.busy = false; }
 	get count() { return groupChanges(this.data?.changes || []).length; }
@@ -75,7 +85,7 @@ export class WordReview {
 	}
 	/** Rebuild only after state/resize; raster updates reuse the measured view zones. */
 	layout(dimensions: number[][]) {
-		const key = JSON.stringify([this.data?.version, this.data?.reviewVersion, this.draftKey, dimensions, this.pages.children.length, (this.pages.firstElementChild as HTMLElement | null)?.clientWidth]);
+		const key = JSON.stringify([this.data?.version, this.data?.reviewVersion, this.draftKey, this.activityKey, dimensions, this.pages.children.length, (this.pages.firstElementChild as HTMLElement | null)?.clientWidth]);
 		if (this.layoutKey === key && this.firstPage === this.pages.firstElementChild) { return; }
 		this.layoutKey = key; this.firstPage = this.pages.firstElementChild ?? undefined;
 		this.zones.clear(); this.unplaced.replaceChildren(); this.unplaced.hidden = true;
@@ -85,7 +95,7 @@ export class WordReview {
 			node.classList.remove('has-word-review'); node.style.height = ''; node.style.aspectRatio = dimensions[page]?.join(' / ') || '';
 			const source = node.querySelector('canvas'); if (source) { source.style.height = ''; }
 		}
-		if (!this.data?.changes.length && !this.drafts.length) { return; }
+		if (!this.data?.changes.length && !this.drafts.length && !this.activitySections.length) { return; }
 		for (const change of groupChanges(this.data?.changes || [])) {
 			const anchors = change.anchorRects?.length ? change.anchorRects : change.rects;
 			const anchor = change.anchor?.after ? anchors?.at(-1) : anchors?.[0];
@@ -120,20 +130,28 @@ export class WordReview {
 			element.append(zone);
 			const zones = this.zones.get(page) || []; zones.push({ at, height: zone.offsetHeight, node: zone }); this.zones.set(page, zones);
 		}
-		for (const section of this.drafts) {
+		for (const section of [...this.drafts, ...this.activitySections]) {
+			const activity = this.activitySections.includes(section), working = activity || section.id === this.draftWorkingId;
 			const anchor = section.anchor.position === 'after' ? section.anchorRects?.at(-1) : section.anchorRects?.[0];
-			const page = anchor?.page ?? 0, element = this.pages.children[page] as HTMLElement | undefined;
+			if (!anchor) {
+				const notice = document.createElement('section'); notice.className = 'word-unplaced-draft';
+				const title = document.createElement('strong'); title.textContent = section.title;
+				const status = document.createElement('p'); status.textContent = 'Draft location unavailable. Read the document and replan this section.';
+				notice.append(title, status); this.unplaced.append(notice); this.unplaced.hidden = false;
+				continue;
+			}
+			const page = anchor.page, element = this.pages.children[page] as HTMLElement | undefined;
 			if (!element || !dimensions[page]) { continue; }
 			const scale = element.clientWidth / dimensions[page][0];
-			const at = anchor ? (anchor.y + (section.anchor.position === 'after' ? anchor.height : 0)) * scale : 40 * scale;
-			const zone = document.createElement('section'); zone.className = 'word-review-zone word-draft-zone'; zone.dataset.working = String(section.id === this.draftWorkingId); zone.setAttribute('aria-label', 'Pending Document Section');
+			const at = (anchor.y + (section.anchor.position === 'after' ? anchor.height : 0)) * scale;
+			const zone = document.createElement('section'); zone.className = 'word-review-zone word-draft-zone' + (activity ? ' word-activity-zone' : ''); zone.dataset.working = String(working); zone.setAttribute('aria-label', activity ? 'Agent Insertion Preview' : 'Pending Document Section');
 			zone.style.left = '0'; zone.style.width = '100%'; zone.style.paddingInline = `${Math.max(16, (anchor?.x || 40) * scale)}px`;
 			zone.addEventListener('pointerdown', event => event.stopPropagation());
-			const label = document.createElement('small'); label.className = 'agent-draft-cursor'; label.textContent = section.id === this.draftWorkingId ? this.draftLabel : 'Draft preview'; label.title = 'Draft preview';
+			const label = document.createElement('small'); label.className = 'agent-draft-cursor'; label.textContent = activity ? this.activityLabel : working ? this.draftLabel : 'Draft preview'; label.title = 'Draft preview';
 			const title = document.createElement('strong'); title.textContent = section.title;
 			const intent = document.createElement('p'); intent.textContent = anchor ? '[' + section.intent + ']' : 'Anchor changed. Replan this section.';
 			const discard = document.createElement('button'); discard.textContent = 'Discard'; discard.addEventListener('pointerdown', event => event.preventDefault()); discard.setAttribute('aria-label', `Discard pending section: ${section.title}`); discard.addEventListener('click', () => this.discardDraft(section.id));
-			zone.append(label, title, intent, discard); element.append(zone);
+			zone.append(label, title, intent); if (!activity) { zone.append(discard); } element.append(zone);
 			const zones = this.zones.get(page) || []; zones.push({ at, height: zone.offsetHeight, node: zone }); this.zones.set(page, zones);
 		}
 		for (const [page, zones] of this.zones) {

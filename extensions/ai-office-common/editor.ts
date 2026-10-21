@@ -21,7 +21,7 @@ const pages = el('pages');
 const agentReveal = new WordAgentReveal(pages, place, () => state.revision);
 pages.style.setProperty('--word-text-cursor', wordCursor('text'));
 pages.style.setProperty('--word-corner-cursor', wordCursor('corner'));
-const wordReview = new WordReview(pages, (data, action, ids) => send('reviewDecide', { version: data.version, reviewVersion: data.reviewVersion, action, ids }), () => { overlay(); agentOverlay(); }, id => send('draftDiscard', { id }));
+const wordReview = new WordReview(pages, (data, action, ids) => send('reviewDecide', { version: data.version, reviewVersion: data.reviewVersion, action, ids }), () => { wordReview.layout(dimensions); overlay(); agentOverlay(); }, id => send('draftDiscard', { id }));
 const reviewSummary = document.createElement('div'); reviewSummary.className = 'word-review-summary'; reviewSummary.hidden = true; pages.before(reviewSummary);
 function showReviewSummary() {
 	reviewSummary.replaceChildren(); reviewSummary.hidden = !wordReview.count;
@@ -128,6 +128,7 @@ window.addEventListener('blur', flushWordInput);
 function clearActivityPreview() {
 	if (!agentRects.length && agentIntent === undefined && activityTimer === undefined) { return; }
 	clearTimeout(activityTimer); activityTimer = undefined; agentIntent = undefined; agentRects = []; agentOverlay();
+	wordReview.updateActivity([]); wordReview.layout(dimensions); overlay();
 }
 window.addEventListener('pointerdown', () => { followAgent = false; agentReveal.clear(); });
 window.addEventListener('wheel', () => { followAgent = false; }, { passive: true });
@@ -436,13 +437,16 @@ window.addEventListener('message', event => {
 		agentReveal.queue(data.revision, rects); renderNext(); return;
 	}
 	if (data.type === 'agentActivity') {
+		if (data.revision !== undefined && data.revision !== state.revision) { return; }
 		clearTimeout(activityTimer); activityTimer = undefined; agentLabel = typeof data.label === 'string' ? data.label.slice(0, 40) : 'Agent';
 		agentIntent = typeof data.intent === 'string' ? data.intent.slice(0, 240) : undefined;
 		agentRects = Array.isArray(data.rects) ? data.rects : [];
+		const insertions = Array.isArray(data.insertions) ? data.insertions : [];
+		wordReview.updateActivity(insertions, agentLabel, data.expiresAt); wordReview.layout(dimensions); overlay();
 		if (agentRects.length) { activityTimer = setTimeout(clearActivityPreview, Math.max(0, Math.min(30000, (data.expiresAt || Date.now() + 30000) - Date.now()))); }
-		agentOverlay(); if (agentRects.length) { followAgentChange(data.request, '.agent-shimmer-border'); } return;
+		agentOverlay(); if (insertions.length) { followAgentChange(data.request, '.word-activity-zone'); } else if (agentRects.length) { followAgentChange(data.request, '.agent-shimmer-border'); } return;
 	}
-	if (data.type === 'draft') { wordReview.updateDrafts(data.sections, data.label, data.workingId, data.expiresAt); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
+	if (data.type === 'draft') { wordReview.updateDrafts(data.sections, data.label, data.workingId, data.expiresAt); wordReview.layout(dimensions); overlay(); agentOverlay(); followAgentChange(data.request, '.word-draft-zone[data-working="true"]'); return; }
 	if (data.type === 'review') { wordReview.update(data.review); showReviewSummary(); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
 	if (data.type === 'error') { message(data.error); renderBusy = false; return; }
 	if (data.type === 'saved') { el('hint').textContent = data.pendingSections ? `Saved · ${data.pendingSections} pending sections are editor-only` : 'Saved'; return; }

@@ -132,3 +132,28 @@ test('Related block changes share one Keep or Undo action while independent regi
 		await page.evaluate('review.dispose()');
 	} finally { await browser.close(); }
 });
+
+test('Insertion previews use the actual later-page anchor and never fall back to the title', async () => {
+	const bundle = await build({ entryPoints: ['extensions/ai-office-common/wordReview.ts'], bundle: true, platform: 'browser', format: 'iife', globalName: 'OfficeReview', write: false });
+	const browser = await chromium.launch({ executablePath: process.env.OFFICE_BROWSER_PATH, headless: true, args: ['--no-sandbox'] });
+	try {
+		const page = await browser.newPage();
+		await page.setContent('<main id="pages">' + [0, 1, 2].map(index => `<section data-page="${index}" style="position:relative;width:300px;height:400px"><canvas></canvas></section>`).join('') + '</main>');
+		await page.addStyleTag({ content: await readFile('extensions/ai-office-common/editor.css', 'utf8') });
+		await page.addScriptTag({ content: bundle.outputFiles[0].text });
+		await page.evaluate(`(() => {
+			window.review=new OfficeReview.WordReview(document.getElementById('pages'),()=>{},()=>{},()=>review.layout([[600,800],[600,800],[600,800]]));
+			window.section={id:'insert',title:'',intent:'Adding a closing section',anchor:{id:'last',position:'after'},anchorRects:[{page:2,x:72,y:500,width:200,height:20}]};
+			review.updateActivity([section],'OpenCode',Date.now()+30000);review.layout([[600,800],[600,800],[600,800]]);
+		})()`);
+		assert.equal(await page.locator('[data-page="0"] .word-draft-zone').count(), 0);
+		assert.equal(await page.locator('[data-page="2"] .word-activity-zone').count(), 1);
+		assert.equal(await page.locator('.word-activity-zone').evaluate(node => node.style.top), '260px');
+		assert.equal(await page.locator('.word-activity-zone button').count(), 0);
+		await page.evaluate(`review.updateActivity([]);review.updateDrafts([{...section,anchorRects:[]}],'OpenCode','insert',Date.now()+30000);review.layout([[600,800],[600,800],[600,800]])`);
+		assert.equal(await page.locator('#pages .word-draft-zone').count(), 0);
+		assert.match(await page.locator('.word-unplaced-draft').textContent(), /location unavailable/);
+		assert.equal(await page.locator('[data-page="2"]').evaluate(node => node.style.height), '');
+		await page.evaluate(`review.dispose()`);
+	} finally { await browser.close(); }
+});

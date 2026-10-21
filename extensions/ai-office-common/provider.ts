@@ -9,7 +9,7 @@ import { basename } from 'node:path';
 import { writeFile, rename, unlink } from 'node:fs/promises';
 import { EngineClient } from './client.js';
 import { activityRegion, type ActivityRegion } from './agentActivity.js';
-import type { Kind, State, Command, DocumentReview, DocumentReviewChanges } from './types.js';
+import type { Kind, State, Command, DocumentReview, DocumentReviewChanges, DraftViewSection } from './types.js';
 import { registerDocumentTools, type DocumentToolInput } from './documentTools.js';
 import { activeAgentRequest, activeAgentLabel, DocumentHistory, withAgentToolRequest } from './agentRequest.js';
 import { prepareWordFormatting, canRebaseTextEdits } from './wordFormatting.js';
@@ -41,7 +41,7 @@ class Document implements vscode.CustomDocument {
 	saving = false;
 	serial = Promise.resolve();
 	instance = randomUUID();
-	activity?: { id: string; ids: string[]; request?: string; label: string; intent: string; expiresAt: number; rects: State['rects']; timer: ReturnType<typeof setTimeout> };
+	activity?: { id: string; ids: string[]; placements: Record<string, 'before' | 'after'>; insertions: DraftViewSection[]; revision: number; request?: string; label: string; intent: string; expiresAt: number; rects: State['rects']; timer: ReturnType<typeof setTimeout> };
 	constructor(readonly uri: vscode.Uri, readonly kind: Kind, readonly context: vscode.ExtensionContext, private readonly onDispose: () => void) {
 		this.client = new EngineClient(vscode.Uri.joinPath(context.extensionUri, 'out', 'engineWorker.cjs').fsPath);
 		if (kind === 'word' && context.globalStorageUri) { this.versions = new DocumentVersions(context.globalStorageUri.fsPath, uri.toString()); }
@@ -76,12 +76,20 @@ class Document implements vscode.CustomDocument {
 			const changes = this.review?.changes.length ? await this.client.request<DocumentReview['changes']>('reviewLayout', { changes: this.review.changes }) : [];
 			await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'review', review: { ...this.review, version: this.version, reviewVersion: this.reviewVersion, changes } })));
 			const drafts = await Promise.all(this.drafts.pending().map(async section => ({ ...section, anchorRects: await this.client.request<State['rects']>('agentRects', { blockId: section.anchor.id }).catch(() => []) })));
-			await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'draft', sections: drafts, label: this.draftAgentLabel, workingId: this.draftWorkingUntil > Date.now() ? this.draftWorkingId || drafts[0]?.id : undefined, expiresAt: this.draftWorkingUntil })));
+			await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'draft', sections: drafts, label: this.draftAgentLabel, request: this.draftRequest, workingId: this.draftWorkingUntil > Date.now() ? this.draftWorkingId || drafts[0]?.id : undefined, expiresAt: this.draftWorkingUntil })));
 		}
 		if (this.activity) { await this.sendActivity(this.activity.rects); }
 	}
 	async sendActivity(rects: State['rects']) {
-		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'agentActivity', rects: rects || [], label: this.activity?.label || activeAgentLabel(), ...(this.activity ? { intent: this.activity.intent, expiresAt: this.activity.expiresAt, request: this.activity.request } : {}) })));
+		const activity = this.activity;
+		if (activity && activity.revision !== this.view.state.revision) {
+			const revision = this.view.state.revision;
+			const located = await this.locateActivity(activity.ids, activity.placements, activity.intent);
+			rects = located.rects;
+			if (this.activity !== activity || revision !== this.view.state.revision) { return; }
+			activity.rects = rects; activity.insertions = located.insertions; activity.revision = revision;
+		}
+		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'agentActivity', rects: rects || [], label: activity?.label || activeAgentLabel(), ...(activity ? { insertions: activity.insertions, intent: activity.intent, expiresAt: activity.expiresAt, request: activity.request, revision: activity.revision } : {}) })));
 	}
 	async stopActivity(force = false) { if (!force && activeAgentRequest() && this.activity?.request && this.activity.request !== activeAgentRequest()) { return; } if (this.activity) { clearTimeout(this.activity.timer); this.activity = undefined; } await this.sendActivity([]); }
 	async renewActivity(request: string) {
@@ -92,12 +100,23 @@ class Document implements vscode.CustomDocument {
 		}
 		if (this.draftRequest === request && this.draftWorkingUntil > 0 && this.drafts.pending().length) { this.draftWorkingUntil = Date.now() + 30000; await this.broadcast(); }
 	}
-	async startActivity(id: string, intent?: string, targets = [id]) {
+	async locateActivity(ids: string[], placements: Record<string, 'before' | 'after'>, intent: string) {
+		const rects: NonNullable<State['rects']> = [];
+		const insertions: DraftViewSection[] = [];
+		for (const id of ids) {
+			const anchorRects = await this.client.request<NonNullable<State['rects']>>('agentRects', { blockId: id }).catch(() => []);
+			const position = placements[id];
+			if (position) { insertions.push({ id: `activity:${id}:${position}`, title: '', intent, anchor: { id, position }, anchorRects }); }
+			else { rects.push(...anchorRects); }
+		}
+		return { rects: rects.slice(0, 200), insertions };
+	}
+	async startActivity(id: string, intent?: string, targets = [id], placements: Record<string, 'before' | 'after'> = {}) {
 		const preview = intent ?? (this.activity?.ids.includes(id) && this.activity.request === activeAgentRequest() ? this.activity.intent : 'Updating this block…');
 		const ids = [...new Set(targets)].slice(0, 200);
-		const rects = (await Promise.all(ids.map(blockId => this.client.request<NonNullable<State['rects']>>('agentRects', { blockId })))).flat().slice(0, 200);
+		const { rects, insertions } = await this.locateActivity(ids, placements, preview);
 		await this.stopActivity(true);
-		this.activity = { id, ids, request: activeAgentRequest(), label: activeAgentLabel(), intent: preview, expiresAt: Date.now() + 30000, rects, timer: setTimeout(() => { void this.stopActivity(); }, 30000) };
+		this.activity = { id, ids, placements, insertions, revision: this.view.state.revision, request: activeAgentRequest(), label: activeAgentLabel(), intent: preview, expiresAt: Date.now() + 30000, rects, timer: setTimeout(() => { void this.stopActivity(); }, 30000) };
 		await this.sendActivity(rects);
 	}
 	get version() { return `${this.instance}:${this.view.state.revision}`; }
@@ -190,7 +209,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 		try { await vscode.commands.executeCommand('aiOffice.registerDocumentReview', request, data); }
 		catch { void vscode.window.showErrorMessage?.('Document changes were applied, but change review could not open. Reload Sangam One before continuing.'); }
 	};
-	const agentEdits = new Map<Kind, (doc: Document, input: DocumentToolInput, token: vscode.CancellationToken) => Promise<unknown>>();
+	const agentEdits = new Map<Kind, (doc: Document, input: DocumentToolInput, token: vscode.CancellationToken, draftSection?: string) => Promise<unknown>>();
 	const reviewEdits = new Map<Kind, (doc: Document, before: State) => void>();
 	// The file an agent edits when none is named: the document whose editor is
 	// active, or the one most recently active among the open documents.
@@ -255,7 +274,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			if (agent) { await doc.announceActivity(command, args, beforeState, result.state); }
 			return result;
 		};
-		agentEdits.set(kind, async (doc, input, token) => {
+		agentEdits.set(kind, async (doc, input, token, draftSection) => {
 			const request = activeAgentRequest();
 			if (!vscode.workspace.isTrusted) { throw new Error('Trust this workspace before allowing agent edits.'); }
 			const edits = input.operation === 'batch' ? input.edits as Record<string, unknown>[] : [input];
@@ -263,7 +282,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			const observed = typeof input.version === 'string' && input.version.startsWith(doc.instance + ':') ? Number(input.version.slice(doc.instance.length + 1)) : -1;
 			const rebased = input.version !== doc.version;
 			if (rebased && (!Number.isSafeInteger(observed) || observed < 0 || observed > doc.view.state.revision || !canRebaseTextEdits(edits))) { throw new Error('Document changed. Read the target again before editing. Structural operations need a fresh version.'); }
-			const tail = edits[0].operation === 'append' ? await doc.client.request<{ blocks: { id: string }[] }>('agentRead', { args: { operation: 'tail' } }) : undefined;
+			const tail = edits.some(edit => edit.operation === 'append') ? await doc.client.request<{ blocks: { id: string }[] }>('agentRead', { args: { operation: 'tail' } }) : undefined;
 			const targetId = typeof edits[0].id === 'string' ? edits[0].id : tail?.blocks[0]?.id;
 			if (token.isCancellationRequested) { throw new vscode.CancellationError(); }
 			await beforeRequest(doc, request);
@@ -272,7 +291,17 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			const idsBefore = targetId ? await doc.client.request<{ blocks: { id: string; parentId: string }[] }>('agentRead', { args: { id: targetId } }) : undefined;
 			const parentId = idsBefore?.blocks[0]?.parentId;
 			const announced = doc.activity?.request === request && !!doc.activity;
-			if (targetId) { await doc.startActivity(targetId, undefined, [targetId, ...edits.flatMap(edit => typeof edit.id === 'string' ? [edit.id] : [])]); }
+			// Draft fills already have an exact pending view zone. Masking their anchor
+			// would also shimmer an unrelated paragraph (often the document title).
+			if (draftSection) { await doc.stopActivity(); }
+			else if (targetId) {
+				const placements: Record<string, 'before' | 'after'> = {};
+				for (const edit of edits) {
+					if (edit.operation === 'insert' && typeof edit.id === 'string') { placements[edit.id] = edit.position === 'before' ? 'before' : 'after'; }
+					if (edit.operation === 'append' && tail?.blocks[0]?.id) { placements[tail.blocks[0].id] = 'after'; }
+				}
+				await doc.startActivity(targetId, undefined, [targetId, ...edits.flatMap(edit => typeof edit.id === 'string' ? [edit.id] : []), ...Object.keys(placements)], placements);
+			}
 			const started = Date.now();
 			let accepted = false;
 			try {
@@ -691,7 +720,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 						const section = doc.drafts.section(input.sectionId), anchor = doc.drafts.location(input.sectionId);
 						doc.draftRequest = activeAgentRequest(); doc.draftWorkingId = section.id; doc.draftWorkingUntil = Date.now() + 30000; await doc.broadcast();
 						if (!Array.isArray(input.blocks) || !input.blocks.length || input.blocks.length > 49) { throw new Error('Fill a section with 1-49 content blocks; its heading is added automatically.'); }
-						const result = await agentEdits.get('word')!(doc, { operation: 'insert', id: anchor.id, position: anchor.position, version: input.version, blocks: [{ kind: 'heading', text: section.title, style: 'Heading' + section.level }, ...input.blocks] }, token) as { created: { id: string }[] };
+						const result = await agentEdits.get('word')!(doc, { operation: 'insert', id: anchor.id, position: anchor.position, version: input.version, blocks: [{ kind: 'heading', text: section.title, style: 'Heading' + section.level }, ...input.blocks] }, token, section.id) as { created: { id: string }[] };
 						doc.drafts.complete(section.id, result.created.map(block => block.id)); doc.draftWorkingId = undefined; doc.draftWorkingUntil = Date.now() + 30000; await doc.broadcast();
 						return { ...result, filledSectionId: section.id, draft: doc.drafts.status() };
 					}
@@ -712,9 +741,10 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 							if (input.version !== doc.version || typeof input.id !== 'string') { throw new Error('Read the target again before starting work.'); }
 							if (input.intent !== undefined && (typeof input.intent !== 'string' || !input.intent.trim() || input.intent.length > 240)) { throw new Error('Activity intent must be 1–240 characters of plain text.'); }
 							if (input.ids !== undefined && (!Array.isArray(input.ids) || !input.ids.length || input.ids.length > 200 || input.ids.some(id => typeof id !== 'string' || !id) || new Set([input.id, ...input.ids]).size > 200)) { throw new Error('Activity ids must contain 1–200 current block IDs.'); }
-							await doc.startActivity(input.id, typeof input.intent === 'string' ? input.intent.trim() : undefined, [input.id, ...(input.ids as string[] || [])]);
+							if (input.position !== undefined && input.position !== 'before' && input.position !== 'after') { throw new Error('Activity position must be before or after.'); }
+							await doc.startActivity(input.id, typeof input.intent === 'string' ? input.intent.trim() : undefined, [input.id, ...(input.ids as string[] || [])], input.position ? Object.fromEntries([input.id, ...(input.ids as string[] || [])].map(id => [id, input.position as 'before' | 'after'])) : {});
 						}
-						return { uri: doc.uri.toString(), active: !!doc.activity, located: !!doc.activity?.rects?.length, expiresInSeconds: doc.activity ? 30 : 0 };
+						return { uri: doc.uri.toString(), active: !!doc.activity, located: !!doc.activity && (!!doc.activity.rects?.length || doc.activity.insertions.some(section => section.anchorRects?.length)), expiresInSeconds: doc.activity ? 30 : 0 };
 					}
 					if (tool === 'help') {
 						const commands = doc.view.commands || [];
