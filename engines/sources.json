@@ -9,6 +9,6 @@
     "repository": "https://github.com/storytold/pdfcraft.git",
     "revision": "416495145354828a9efefc39df381ba3ee8f864f",
     "patch": "pdfcraft.patch",
-    "sha256": "826fcb5740052076aa4d8ef2698492ceb26e93f2bf202381bff06fb54f86b2f2"
+    "sha256": "82d3e5dc12e98ad88a3634c06640baa0b80be1411e6f8bfe2af2d588b5073431"
   }
 }

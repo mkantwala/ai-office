@@ -51,7 +51,7 @@ Build the extension with `node extensions/ai-office-pdf/build.mts --ui-only` fro
 
 ## PDF integration
 
-The PDF Tools button in the application formatting toolbar opens scoped page operations: rotate, duplicate, delete, move, insert a blank page, crop, text watermark, printed page numbering and background color. They use the same PdfCraft automation commands exposed to agents and retain native document Undo/Redo. A dialog captured before another edit refuses to apply to the changed document.
+Select PDF objects with a click, double-click text to edit, and drag to move. Text edge handles rewrap paragraphs; image corner handles resize artwork. Shift-click selects objects for one grouped move. PDF Tools in the application toolbar opens placement tools for text, images, links, comments, shapes, form fields, crop and redaction marks, plus Organize Pages and All PDF Tools. Organize Pages includes rotate, duplicate, delete, move, blank pages, watermarks, numbering and backgrounds. They use the same PdfCraft automation commands exposed to agents and retain native document Undo/Redo. A dialog captured before another edit refuses to apply to the changed document.
 
 `office_document_tools` lists category counts, bounded command summaries and one requested command schema. `office_document_run` executes a discovered PDF command using the current document version. The engine command table stays out of the permanent model tool list. Text reads require explicit ranges of at most ten pages; oversized results return a narrowing instruction. OpenCode and the built-in agent can use both entry points. Existing Word semantic tools remain available.
 
@@ -62,7 +62,7 @@ Validation:
 ```sh
 node extensions/ai-office-pdf/build.mts
 node extensions/ai-office-common/test.mts
-OFFICE_BROWSER_PATH=/usr/bin/chromium node --experimental-transform-types --test extensions/ai-office-common/pdfTools.test.mts
+OFFICE_BROWSER_PATH=/usr/bin/chromium node --experimental-transform-types --test extensions/ai-office-common/pdfTools.test.mts extensions/ai-office-common/pdfCanvas.test.mts
 ```
 
 The complete integration supersedes the first milestone's seven/55-command WASM bridge: [PDF capability inventory](PDF_CAPABILITIES.json) accounts for all 171 reference commands (159 native, nine application-managed, three excluded OCR commands). **All PDF Tools** exposes the native schemas through searchable visual forms. Bounded user inspections and managed artifact links use the same engine as agents.

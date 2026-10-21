@@ -56,3 +56,14 @@ test('All PDF Tools renders native schemas, optional typed properties and stale 
 		await page.evaluate('tools.dispose()');
 	} finally { await browser.close(); }
 });
+
+test('PDF contextual tools prefill page, target and drawn geometry in the native form', async () => {
+	const bundle = await build({ entryPoints: ['extensions/ai-office-common/pdfCommandForm.ts'], bundle: true, platform: 'browser', format: 'iife', globalName: 'OfficePDFForm', write: false });
+	const browser = await chromium.launch({ executablePath: process.env.OFFICE_BROWSER_PATH, headless: true, args: ['--no-sandbox'] });
+	try {
+		const page = await browser.newPage(); page.setDefaultTimeout(8000); await page.setContent('<div></div>'); await page.addScriptTag({ content: bundle.outputFiles[0].text });
+		await page.evaluate(`window.calls=[];window.tools=new OfficePDFForm.PdfCommandForm(()=>({total:4,revision:6,commands:[{id:'form_add_field',label:'Form field',params:{type:'object',properties:{page:{type:'integer'},type:{type:'string',enum:['text','checkbox']},rect:{type:'array',items:{type:'number'},minItems:4,maxItems:4},name:{type:'string'}},required:['page','type','rect']}}]}),(command,args,revision)=>calls.push({command,args,revision}));tools.open('form_add_field',{page:3,type:'checkbox',rect:[10,20,40,50]})`);
+		await page.getByRole('button', { name: 'Apply', exact: true }).click();
+		assert.deepEqual(await page.evaluate('calls'), [{ command: 'form_add_field', args: { page: 3, type: 'checkbox', rect: [10, 20, 40, 50] }, revision: 6 }]);
+	} finally { await browser.close(); }
+});

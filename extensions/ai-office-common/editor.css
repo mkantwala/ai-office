@@ -225,3 +225,22 @@ html::-webkit-scrollbar-track, html::-webkit-scrollbar-corner { background: var(
 .pdf-inspection details { padding-inline-start: 12px; margin-block: 6px; }
 .pdf-inspection p { margin: 6px 0; overflow-wrap: anywhere; }
 .pdf-document #info:has(#hint:empty):not(:has(.agent-status:not(:empty))) { display: none; }
+
+/* PDF object controls stay legible on white paper in either application theme. */
+.pdf-object{position:absolute;box-sizing:border-box;border:1px solid transparent;background:transparent;cursor:move;touch-action:none;outline:none;transition:border-color .12s,background .12s}
+.pdf-object:hover{border-color:#4a73ca;background:#407bd608}
+.pdf-object[data-selected=true],.pdf-object:focus-visible{border:1.5px solid #2764c5;box-shadow:0 0 0 1px #ffffffb0}
+.pdf-object[data-selected=true]{z-index:2}
+.pdf-grip{position:absolute;width:9px;height:9px;background:#fff;border:1.5px solid #2764c5;border-radius:2px;box-sizing:border-box;z-index:3}
+.pdf-grip-left{left:-5px;top:calc(50% - 5px);cursor:ew-resize}.pdf-grip-right{right:-5px;top:calc(50% - 5px);cursor:ew-resize}.pdf-grip-corner{right:-5px;bottom:-5px;cursor:nwse-resize}
+.pdf-drag-preview{position:absolute;pointer-events:none;z-index:9;border:1.5px dashed #2764c5;background:#e9f1ffe6;color:#24334b;overflow:hidden;font:12px/1.2 Arial,sans-serif;box-sizing:border-box;padding:2px;box-shadow:0 3px 12px #173c6b22}
+.pdf-object-actions{position:absolute;z-index:5;display:flex;gap:3px;transform:translateY(calc(-100% - 8px));width:max-content!important;height:auto!important;padding:4px;border:1px solid var(--vscode-widget-border,#555);border-radius:7px;background:var(--vscode-editorWidget-background,#252526);color:var(--vscode-editorWidget-foreground,#eee);box-shadow:0 3px 12px #0003}
+.pdf-object-actions button,.pdf-context button,.pdf-toolbox button{border:0;border-radius:4px;padding:6px 10px;background:transparent;color:inherit;cursor:pointer;transition:background .12s,transform .12s}
+.pdf-object-actions button:hover,.pdf-context button:hover,.pdf-toolbox button:hover{background:var(--vscode-toolbar-hoverBackground,#7773)}
+.pdf-object-actions button:active,.pdf-toolbox button:active{transform:scale(.97)}
+.pdf-context{position:fixed;z-index:50;display:flex;flex-direction:column;min-width:190px;padding:5px;background:var(--vscode-menu-background,#252526);color:var(--vscode-menu-foreground,#eee);border:1px solid var(--vscode-menu-border,#555);border-radius:7px;box-shadow:0 5px 18px #0004;animation:pdf-menu-in .1s ease-out}
+.pdf-context button{text-align:left}.pdf-toolbox{max-width:560px}.pdf-toolbox button{display:inline-block;margin:4px;border:1px solid var(--vscode-widget-border,#7775)}
+#pages[data-pdf-mode]:not([data-pdf-mode=select]) .page.pdf{cursor:crosshair}#pages[data-pdf-mode]:not([data-pdf-mode=select]) .pdf-object,#pages[data-pdf-mode]:not([data-pdf-mode=select]) .pdf-object-actions{pointer-events:none}
+@keyframes pdf-menu-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.pdf-object,.pdf-object-actions button,.pdf-context button,.pdf-toolbox button{transition:none}.pdf-context{animation:none}}
+.pdf-drag-preview canvas{display:block;width:100%;height:100%;opacity:.85}

@@ -15,7 +15,11 @@ export interface ImageGeometry {
 	alt: string; title: string; decorative: boolean; crop: number[]; wrap: string; rotation: number; flipH: boolean; flipV: boolean;
 }
 export interface Raster { pixels?: Uint8Array; width?: number; height?: number; svg?: string; tables?: TableGeometry[]; images?: ImageGeometry[] }
+export interface PdfObject { kind: 'text' | 'image' | 'added'; index: number; type: string; rect: number[]; fullRect?: number[]; text?: string | null }
 export interface State {
+	pdfObjects?: PdfObject[];
+	pdfRotation?: number;
+	pdfObjectError?: string;
 	pdfArtifactCount?: number;
 	pdfNewArtifacts?: { uri: string; name: string; mime: string; size: number }[];
 	pdfArtifacts?: { uri: string; name: string; mime: string; size: number }[];
