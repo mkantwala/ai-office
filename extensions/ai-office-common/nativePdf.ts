@@ -6,6 +6,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { readFile, writeFile, mkdir, mkdtemp, stat, lstat, readdir, copyFile, link, unlink, rm, realpath } from 'node:fs/promises';
 import { join, basename, dirname, resolve, relative, extname, isAbsolute } from 'node:path';
+import * as paths from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -13,6 +14,17 @@ import type { Engine, Command, State, Raster } from './types.js';
 
 export interface PdfArtifact { uri: string; name: string; mime: string; size: number }
 interface NativeView { pages: number[][]; state: State }
+
+/** Rust canonicalizes Windows paths to the verbatim namespace. Read only our known resource,
+ * allowing equivalent path spellings without trusting a worker-selected file location. */
+export function pdfResourcePath(root: string, reported: unknown, name: 'snapshot.pdf' | 'raster.raw', api: Pick<typeof paths, 'resolve' | 'relative' | 'toNamespacedPath'> = paths): string {
+	const invalid = () => new Error(name === 'raster.raw' ? 'Invalid PDF raster resource.' : 'Invalid PDF export resource.');
+	if (typeof reported !== 'string' || !reported || reported.length > 32768 || reported.includes('\0')) { throw invalid(); }
+	const expected = api.resolve(root, name), candidate = api.resolve(root, reported);
+	if (api.relative(api.toNamespacedPath(expected), api.toNamespacedPath(candidate)) !== '') { throw invalid(); }
+	return expected;
+}
+
 const fileKeys = new Set(['path', 'paths', 'file', 'files', 'folder', 'out', 'out_dir', 'output', 'directories', 'image', 'certificate', 'certificates']);
 const outputKeys: Record<string, string[]> = {
 	doc_batch: ['out_dir'], page_extract: ['out', 'out_dir'], doc_split: ['out_dir'], doc_create_multiple: ['out', 'out_dir'], doc_combine: ['out'], doc_create: ['out'],
@@ -51,7 +63,8 @@ export class NativePdfEngine implements Engine {
 	private constructor(private readonly root: string, private readonly sourceUri?: string, private readonly resourceRoot?: string) { }
 
 	static async open(executable: string, name: string, bytes: Uint8Array, password?: string, options?: { artifactRoot?: string; sourceUri?: string; resourceRoot?: string }): Promise<NativePdfEngine> {
-		const root = await mkdtemp(join(tmpdir(), 'sangam-pdf-'));
+		// Match Rust's canonical path convention for every private IPC resource, including artifact receipts.
+		const root = paths.toNamespacedPath(await realpath(await mkdtemp(join(tmpdir(), 'sangam-pdf-'))));
 		const engine = new NativePdfEngine(root, options?.sourceUri, options?.resourceRoot);
 		try {
 			await mkdir(join(root, 'input')); await mkdir(join(root, 'output'));
@@ -226,12 +239,12 @@ export class NativePdfEngine implements Engine {
 		return view.state;
 	}
 	async saved() { const previous = this.view.state; this.view = this.normalize(await this.request<NativeView>('saved')); this.view.state.agentCommandResult = previous.agentCommandResult; this.view.state.pdfArtifacts = this.generated; this.view.state.pdfNewArtifacts = []; this.cachedRasters.clear(); return this.view.state; }
-	async export() { const result = await this.request<{ path: string }>('export'); if (dirname(resolve(result.path)) !== this.root) { throw new Error('Invalid PDF export resource.'); } return new Uint8Array(await readFile(result.path)); }
+	async export() { const result = await this.request<{ path: string }>('export'); return new Uint8Array(await readFile(pdfResourcePath(this.root, result.path, 'snapshot.pdf'))); }
 	render(page: number, scale: number): Raster { const cached = this.cachedRasters.get(`${page}:${scale}`); if (!cached) { throw new Error('Use the asynchronous PDF renderer for an uncached page.'); } return cached; }
 	async renderAsync(page: number, scale: number): Promise<Raster> {
 		const key = `${page}:${scale}`, cached = this.cachedRasters.get(key); if (cached) { return cached; }
 		const result = await this.request<{ path: string; width: number; height: number }>('render', { page, scale });
-		const path = resolve(result.path); if (dirname(path) !== this.root) { throw new Error('Invalid PDF raster resource.'); }
+		const path = pdfResourcePath(this.root, result.path, 'raster.raw');
 		const raster = { width: result.width, height: result.height, pixels: new Uint8Array(await readFile(path)) };
 		if (raster.pixels.length !== raster.width * raster.height * 4) { throw new Error('Incomplete PDF raster.'); }
 		if (this.cachedRasters.size >= 2) { this.cachedRasters.delete(this.cachedRasters.keys().next().value!); } this.cachedRasters.set(key, raster); return raster;

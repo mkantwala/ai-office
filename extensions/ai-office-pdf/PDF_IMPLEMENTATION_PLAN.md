@@ -58,3 +58,12 @@ Word retains its tested semantic tools and on-demand skill pages. Future XLSX/PP
 The integration suite exercises source-command coverage, OCR bypass rejection, page geometry/history, forms/scripts, bookmarks, measurements, all four Office export formats, image exports, merge/split/extract, comparison, optimization/actions, redaction, passwords, signing copies, URI confinement, output conflicts, saved/reopened documents and bounded UI forms/results. The original automation integration suite also passes 183 non-OCR tests. Build, TypeScript, targeted lint, browser tests and a live OpenCode workflow are checked before the PR; no production credentials are used.
 
 Final Linux validation: 73 shared document tests, 16 OpenCode transport/provider tests, eight browser tests, 183 upstream non-OCR automation tests, native build/Clippy, TypeScript, targeted lint and clean-source patch application passed. A live OpenCode GLM-5.3-Flash Free session created and filled a required form field, verified its value, exported a readable DOCX and split a three-page PDF into three managed PDF artifacts; actual receipts and output files were checked.
+
+
+## Canonical private resources
+
+The host resolves its temporary workspace before opening the native session and uses the Windows verbatim namespace when applicable, matching Rust canonicalization. Raster/export responses must identify the exact expected private file; equivalent Windows drive/UNC spellings are accepted, while other files and directories remain refused. Reads use the host-owned expected path, not an arbitrary path selected by the worker. This also keeps staged file and artifact receipt paths consistent.
+
+A native integration regression reproduces the original `Invalid PDF raster resource` error with a symlinked system temporary directory and checks rendering, rotation and export after the fix. Additional path tests cover Windows namespace/case/UNC handling and foreign-resource rejection. Windows path logic is tested on Linux; this does not substitute for a Windows application run.
+
+The running application was also launched with the symlinked temporary directory: a three-page synthetic PDF rendered visible content, its first page rotated and repainted, and Ctrl+S saved the updated PDF successfully. The shared DOCX-branch regression suite passes 165 tests, including the eight focused native PDF tests.

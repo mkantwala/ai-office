@@ -7,10 +7,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdtemp, rm, mkdir, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { resolve, join } from 'node:path';
+import { resolve, join, win32, posix } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { openEngine } from './model.js';
+import { pdfResourcePath } from './nativePdf.js';
 import { unzipSync, strFromU8 } from '../ai-office-slides/node_modules/fflate/esm/index.mjs';
 import type { Engine } from './types.js';
 
@@ -142,4 +143,41 @@ test('PDF native image editing, camera cleanup and PDF/A report actual conversio
 			const reopened = await openEngine('pdf', 'Saved-image.pdf', await picture.export(), root); assert.ok((await reopened.renderAsync!(0, .5)).pixels!.length); reopened.dispose();
 		} finally { picture.dispose(); }
 	} finally { await close(); }
+});
+
+test('PDF renders and exports when the system temporary folder is a symlink', async () => {
+	const work = await mkdtemp(join(tmpdir(), 'sangam-pdf-temp-alias-'));
+	const directory = join(work, 'physical'), alias = join(work, 'alias');
+	const keys = process.platform === 'win32' ? ['TMP', 'TEMP'] : ['TMPDIR'];
+	const original = keys.map(key => process.env[key]);
+	let engine: Engine | undefined;
+	try {
+		await mkdir(directory); await symlink(directory, alias, process.platform === 'win32' ? 'junction' : 'dir');
+		for (const key of keys) { process.env[key] = alias; }
+		engine = await openEngine('pdf', 'Alias.pdf', fixture(), root);
+		const raster = await engine.renderAsync!(0, .5);
+		assert.ok(raster.pixels && raster.width && raster.height);
+		assert.equal(raster.pixels.length, raster.width * raster.height * 4);
+		assert.equal(Buffer.from(await engine.export()).subarray(0, 4).toString(), '%PDF');
+		await engine.execute('page_rotate', { pages: [1], degrees: 90 });
+		assert.ok((await engine.renderAsync!(0, .5)).pixels?.length);
+		assert.equal(Buffer.from(await engine.export()).subarray(0, 4).toString(), '%PDF');
+	} finally {
+		keys.forEach((key, index) => { if (original[index] === undefined) { delete process.env[key]; } else { process.env[key] = original[index]; } });
+		engine?.dispose(); await rm(work, { recursive: true, force: true });
+	}
+});
+
+test('PDF private resources accept equivalent Windows namespace paths and reject different files', () => {
+	const directory = String.raw`C:\Users\Reviewer\AppData\Local\Temp\sangam-pdf-test`;
+	assert.equal(pdfResourcePath(directory, String.raw`\\?\C:\Users\Reviewer\AppData\Local\Temp\sangam-pdf-test\raster.raw`, 'raster.raw', win32), win32.join(directory, 'raster.raw'));
+	assert.equal(pdfResourcePath(win32.toNamespacedPath(directory), win32.join(directory, 'raster.raw'), 'raster.raw', win32), win32.toNamespacedPath(win32.join(directory, 'raster.raw')));
+	assert.equal(pdfResourcePath(directory, String.raw`\\?\c:\users\reviewer\appdata\local\temp\sangam-pdf-test\snapshot.pdf`, 'snapshot.pdf', win32), win32.join(directory, 'snapshot.pdf'));
+	const unc = String.raw`\\server\share\Temp\sangam-pdf-test`;
+	assert.equal(pdfResourcePath(unc, String.raw`\\?\UNC\server\share\Temp\sangam-pdf-test\raster.raw`, 'raster.raw', win32), win32.join(unc, 'raster.raw'));
+	assert.equal(pdfResourcePath('/private/tmp/sangam-pdf-test', '/private/tmp/sangam-pdf-test/raster.raw', 'raster.raw', posix), '/private/tmp/sangam-pdf-test/raster.raw');
+	for (const reported of [String.raw`C:\Other\raster.raw`, win32.join(directory, 'input.pdf'), win32.join(directory, 'nested', 'raster.raw'), undefined, null, '', 'raster.raw\0other']) {
+		assert.throws(() => pdfResourcePath(directory, reported, 'raster.raw', win32), /Invalid PDF raster resource/);
+	}
+	assert.throws(() => pdfResourcePath('/tmp/session', '/tmp/other/snapshot.pdf', 'snapshot.pdf', posix), /Invalid PDF export resource/);
 });
