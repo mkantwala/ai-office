@@ -91,7 +91,11 @@ export class PdfCanvas {
 		action('Properties', () => this.properties(object));
 		if (object.kind === 'image' || object.type === 'image') { action('Rotate', () => this.run(object.kind === 'image' ? 'image_edit' : 'content_update', object.kind === 'image' ? { image: object.index, action: 'rotate', quarters: 1 } : { index: object.index, rotate: 90 })); }
 		action('Delete', () => this.remove(object));
-		this.place(actions, state.page, [object.rect[0], object.rect[1], object.rect[0] + 1, object.rect[1] + 1]);
+		const surface = this.pages.children[state.page] as HTMLElement, size = this.host.snapshot().dimensions[state.page], scale = surface.clientWidth / size[0];
+		const below = object.rect[1] * scale < 44, top = below ? object.rect[3] : object.rect[1];
+		this.place(actions, state.page, [object.rect[0], top, object.rect[0] + 1, top + 1]);
+		if (below) { actions.style.transform = 'translateY(8px)'; }
+		actions.style.left = Math.max(4, Math.min(object.rect[0] * scale, surface.clientWidth - actions.offsetWidth - 4)) + 'px';
 	}
 	private down(event: PointerEvent) {
 		const target = event.target as HTMLElement, page = target.closest<HTMLElement>('.page.pdf'); if (!page || target.closest('textarea,button,.pdf-object-actions,.pdf-context')) { return; }

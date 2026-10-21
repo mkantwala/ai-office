@@ -79,3 +79,13 @@ test('PDF image resize uses full placement and preserves the visible crop geomet
 		assert.deepEqual(await page.evaluate('calls.at(-1)'), { command: 'image_edit', args: { page: 1, image: 1, action: 'move', rect: [70, 70, 280, 280] }, revision: 4 });
 	} finally { await browser.close(); }
 });
+
+test('PDF selection actions stay on the paper near its top and right edges', async () => {
+	const { browser, page } = await setup();
+	try {
+		await page.evaluate(`snapshot.state.pdfObjects=[{kind:'text',index:1,type:'text',text:'Near edge',rect:[550,2,598,22]}];snapshot.state.revision++;canvas.update()`);
+		await page.locator('[data-object="text:1"]').click(); const actions = await page.getByRole('toolbar', { name: 'Selected PDF object' }).boundingBox(), surface = await page.locator('.page').boundingBox(); assert.ok(actions && surface);
+		assert.ok(actions.x >= surface.x && actions.x + actions.width <= surface.x + surface.width); assert.ok(actions.y >= surface.y);
+		await page.getByRole('button', { name: 'Properties', exact: true }).click(); assert.equal(await page.evaluate('forms.at(-1).args.paragraph'), 1);
+	} finally { await browser.close(); }
+});
