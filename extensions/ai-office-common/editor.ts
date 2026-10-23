@@ -4,10 +4,14 @@
  *--------------------------------------------------------------------------------------------*/
 
 import DOMPurify from '../ai-office-slides/node_modules/dompurify/dist/purify.es.mjs';
-import type { Kind, State, Block } from './types.js';
+import type { Kind, State, Block, Command, PdfObject } from './types.js';
 import { arrangeWordToolbar } from './wordToolbar.js';
 import { renderAgentActivity, WordAgentReveal } from './agentOverlay.js';
 import type { DocumentToolbarAction, DocumentToolbarControl } from '../../src/vs/base/browser/ui/documentToolbar/documentToolbar.js';
+import { renderPdfInspection } from './pdfInspection.js';
+import { PdfCommandForm } from './pdfCommandForm.js';
+import { PdfTools } from './pdfTools.js';
+import { PdfCanvas } from './pdfCanvas.js';
 import { WordImage } from './wordImage.js';
 import { WordTable } from './wordTable.js';
 import { WordParagraph } from './wordParagraph.js';
@@ -39,15 +43,15 @@ let toolbarControls: Record<string, HTMLButtonElement | HTMLSelectElement> = {};
 let toolbarContext = '';
 function publishToolbar() {
 	if (!appToolbar || !initialized) { return; }
-	toolbarContext = JSON.stringify([state.revision, state.selection, selected?.id]);
-	const controls: DocumentToolbarControl[] = Object.entries(toolbarControls).map(([key, control]) => ({ key, ...(['font', 'size'].includes(key) ? { currentValue: String(state.formatting?.[key as 'font' | 'size'] ?? '') } : {}), type: control instanceof HTMLSelectElement ? 'select' : 'button', label: control.getAttribute('aria-label') || control.title || control.textContent || key, ...(control instanceof HTMLButtonElement ? { text: control.textContent || '' } : {}), disabled: control.disabled, ...(control.hasAttribute('aria-pressed') ? { pressed: control.getAttribute('aria-pressed') === 'true' } : {}), ...(control instanceof HTMLSelectElement ? { options: Array.from(control.options).map(option => ({ value: option.value, label: option.textContent || '' })) } : {}) }));
+	toolbarContext = JSON.stringify([state.revision, state.selection, selected?.id, kind === 'pdf' ? selectedPdfObject?.kind : undefined, state.page]);
+	const controls: DocumentToolbarControl[] = Object.entries(toolbarControls).map(([key, control]) => ({ key, ...(['font', 'size'].includes(key) ? { currentValue: String(kind === 'pdf' ? (key === 'font' ? selected?.font : selected?.size) ?? '' : state.formatting?.[key as 'font' | 'size'] ?? '') } : {}), type: control instanceof HTMLSelectElement ? 'select' : 'button', label: control.getAttribute('aria-label') || control.title || control.textContent || key, ...(control instanceof HTMLButtonElement ? { text: control.textContent || '' } : {}), disabled: control.disabled, ...(control.hasAttribute('aria-pressed') ? { pressed: control.getAttribute('aria-pressed') === 'true' } : {}), ...(control instanceof HTMLSelectElement ? { options: Array.from(control.options).map(option => ({ value: option.value, label: option.textContent || '' })) } : {}) }));
 	send('toolbarState', { controls, context: toolbarContext, paragraphStyle: state.paragraphStyle });
 }
 function toolbarAction(action: DocumentToolbarAction, context: string, instance?: string) {
 	if (document.body.dataset.documentInstance && instance !== document.body.dataset.documentInstance || context !== toolbarContext) { publishToolbar(); message('The document selection changed. Choose the formatting action again.'); return; }
 	if (action.control === 'table' && kind === 'word' && Number.isInteger(action.rows) && Number.isInteger(action.cols) && action.rows! >= 1 && action.rows! <= 20 && action.cols! >= 1 && action.cols! <= 10) { execute('insert.table', { rows: action.rows, cols: action.cols, borders: true }); focusWordInput(); return; }
-	if (action.control === 'size' && kind === 'word' && typeof action.value === 'string' && /^\d+(?:\.\d+)?$/.test(action.value) && Number(action.value) >= 1 && Number(action.value) <= 400 && !toolbarControls.size?.disabled) { execute('format.size', { size: Number(action.value) }); focusWordInput(); return; }
-	if (action.control === 'color' && kind === 'word' && typeof action.value === 'string' && /^[0-9a-f]{6}$/i.test(action.value) && !toolbarControls.color?.disabled) { execute('format.color', { color: action.value }); focusWordInput(); return; }
+	if (action.control === 'size' && (kind === 'word' || kind === 'pdf') && typeof action.value === 'string' && /^\d+(?:\.\d+)?$/.test(action.value) && Number(action.value) >= 1 && Number(action.value) <= 400 && !toolbarControls.size?.disabled) { if (kind === 'pdf') { pdfCanvas.format({ size: Number(action.value) }); } else { execute('format.size', { size: Number(action.value) }); } focusWordInput(); return; }
+	if (action.control === 'color' && (kind === 'word' || kind === 'pdf') && typeof action.value === 'string' && /^[0-9a-f]{6}$/i.test(action.value) && !toolbarControls.color?.disabled) { if (kind === 'pdf') { pdfCanvas.format({ color: '#' + action.value }); } else { execute('format.color', { color: action.value }); } focusWordInput(); return; }
 	const control = toolbarControls[action.control]; if (!control || control.disabled) { return; }
 	if (control instanceof HTMLSelectElement) { if (!Array.from(control.options).some(option => option.value === action.value && option.value)) { return; } control.value = action.value!; control.dispatchEvent(new Event('change')); }
 	else { control.click(); }
@@ -67,6 +71,24 @@ const wordTable = new WordTable(pages, point, place, execute, ask, focusWordInpu
 	(request, args) => send('tablePreview', { request, args }),
 	at => !!state.rects?.some(r => r.page === at.page && at.x >= r.x && at.x <= r.x + r.width && at.y >= r.y && at.y <= r.y + r.height));
 const wordImage = new WordImage(pages, point, place, execute, target => send('image', { replace: true, target }), focusWordInput, page => page.clientWidth / dimensions[Number(page.dataset.page)][0]);
+
+let documentCommands: Command[] = [];
+const resourcePickers = new Map<string, (uri: string | undefined) => void>();
+const pdfCommandForm = new PdfCommandForm(() => ({ commands: documentCommands, total: dimensions.length, revision: state.revision }), (command, args, revision) => send('execute', { command, args, revision, inspect: true }), folders => new Promise(resolve => { const request = String(Date.now()) + ':' + resourcePickers.size; resourcePickers.set(request, resolve); send('pdfPickResource', { request, folders }); }));
+const pdfTools = new PdfTools(() => ({ total: dimensions.length, page: currentPage, revision: state.revision }), (command, args, revision) => send('execute', { command, args, revision }), () => pdfCommandForm.open());
+let selectedPdfObject: PdfObject | undefined;
+const pdfCanvas = new PdfCanvas(pages, {
+ snapshot: () => ({ state, dimensions }),
+ execute: (command, args, revision) => send('execute', { command, args, revision }),
+ form: (command, initial) => pdfCommandForm.open(command, initial),
+ select: (block, object) => { selected = block; selectedPdfObject = object; publishToolbar(); },
+ page: page => { currentPage = page; execute('select.page', { page: page + 1 }); },
+ message: text => { if (text) { el('hint').textContent = text; } else { defaultHint(); } },
+ organize: () => pdfTools.open()
+});
+const pdfInspection = document.createElement('details'); pdfInspection.className = 'pdf-inspection'; pdfInspection.hidden = true; pages.before(pdfInspection);
+const pdfArtifacts = document.createElement('details'); pdfArtifacts.className = 'pdf-artifacts'; pdfArtifacts.hidden = true; pages.before(pdfArtifacts);
+
 let wordParagraph: WordParagraph | undefined;
 let kind: Kind;
 let state: State = { revision: -1 };
@@ -123,7 +145,7 @@ function typeWordText(text: string) {
 	wordText += text;
 	if (!wordTextTimer) { wordTextTimer = setTimeout(flushWordInput, 0); }
 }
-window.addEventListener('pagehide', () => { flushWordInput(); disposeToolbar?.(); wordParagraph?.dispose(); wordPageSetup?.dispose(); wordReview.dispose(); wordTable.dispose(); wordImage.dispose(); clearTimeout(activityTimer); agentReveal.clear(); clearAgent(); }, { once: true });
+window.addEventListener('pagehide', () => { flushWordInput(); disposeToolbar?.(); wordParagraph?.dispose(); wordPageSetup?.dispose(); wordReview.dispose(); wordTable.dispose(); wordImage.dispose(); pdfCanvas.dispose(); pdfTools.dispose(); pdfCommandForm.dispose(); for (const resolve of resourcePickers.values()) { resolve(undefined); } resourcePickers.clear(); clearTimeout(activityTimer); agentReveal.clear(); clearAgent(); }, { once: true });
 window.addEventListener('blur', flushWordInput);
 function clearActivityPreview() {
 	if (!agentRects.length && agentIntent === undefined && activityTimer === undefined) { return; }
@@ -140,13 +162,14 @@ function execute(command: string, args: Record<string, unknown> = {}) {
 }
 function message(error: unknown) { el('error').hidden = false; el('error').textContent = String(error); }
 function selectionArgs() {
-	return kind === 'pdf' ? { page: currentPage + 1, paragraph: selected?.id } :
+	return kind === 'pdf' ? { page: currentPage + 1, ...(selectedPdfObject?.kind === 'added' ? { index: selectedPdfObject.index } : { paragraph: selected?.id }) } :
 		{ page: currentPage + 1, shape: selected?.id, row: selected?.row, col: selected?.col, ...(activeEditor && activeEditor.selectionEnd > activeEditor.selectionStart ? { range: { start: activeEditor.selectionStart, end: activeEditor.selectionEnd } } : {}) };
 }
 function flushText() {
+	if (kind === 'pdf') { pdfCanvas.flush(); return; }
 	if (!pendingText || !activeEditor || !selected) { return; }
 	const text = activeEditor.value; pendingText = false;
-	execute(kind === 'pdf' ? 'text_edit' : 'text.replace', { ...selectionArgs(), text });
+	execute('text.replace', { ...selectionArgs(), text });
 	selected.text = text;
 }
 function closeText() { flushText(); activeEditor?.remove(); activeEditor = undefined; }
@@ -180,14 +203,15 @@ function menu(label: string, items: [string, string][], action: (value: string) 
 }
 function needsBox() { if (kind !== 'word' && !selected) { message('Click a text box or paragraph first.'); return true; } return false; }
 function format(property: string, value: unknown) {
+	if (kind === 'pdf') { pdfCanvas.format({ [property]: value }); return; }
 	if (needsBox()) { return; } flushText();
 	if (kind === 'word') { execute('format.' + property, { [property === 'font' ? 'name' : property === 'size' ? 'size' : 'value']: value }); keyboard.focus({ preventScroll: true }); }
-	else { execute(kind === 'pdf' ? 'text_edit' : 'format.text', { ...selectionArgs(), [property]: value }); }
+	else { execute('format.text', { ...selectionArgs(), [property]: value }); }
 }
 function buildToolbar() {
 	disposeToolbar?.();
 	toolbar.replaceChildren();
-	const text = button('Text', 'Insert text', () => { if (kind === 'word') { keyboard.focus(); return; } void (async () => { const text = await ask('New text'); if (!text) { return; } execute(kind === 'pdf' ? 'page_add_text' : 'insert.text', { page: currentPage + 1, text, ...(kind === 'pdf' ? { at: [50, 50], width: 300 } : {}) }); })(); });
+	const text = button('Text', 'Insert text', () => { if (kind === 'word') { keyboard.focus(); return; } if (kind === 'pdf') { pdfCanvas.setMode('text'); return; } void (async () => { const text = await ask('New text'); if (!text) { return; } execute('insert.text', { page: currentPage + 1, text }); })(); });
 	const style = menu('Normal text', [['Normal', 'Normal text'], ...(kind === 'word' ? [['Title', 'Title'], ['Subtitle', 'Subtitle']] as [string, string][] : []), ['Heading1', 'Heading 1'], ['Heading2', 'Heading 2'], ['Heading3', 'Heading 3']], style => execute('para.style', { style }), kind !== 'word');
 	style.id = 'paragraph-style';
 	const font = menu('Font', (kind === 'pdf' ? [['helvetica', 'Sans'], ['times', 'Serif'], ['courier', 'Mono']] : ['Aptos', 'Arial', 'Calibri', 'Cambria', 'Georgia', 'Times New Roman', 'Verdana', 'Courier New'].map(font => [font, font])) as [string, string][], font => format('font', font));
@@ -203,17 +227,19 @@ function buildToolbar() {
 	}
 	const strike = kind === 'word' ? button('S', 'Strikethrough', () => execute('format.strikethrough')) : undefined;
 	const clear = kind === 'word' ? button('Clear', 'Clear Formatting', () => execute('format.clear')) : undefined;
-	const color = kind === 'word' ? menu('Text Color', [['auto', 'Automatic'], ['000000', 'Black'], ['FFFFFF', 'White'], ['C00000', 'Red'], ['E97132', 'Orange'], ['FFFF00', 'Yellow'], ['008000', 'Green'], ['0070C0', 'Blue'], ['7030A0', 'Purple'], ['808080', 'Gray']], color => execute('format.color', { color })) : undefined;
+	const color = kind !== 'slides' ? menu('Text Color', [...(kind === 'word' ? [['auto', 'Automatic']] as [string, string][] : []), ['000000', 'Black'], ['FFFFFF', 'White'], ['C00000', 'Red'], ['E97132', 'Orange'], ['FFFF00', 'Yellow'], ['008000', 'Green'], ['0070C0', 'Blue'], ['7030A0', 'Purple'], ['808080', 'Gray']], color => kind === 'pdf' ? pdfCanvas.format({ color: '#' + color }) : execute('format.color', { color })) : undefined;
 	const highlight = kind === 'word' ? menu('Text Highlight', [['none', 'No highlight'], ['yellow', 'Yellow'], ['brightGreen', 'Bright green'], ['turquoise', 'Turquoise'], ['pink', 'Pink'], ['blue', 'Blue'], ['red', 'Red'], ['gray25', 'Light gray'], ['gray50', 'Gray']], color => execute('format.highlight', { color })) : undefined;
 	const align = menu('Align', ['left', 'center', 'right', 'justify'].map(x => [x, x]), value => {
-		if (needsBox()) { return; } flushText(); execute(kind === 'pdf' ? 'text_edit' : 'para.align', kind === 'word' ? { value } : { ...selectionArgs(), [kind === 'pdf' ? 'align' : 'value']: value });
+		if (kind === 'pdf') { pdfCanvas.format({ align: value }); return; }
+		if (needsBox()) { return; } flushText(); execute('para.align', kind === 'word' ? { value } : { ...selectionArgs(), value });
 	});
 	const list = menu('List', [['bullet', 'Bullets'], ['number', 'Numbered'], ['none', 'No list']], value => {
 		if (needsBox()) { return; } flushText();
 		execute(kind === 'word' ? (value === 'number' ? 'para.numbering' : 'para.bullets') : 'para.list', kind === 'word' ? { off: value === 'none' } : { ...selectionArgs(), value });
 	}, kind === 'pdf');
 	const spacing = menu('Spacing', [['1', 'Single'], ['1.5', '1.5 lines'], ['2', 'Double']], value => {
-		if (needsBox()) { return; } flushText(); execute(kind === 'word' ? 'para.lineSpacing' : kind === 'pdf' ? 'text_edit' : 'para.spacing', kind === 'word' ? { value: Number(value) } : { ...selectionArgs(), [kind === 'pdf' ? 'line_spacing' : 'value']: Number(value) });
+		if (kind === 'pdf') { pdfCanvas.format({ line_spacing: Number(value) }); return; }
+		if (needsBox()) { return; } flushText(); execute(kind === 'word' ? 'para.lineSpacing' : 'para.spacing', kind === 'word' ? { value: Number(value) } : { ...selectionArgs(), value: Number(value) });
 	});
 	const divider = document.createElement('span'); divider.className = 'divider'; toolbar.append(divider);
 	const table = button('Table', kind === 'pdf' ? 'PDF table insertion is not available' : 'Insert table', () => {
@@ -225,19 +251,20 @@ function buildToolbar() {
 			flushText(); execute('insert.table', { rows: Number(match[1]), cols: Number(match[2]), page: currentPage + 1 });
 		})();
 	}, kind === 'pdf');
-	const image = button('Image', 'Insert image', () => { flushText(); send('image', { page: currentPage + 1 }); });
+	const image = button('Image', 'Insert image', () => { if (kind === 'pdf') { pdfCanvas.setMode('image'); return; } flushText(); send('image', { page: currentPage + 1 }); });
 	const link = button('Link', 'Insert link', () => {
+		if (kind === 'pdf') { pdfCanvas.setMode('link'); return; }
 		void (async () => {
 			if (needsBox()) { return; } const url = await ask('Link address', 'https://'); if (!url) { return; }
 			try { if (!['https:', 'http:', 'mailto:'].includes(new URL(url).protocol)) { throw new Error(); } } catch { message('Enter an http, https or mailto address.'); return; }
-			flushText(); execute(kind === 'pdf' ? 'link_add' : 'insert.link', kind === 'word' ? { url } : { ...selectionArgs(), ...(kind === 'pdf' ? { paragraph: undefined, rect: selected?.rect } : {}), url });
+			flushText(); execute('insert.link', kind === 'word' ? { url } : { ...selectionArgs(), url });
 		})();
 	});
 	const comment = button('Comment', 'Add comment', () => {
+		if (kind === 'pdf') { pdfCanvas.setMode('note'); return; }
 		void (async () => {
 			const text = await ask('Comment'); if (!text?.trim()) { return; } flushText();
-			execute(kind === 'word' ? 'review.newComment' : kind === 'pdf' ? 'comment_add' : 'insert.comment',
-				kind === 'word' ? { text } : kind === 'pdf' ? { page: currentPage + 1, type: 'note', at: selected?.rect.slice(0, 2) || [40, 40], contents: text } : { page: currentPage + 1, text });
+			execute(kind === 'word' ? 'review.newComment' : 'insert.comment', kind === 'word' ? { text } : { page: currentPage + 1, text });
 		})();
 	});
 	const spacer = document.createElement('span'); spacer.className = 'spacer'; toolbar.append(spacer);
@@ -249,7 +276,7 @@ function buildToolbar() {
 	const header = kind === 'word' ? button('Header', 'Edit Header', () => execute('insert.editHeader', { page: currentPage })) : undefined;
 	const footer = kind === 'word' ? button('Footer', 'Edit Footer', () => execute('insert.editFooter', { page: currentPage })) : undefined;
 	const versions = kind === 'word' ? button('History', 'Document Version History', () => send('versions')) : undefined;
-	let properties: HTMLButtonElement | undefined;
+	let properties: HTMLButtonElement | undefined = kind === 'pdf' ? button('PDF Tools', 'PDF Tools · Organize Pages, Crop, Watermarks and Page Numbers', () => { closeText(); pdfCanvas.openTools(); }) : undefined;
 	if (kind === 'word') {
 		document.body.classList.add('word-document');
 		wordPageSetup = new WordPageSetup((patch, snapshot) => execute('layout.pageProperties', { ...patch, ifRevision: snapshot.revision, ifSelection: snapshot.selection }), focusWordInput);
@@ -279,6 +306,7 @@ function makePages() {
 				page.dataset.overflow = 'true'; page.style.setProperty('--paper-width', `${paper.width * 4 / 3}px`); page.style.setProperty('--paper-height', `${paper.height * 4 / 3}px`);
 			}
 		}
+		if (kind === 'pdf') { page.tabIndex = -1; }
 		page.setAttribute('aria-label', (kind === 'slides' ? 'Slide ' : 'Page ') + (index + 1));
 		const content = document.createElement(kind === 'slides' ? 'img' : 'canvas'); page.append(content); pages.append(page);
 		page.addEventListener('pointerdown', event => {
@@ -355,7 +383,7 @@ function overlay() {
 			if (revealWordCaret) { node.scrollIntoView({ block: 'nearest', inline: 'nearest' }); revealWordCaret = false; }
 			const box = node.getBoundingClientRect(); keyboard.style.left = box.x + 'px'; keyboard.style.top = box.y + 'px';
 		}
-	} else {
+	} else if (kind !== 'pdf') {
 		for (const block of state.blocks || []) {
 			const node = document.createElement('button'); node.className = 'block'; node.setAttribute('aria-label', 'Edit ' + (block.text.slice(0, 50) || 'text box'));
 			place(node, state.page || 0, block.rect[0], block.rect[1], block.rect[2] - block.rect[0], block.rect[3] - block.rect[1]);
@@ -371,7 +399,7 @@ function overlay() {
 		}
 	}
 }
-function defaultHint() { el('hint').textContent = kind === 'word' ? '' : 'Click text to edit · Ctrl+Enter to finish · Ctrl+S to save'; }
+function defaultHint() { el('hint').textContent = kind !== 'slides' ? '' : 'Click text to edit · Ctrl+Enter to finish · Ctrl+S to save'; }
 let agentTimer: ReturnType<typeof setTimeout> | undefined;
 function clearAgent() {
 	clearTimeout(agentTimer); agentTimer = undefined;
@@ -436,6 +464,8 @@ window.addEventListener('message', event => {
 		}
 		agentReveal.queue(data.revision, rects); renderNext(); return;
 	}
+	if (data.type === 'pdfInspection') { pdfInspection.hidden = false; pdfInspection.open = true; const summary = document.createElement('summary'); summary.textContent = 'PDF Inspection'; pdfInspection.replaceChildren(summary); const body = document.createElement('div'); renderPdfInspection(body, data.result); pdfInspection.append(body); return; }
+	if (data.type === 'pdfResource') { const resolve = resourcePickers.get(data.request); resourcePickers.delete(data.request); resolve?.(data.uri); return; }
 	if (data.type === 'agentActivity') {
 		if (data.revision !== undefined && data.revision !== state.revision) { return; }
 		clearTimeout(activityTimer); activityTimer = undefined; agentLabel = typeof data.label === 'string' ? data.label.slice(0, 40) : 'Agent';
@@ -448,7 +478,7 @@ window.addEventListener('message', event => {
 	}
 	if (data.type === 'draft') { wordReview.updateDrafts(data.sections, data.label, data.workingId, data.expiresAt); wordReview.layout(dimensions); overlay(); agentOverlay(); followAgentChange(data.request, '.word-draft-zone[data-working="true"]'); return; }
 	if (data.type === 'review') { wordReview.update(data.review); showReviewSummary(); wordReview.layout(dimensions); overlay(); agentOverlay(); return; }
-	if (data.type === 'error') { message(data.error); renderBusy = false; return; }
+	if (data.type === 'error') { if (kind === 'pdf') { pdfCanvas.failed(); } message(data.error); renderBusy = false; return; }
 	if (data.type === 'saved') { el('hint').textContent = data.pendingSections ? `Saved · ${data.pendingSections} pending sections are editor-only` : 'Saved'; return; }
 	if (data.type === 'agent') { if (data.region) { showAgent(data.region, data.label); } return; }
 	if (data.type === 'state') {
@@ -457,13 +487,14 @@ window.addEventListener('message', event => {
 		const regionChanged = state.editingRegion !== data.state.editingRegion;
 		if (changed) { agentReveal.clear(); clearActivityPreview(); }
 		const repaginated = JSON.stringify(dimensions) !== JSON.stringify(data.pages);
-		state = data.state; dimensions = data.pages; wordTable.update(state.revision); wordImage.update(state.revision, state.image);
+		state = data.state; dimensions = data.pages; if (Array.isArray(data.commands)) { documentCommands = data.commands; }
+		if (kind === 'pdf' && state.pdfArtifacts?.length) { pdfArtifacts.hidden = false; pdfArtifacts.replaceChildren(); const summary = document.createElement('summary'); summary.textContent = `Generated Files (${state.pdfArtifactCount || state.pdfArtifacts.length})`; pdfArtifacts.append(summary); for (const artifact of state.pdfArtifacts) { const open = document.createElement('button'); open.textContent = artifact.name; open.addEventListener('click', () => send('pdfOpenArtifact', { uri: artifact.uri })); pdfArtifacts.append(open); } if ((state.pdfArtifactCount || 0) > state.pdfArtifacts.length) { const more = document.createElement('button'); more.textContent = 'Show All Generated Files'; more.addEventListener('click', () => send('pdfArtifactList')); pdfArtifacts.append(more); } } if (kind === 'pdf') { currentPage = Math.min(state.page ?? currentPage, Math.max(0, dimensions.length - 1)); } wordTable.update(state.revision); wordImage.update(state.revision, state.image);
 		revealWordCaret = kind === 'word' && (data.command?.startsWith('text.') || data.command === 'insert.table' || data.command === 'insert.editHeader' || data.command === 'insert.editFooter');
 		const commentsOpen = comments.open;
 		comments.replaceChildren(); comments.open = commentsOpen; comments.hidden = kind === 'word' || !state.comments?.length;
 		const summary = document.createElement('summary'); summary.textContent = `Comments (${state.comments?.length || 0})`; comments.append(summary);
 		for (const comment of state.comments || []) { const p = document.createElement('p'); p.textContent = (comment.resolved ? 'Resolved · ' : '') + (comment.author || 'Comment') + ': ' + comment.text; if (typeof comment.parentId === 'number') { p.style.marginInlineStart = '24px'; } comments.append(p); }
-		if (!initialized) { initialized = true; buildToolbar(); }
+		if (!initialized) { initialized = true; if (kind === 'pdf') { document.body.classList.add('pdf-document'); } buildToolbar(); }
 		if (kind === 'word') {
 			for (const [key, value] of Object.entries({ bold: state.formatting?.bold, italic: state.formatting?.italic, underline: state.formatting?.underline, strike: state.formatting?.strike })) { if (typeof value === 'boolean') { toolbarControls[key]?.setAttribute('aria-pressed', String(value)); } }
 			const size = toolbarControls.size; if (size) { size.dataset.currentSize = String(state.formatting?.size ?? ''); toolbarControls.font.dataset.currentFont = state.formatting?.font || ''; size.dispatchEvent(new Event('formatstate')); }
@@ -475,6 +506,7 @@ window.addEventListener('message', event => {
 		if (repaginated || !pages.children.length) { closeText(); makePages(); }
 		if (changed || regionChanged) { rendered.clear(); renderNext(); }
 		if (kind === 'word') { wordReview.layout(dimensions); wordParagraph?.update(state, dimensions); wordPageSetup?.update(state); }
+		if (kind === 'pdf') { pdfCanvas.update(); }
 		overlay(); agentOverlay(); publishToolbar();
 		if (firstState && document.hasFocus()) { focusWordInput(); }
 	} else if (data.type === 'rendered') {

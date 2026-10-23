@@ -6,7 +6,7 @@
 import { createServer, type Server } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 
-export const documentToolNames = new Set(['office_document_read', 'office_document_edit', 'office_document_help', 'office_document_format', 'office_document_history', 'office_document_draft', 'office_document_comments', 'office_document_activity']);
+export const documentToolNames = new Set(['office_document_tools', 'office_document_run', 'office_document_read', 'office_document_edit', 'office_document_help', 'office_document_format', 'office_document_history', 'office_document_draft', 'office_document_comments', 'office_document_activity']);
 export interface DocumentTool { name: string; description: string; inputSchema: object }
 export interface DocumentToolResult { content: { type: 'text'; text: string }[]; isError?: boolean }
 

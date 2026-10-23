@@ -14,7 +14,15 @@ export interface ImageGeometry {
 	parentId: string; offset: number; page: number; x: number; y: number; width: number; height: number;
 	alt: string; title: string; decorative: boolean; crop: number[]; wrap: string; rotation: number; flipH: boolean; flipV: boolean;
 }
+export interface Raster { pixels?: Uint8Array; width?: number; height?: number; svg?: string; tables?: TableGeometry[]; images?: ImageGeometry[] }
+export interface PdfObject { kind: 'text' | 'image' | 'added'; index: number; type: string; rect: number[]; fullRect?: number[]; text?: string | null }
 export interface State {
+	pdfObjects?: PdfObject[];
+	pdfRotation?: number;
+	pdfObjectError?: string;
+	pdfArtifactCount?: number;
+	pdfNewArtifacts?: { uri: string; name: string; mime: string; size: number }[];
+	pdfArtifacts?: { uri: string; name: string; mime: string; size: number }[];
 	image?: ImageGeometry | null;
 	pageSetup?: PageSetupState;
 	editingRegion?: 'body' | 'header' | 'footer';
@@ -33,7 +41,7 @@ export interface State {
 	paragraphStyle?: string;
 	comments?: { commentId?: number; parentId?: number | null; resolved?: boolean; author?: string; text: string }[];
 }
-export interface Command { id: string; label: string; params?: unknown }
+export interface Command { id: string; label: string; description?: string; params?: unknown; readOnly?: boolean; destructive?: boolean }
 export interface DocumentAgent {
 	read(args: Record<string, unknown>): unknown;
 	edit(args: Record<string, unknown>): Promise<State>;
@@ -65,6 +73,8 @@ export interface Engine {
 	commands(): Command[];
 	execute(id: string, args: Record<string, unknown>): Promise<State>;
 	export(): Promise<Uint8Array>;
-	render(page: number, scale: number): { pixels?: Uint8Array; width?: number; height?: number; svg?: string; tables?: TableGeometry[]; images?: ImageGeometry[] };
+	saved?(): Promise<State>;
+	render(page: number, scale: number): Raster;
+	renderAsync?(page: number, scale: number): Promise<Raster>;
 	dispose(): void;
 }

@@ -1368,6 +1368,84 @@
 					],
 					"additionalProperties": false
 				}
+			},
+			{
+				"name": "office_document_tools",
+				"toolReferenceName": "officeDocumentTools",
+				"displayName": "Discover Document Tools",
+				"userDescription": "Discover supported operations for an open document.",
+				"modelDescription": "Compact format-neutral discovery. Omit category/command for category counts; select category for up to 40 command summaries; select command for its exact current schema. Returns document URI and version. Never load every schema. PDF operations run through office_document_run; Word retains its guarded semantic tools.",
+				"canBeReferencedInPrompt": true,
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"operation": {"type": "string", "enum": ["discover", "open", "list"], "description": "Default discover. Open a generated PDF or Word file by URI, or list open files of the selected kind."},
+						"uri": {
+							"type": "string"
+						},
+						"kind": {
+							"type": "string",
+							"enum": [
+								"word",
+								"pdf"
+							]
+						},
+						"category": {
+							"type": "string"
+						},
+						"command": {
+							"type": "string"
+						},
+						"resultId": {"type": "string", "description": "Read a cached run receipt without repeating the operation."},
+						"resultPath": {"type": "string", "description": "JSON pointer into the cached receipt, e.g. /result/0 or /artifacts."},
+						"offset": {
+							"type": "integer",
+							"minimum": 0
+						},
+						"limit": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 40
+						}
+					},
+					"additionalProperties": false
+				}
+			},
+			{
+				"name": "office_document_run",
+				"toolReferenceName": "officeDocumentRun",
+				"displayName": "Run Document Operation",
+				"userDescription": "Run a discovered PDF operation.",
+				"modelDescription": "Execute one discovered PDF command against the open document using its exact schema. All mutations require the current version returned by discovery or the last run and use native Undo. Text reads require explicit ranges of at most 10 pages. Never send document/file paths or internal doc IDs in params. Results are bounded. Do not use for Word; retain guarded block edits there.",
+				"canBeReferencedInPrompt": true,
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"uri": {
+							"type": "string"
+						},
+						"kind": {
+							"type": "string",
+							"enum": [
+								"pdf"
+							]
+						},
+						"command": {
+							"type": "string"
+						},
+						"version": {
+							"type": "string"
+						},
+						"params": {
+							"type": "object"
+						}
+					},
+					"required": [
+						"command",
+						"params"
+					],
+					"additionalProperties": false
+				}
 			}
 		],
 		"chatSkills": [
@@ -1392,7 +1470,7 @@
 		"languageModelChatProviders": [
 			{
 				"vendor": "ai-office-cloudflare",
-				"displayName": "Cloudflare \u00b7 Sangam One",
+				"displayName": "Cloudflare · Sangam One",
 				"managementCommand": "aiOffice.cloudflare.configure"
 			}
 		],

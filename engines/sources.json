@@ -7,8 +7,8 @@
   },
   "pdfcraft": {
     "repository": "https://github.com/storytold/pdfcraft.git",
-    "revision": "0a0986483378b57d62103a36490bd66166d32c8f",
+    "revision": "416495145354828a9efefc39df381ba3ee8f864f",
     "patch": "pdfcraft.patch",
-    "sha256": "0a1c9f11442210c8c87ea7bffb9667e12e315042d88c0eb55434431f4c350041"
+    "sha256": "82d3e5dc12e98ad88a3634c06640baa0b80be1411e6f8bfe2af2d588b5073431"
   }
 }

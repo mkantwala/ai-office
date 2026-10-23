@@ -137,7 +137,7 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 
 test('Word tools serialize edits, reject stale versions, clear activity, and respect cancellation and trust', async () => {
 	const tools = new Map(); const edits = []; const messages = []; const commands = new Map();
-	let provider;
+	let provider; let pdfForHistory; const providers = new Map();
 	const uri = value => ({ scheme: 'file', path: value, fsPath: value, toString: () => value });
 	const vscode = {
 		Uri: { parse: uri, joinPath: (base, ...parts) => uri(path.posix.resolve(base.path, ...parts)) },
@@ -146,10 +146,11 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		LanguageModelTextPart: class { constructor(value) { this.value = value; } },
 		LanguageModelToolResult: class { constructor(content) { this.content = content; } },
 		lm: { registerTool: (name, value) => { tools.set(name, value); return { dispose() { } }; } },
-		window: { registerCustomEditorProvider: (_id, value) => { provider = value; return { dispose() { } }; } },
+		window: { registerCustomEditorProvider: (_id, value) => { provider = value; providers.set(_id, value); return { dispose() { } }; } },
 		commands: {
 			registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() { } }; }, executeCommand: async (id, ...args) => {
 				if (id === '_aiOffice.documentHistory') {
+					if (pdfForHistory && args[0] === pdfForHistory.uri) { const event = edits.filter(edit => edit.document === pdfForHistory)[pdfForHistory.history.cursor - 1]; await event.undo(); return true; }
 					assert.equal(args[0], doc.uri, 'History must cross the extension boundary as a URI object so remote schemes translate');
 					if (args[1] === 'undo') { await edits[doc.history.cursor - 1].undo(); } else { await edits[doc.history.cursor].redo(); }
 					return true;
@@ -160,8 +161,10 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		workspace: { isTrusted: true, fs: { stat: async () => ({ size: 32 }), readFile: async () => Buffer.from('Initial content') } }
 	};
 	class EngineClient {
-		text = 'Initial content'; revision = 0; past = []; future = []; failNextRead = false; comments = [{ commentId: 0, text: 'Original comment', resolved: true }];
+		kind = 'word'; text = 'Initial content'; revision = 0; past = []; future = []; failNextRead = false; comments = [{ commentId: 0, text: 'Original comment', resolved: true }];
 		async request(method, args) {
+			if (method === 'open') { this.kind = args.kind; }
+			if (method === 'execute' && this.kind === 'pdf' && args.command === 'page_rotate') { this.past.push(this.text); this.revision++; }
 			if (method === 'agentRead' && args.args.operation === 'comments') { return { comments: this.comments.map(comment => ({ ...comment })) }; }
 			if (method === 'agentRead') { if (this.failNextRead) { this.failNextRead = false; throw new Error('Preview read failed'); } return { blocks: [{ id: 'internal-id', parentId: 'body', text: this.text }] }; }
 			if (method === 'agentRects') { return [{ page: 0, x: 72, y: 72, width: 120, height: 20 }]; }
@@ -177,10 +180,10 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 				this.past.push(this.text); this.future = []; this.text = args.args.text; this.revision++;
 				this.failNextRead = this.text === 'Applied despite preview failure';
 			}
-			if (method === 'execute' && args.command === 'edit.undo') { this.future.push(this.text); this.text = this.past.pop(); this.revision++; }
-			if (method === 'execute' && args.command === 'edit.redo') { this.past.push(this.text); this.text = this.future.pop(); this.revision++; }
+			if (method === 'execute' && ['edit.undo', 'edit_undo'].includes(args.command)) { this.future.push(this.text); this.text = this.past.pop(); this.revision++; }
+			if (method === 'execute' && ['edit.redo', 'edit_redo'].includes(args.command)) { this.past.push(this.text); this.text = this.future.pop(); this.revision++; }
 			if (method === 'export') { return Buffer.from(this.text); }
-			return { pages: [[612, 792]], state: { revision: this.revision, undo: this.past.length > 0, redo: this.future.length > 0, undoDepth: this.past.length }, commands: [{ id: 'format.bold', label: 'Bold', params: { value: 'boolean' } }] };
+			return { pages: [[612, 792]], state: { revision: this.revision, undo: this.past.length > 0, redo: this.future.length > 0, undoDepth: this.past.length }, commands: this.kind === 'pdf' ? [{ id: 'page_rotate', label: 'Rotate pages', readOnly: false }, { id: 'text_extract', label: 'Read text', readOnly: true }] : [{ id: 'format.bold', label: 'Bold', params: { value: 'boolean' } }] };
 		}
 		dispose() { }
 	}
@@ -188,14 +191,20 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 	try {
 		Module._load = (id, ...args) => id === 'vscode' ? vscode : id === './client.js' ? { EngineClient } : id === './agentRequest.js' ? require('./agentRequest.ts') : originalLoad(id, ...args);
 		delete require.cache[require.resolve('../../.build/office-provider.cjs')];
-		require('../../.build/office-provider.cjs').registerEditors({ extensionUri: uri('/extension'), subscriptions: [] }, ['word']);
+		require('../../.build/office-provider.cjs').registerEditors({ extensionUri: uri('/extension'), subscriptions: [] }, ['pdf', 'word']);
 	} finally { Module._load = originalLoad; }
 	const doc = await provider.openCustomDocument(uri('/memo.docx'), {});
 	const token = { isCancellationRequested: false };
 	const invoke = async (name, input, cancellation = token) => JSON.parse((await tools.get('office_document_' + name).invoke({ input }, cancellation)).content[0].value);
 	try {
 		doc.panels.add({ active: true, webview: { postMessage: async message => { messages.push(message); } } });
-		assert.equal(tools.size, 9);
+		assert.equal(tools.size, 11);
+		assert.ok(tools.has('office_document_tools') && tools.has('office_document_run'));
+		const discovery = await invoke('tools', { uri: '/memo.docx' });
+		assert.equal(discovery.uri, '/memo.docx');
+		assert.ok(discovery.categories.length);
+		assert.equal(discovery.commands, undefined, 'Initial discovery never loads every schema');
+		assert.match((await invoke('run', { uri: '/memo.docx', command: 'format.bold', params: {} })).error, /guarded document tools for Word/);
 		const initial = await invoke('read', {});
 		assert.equal(initial.blocks[0].text, 'Initial content');
 		const other = await provider.openCustomDocument(uri('/other.docx'), {});
@@ -396,6 +405,26 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 			assert.equal(result.uri, '/new.docx'); assert.equal(result.blocks[0].text, 'Initial content');
 			assert.match((await invoke('read', { operation: 'open', uri: '/other.pdf' })).error, /DOCX URI/);
 		} finally { opened?.dispose(); }
+
+		const pdf = await providers.get('aiOffice.pdf').openCustomDocument(uri('/audit.pdf'), {}); pdfForHistory = pdf;
+		try {
+			pdf.panels.add({ visible: false, webview: { postMessage: () => { throw new Error('Hidden PDF webviews must not gate engine commands'); } } });
+			const catalog = await invoke('tools', { uri: '/audit.pdf' });
+			assert.equal(catalog.kind, 'pdf');
+			assert.deepEqual(catalog.categories, [{ category: 'pages', count: 1 }, { category: 'content', count: 1 }].sort((a, b) => a.category.localeCompare(b.category)));
+			const run = { uri: '/audit.pdf', command: 'page_rotate', params: { pages: [1], degrees: 90 }, version: catalog.version };
+			const applied = await invoke('run', run); assert.equal(applied.completed, true); assert.equal(applied.modified, true);
+			assert.match((await invoke('run', run)).error, /Document changed/);
+			assert.match((await invoke('run', { uri: '/audit.pdf', command: 'text_extract', params: {} })).error, /explicit page ranges/);
+			assert.equal((await invoke('run', { uri: '/audit.pdf', command: 'text_extract', params: { pages: [1] } })).modified, false);
+			vscode.workspace.isTrusted = false;
+			assert.match((await invoke('run', { ...run, version: applied.version })).error, /Trust this workspace/);
+			vscode.workspace.isTrusted = true;
+			await assert.rejects(invoke('run', { ...run, version: applied.version }, { isCancellationRequested: true }), /Cancelled/);
+			const eventCount = edits.length;
+			assert.equal((await invoke('run', { uri: '/audit.pdf', command: 'edit_undo', version: applied.version, params: {} })).completed, true);
+			assert.equal(pdf.history.cursor, 0); assert.equal(edits.length, eventCount, 'Agent Undo navigates VS Code history without recording a new edit');
+		} finally { pdf.dispose(); }
 
 	} finally { doc.dispose(); }
 });

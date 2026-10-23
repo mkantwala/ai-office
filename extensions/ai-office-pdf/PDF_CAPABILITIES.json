@@ -1,0 +1,702 @@
+{
+  "repository": "https://github.com/storytold/pdfcraft",
+  "revision": "416495145354828a9efefc39df381ba3ee8f864f",
+  "commands": [
+    {
+      "command": "doc_batch",
+      "integration": "native"
+    },
+    {
+      "command": "doc_open",
+      "integration": "application",
+      "reason": "Open through the application custom editor."
+    },
+    {
+      "command": "doc_list",
+      "integration": "application",
+      "reason": "Application document selection and discovery own open files."
+    },
+    {
+      "command": "doc_info",
+      "integration": "native"
+    },
+    {
+      "command": "doc_close",
+      "integration": "application",
+      "reason": "Application tab lifecycle preserves unsaved work."
+    },
+    {
+      "command": "doc_save",
+      "integration": "application",
+      "reason": "Application Save/Save As, backup and conflict checks own writes."
+    },
+    {
+      "command": "doc_set_info",
+      "integration": "native"
+    },
+    {
+      "command": "page_render",
+      "integration": "native"
+    },
+    {
+      "command": "object_list",
+      "integration": "native"
+    },
+    {
+      "command": "object_move",
+      "integration": "native"
+    },
+    {
+      "command": "text_word_count",
+      "integration": "native"
+    },
+    {
+      "command": "text_extract",
+      "integration": "native"
+    },
+    {
+      "command": "text_find",
+      "integration": "native"
+    },
+    {
+      "command": "page_rotate",
+      "integration": "native"
+    },
+    {
+      "command": "page_enhance_camera",
+      "integration": "native"
+    },
+    {
+      "command": "page_delete",
+      "integration": "native"
+    },
+    {
+      "command": "page_move",
+      "integration": "native"
+    },
+    {
+      "command": "page_reverse",
+      "integration": "native"
+    },
+    {
+      "command": "page_insert_blank",
+      "integration": "native"
+    },
+    {
+      "command": "page_insert_file",
+      "integration": "native"
+    },
+    {
+      "command": "page_extract",
+      "integration": "native"
+    },
+    {
+      "command": "doc_combine",
+      "integration": "native"
+    },
+    {
+      "command": "doc_create_multiple",
+      "integration": "native"
+    },
+    {
+      "command": "doc_split",
+      "integration": "native"
+    },
+    {
+      "command": "bookmark_list",
+      "integration": "native"
+    },
+    {
+      "command": "bookmark_add",
+      "integration": "native"
+    },
+    {
+      "command": "bookmark_rename",
+      "integration": "native"
+    },
+    {
+      "command": "bookmark_delete",
+      "integration": "native"
+    },
+    {
+      "command": "bookmark_move",
+      "integration": "native"
+    },
+    {
+      "command": "bookmark_set_page",
+      "integration": "native"
+    },
+    {
+      "command": "bookmark_from_structure",
+      "integration": "native"
+    },
+    {
+      "command": "page_number",
+      "integration": "native"
+    },
+    {
+      "command": "form_fields",
+      "integration": "native"
+    },
+    {
+      "command": "form_fill",
+      "integration": "native"
+    },
+    {
+      "command": "form_reset",
+      "integration": "native"
+    },
+    {
+      "command": "form_add_field",
+      "integration": "native"
+    },
+    {
+      "command": "stamp_custom",
+      "integration": "native"
+    },
+    {
+      "command": "form_set_image",
+      "integration": "native"
+    },
+    {
+      "command": "form_set_props",
+      "integration": "native"
+    },
+    {
+      "command": "form_tab_order",
+      "integration": "native"
+    },
+    {
+      "command": "doc_export_data",
+      "integration": "native"
+    },
+    {
+      "command": "doc_import_data",
+      "integration": "native"
+    },
+    {
+      "command": "form_delete_field",
+      "integration": "native"
+    },
+    {
+      "command": "redact_mark",
+      "integration": "native"
+    },
+    {
+      "command": "redact_apply",
+      "integration": "native"
+    },
+    {
+      "command": "redact_clear",
+      "integration": "native"
+    },
+    {
+      "command": "doc_hidden_info",
+      "integration": "native"
+    },
+    {
+      "command": "doc_remove_hidden",
+      "integration": "native"
+    },
+    {
+      "command": "doc_audit_redactions",
+      "integration": "native"
+    },
+    {
+      "command": "printers",
+      "integration": "native"
+    },
+    {
+      "command": "printer_options",
+      "integration": "native"
+    },
+    {
+      "command": "doc_print",
+      "integration": "native"
+    },
+    {
+      "command": "content_list",
+      "integration": "native"
+    },
+    {
+      "command": "page_add_text",
+      "integration": "native"
+    },
+    {
+      "command": "page_add_image",
+      "integration": "native"
+    },
+    {
+      "command": "content_update",
+      "integration": "native"
+    },
+    {
+      "command": "content_delete",
+      "integration": "native"
+    },
+    {
+      "command": "link_list",
+      "integration": "native"
+    },
+    {
+      "command": "link_open",
+      "integration": "native"
+    },
+    {
+      "command": "link_add",
+      "integration": "native"
+    },
+    {
+      "command": "link_edit",
+      "integration": "native"
+    },
+    {
+      "command": "link_delete",
+      "integration": "native"
+    },
+    {
+      "command": "links_from_urls",
+      "integration": "native"
+    },
+    {
+      "command": "links_remove",
+      "integration": "native"
+    },
+    {
+      "command": "measure_distance",
+      "integration": "native"
+    },
+    {
+      "command": "measure_perimeter",
+      "integration": "native"
+    },
+    {
+      "command": "measure_area",
+      "integration": "native"
+    },
+    {
+      "command": "measure_info",
+      "integration": "native"
+    },
+    {
+      "command": "measure_list",
+      "integration": "native"
+    },
+    {
+      "command": "measure_scale",
+      "integration": "native"
+    },
+    {
+      "command": "measure_snap",
+      "integration": "native"
+    },
+    {
+      "command": "measure_export",
+      "integration": "native"
+    },
+    {
+      "command": "comment_list",
+      "integration": "native"
+    },
+    {
+      "command": "comment_add",
+      "integration": "native"
+    },
+    {
+      "command": "comment_reply",
+      "integration": "native"
+    },
+    {
+      "command": "comment_set_status",
+      "integration": "native"
+    },
+    {
+      "command": "sign_list",
+      "integration": "native"
+    },
+    {
+      "command": "sign_id_create",
+      "integration": "native"
+    },
+    {
+      "command": "sign_windows_ids",
+      "integration": "native"
+    },
+    {
+      "command": "sign_keychain_ids",
+      "integration": "native"
+    },
+    {
+      "command": "sign_document",
+      "integration": "native"
+    },
+    {
+      "command": "sign_trust",
+      "integration": "native"
+    },
+    {
+      "command": "comment_mark",
+      "integration": "native"
+    },
+    {
+      "command": "comment_lock",
+      "integration": "native"
+    },
+    {
+      "command": "comments_hide",
+      "integration": "native"
+    },
+    {
+      "command": "view_reading_colors",
+      "integration": "native"
+    },
+    {
+      "command": "comments_summarize",
+      "integration": "native"
+    },
+    {
+      "command": "comment_edit",
+      "integration": "native"
+    },
+    {
+      "command": "comment_image_preview",
+      "integration": "native"
+    },
+    {
+      "command": "comment_delete",
+      "integration": "native"
+    },
+    {
+      "command": "doc_protect",
+      "integration": "native"
+    },
+    {
+      "command": "doc_unprotect",
+      "integration": "native"
+    },
+    {
+      "command": "page_replace",
+      "integration": "native"
+    },
+    {
+      "command": "page_duplicate",
+      "integration": "native"
+    },
+    {
+      "command": "page_transition_set",
+      "integration": "native"
+    },
+    {
+      "command": "page_set_box",
+      "integration": "native"
+    },
+    {
+      "command": "doc_header_footer",
+      "integration": "native"
+    },
+    {
+      "command": "doc_watermark",
+      "integration": "native"
+    },
+    {
+      "command": "doc_background",
+      "integration": "native"
+    },
+    {
+      "command": "doc_remove_marks",
+      "integration": "native"
+    },
+    {
+      "command": "doc_export_images",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_autotag_preview",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_autotag_apply",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_autotag_form_fields",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_check",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_find_untagged",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_report",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_review_record",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_review_save",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_review_load",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_review_html",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_fix",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_figures",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_set_alt",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_tags",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_tag_content",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_set_tag_property",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_mark_tag_artifact",
+      "integration": "native"
+    },
+    {
+      "command": "accessibility_move_tag",
+      "integration": "native"
+    },
+    {
+      "command": "form_merge_data",
+      "integration": "native"
+    },
+    {
+      "command": "js_run",
+      "integration": "native"
+    },
+    {
+      "command": "js_document_scripts",
+      "integration": "native"
+    },
+    {
+      "command": "js_set_document_script",
+      "integration": "native"
+    },
+    {
+      "command": "form_set_script",
+      "integration": "native"
+    },
+    {
+      "command": "doc_export_office",
+      "integration": "native"
+    },
+    {
+      "command": "pdfa_verify",
+      "integration": "native"
+    },
+    {
+      "command": "print_readiness",
+      "integration": "native"
+    },
+    {
+      "command": "pdfa_convert",
+      "integration": "native"
+    },
+    {
+      "command": "action_list",
+      "integration": "native"
+    },
+    {
+      "command": "action_run",
+      "integration": "native"
+    },
+    {
+      "command": "doc_compare",
+      "integration": "native"
+    },
+    {
+      "command": "doc_compare_report",
+      "integration": "native"
+    },
+    {
+      "command": "doc_compare_mark",
+      "integration": "native"
+    },
+    {
+      "command": "form_detect_fields",
+      "integration": "native"
+    },
+    {
+      "command": "form_actions",
+      "integration": "native"
+    },
+    {
+      "command": "form_set_actions",
+      "integration": "native"
+    },
+    {
+      "command": "js_enabled",
+      "integration": "native"
+    },
+    {
+      "command": "ocr_recognize",
+      "integration": "excluded",
+      "reason": "OCR explicitly excluded by user."
+    },
+    {
+      "command": "ocr_recognize_files",
+      "integration": "excluded",
+      "reason": "OCR explicitly excluded by user."
+    },
+    {
+      "command": "ocr_status",
+      "integration": "excluded",
+      "reason": "OCR explicitly excluded by user."
+    },
+    {
+      "command": "doc_export_all_images",
+      "integration": "native"
+    },
+    {
+      "command": "doc_export_text",
+      "integration": "native"
+    },
+    {
+      "command": "fill_sign_add",
+      "integration": "native"
+    },
+    {
+      "command": "fill_sign_date_format",
+      "integration": "native"
+    },
+    {
+      "command": "doc_create",
+      "integration": "native"
+    },
+    {
+      "command": "doc_reduce",
+      "integration": "native"
+    },
+    {
+      "command": "doc_initial_view",
+      "integration": "native"
+    },
+    {
+      "command": "doc_audit_space",
+      "integration": "native"
+    },
+    {
+      "command": "text_lines",
+      "integration": "native"
+    },
+    {
+      "command": "image_hit",
+      "integration": "native"
+    },
+    {
+      "command": "page_images",
+      "integration": "native"
+    },
+    {
+      "command": "image_edit",
+      "integration": "native"
+    },
+    {
+      "command": "image_save",
+      "integration": "native"
+    },
+    {
+      "command": "text_font_files",
+      "integration": "native"
+    },
+    {
+      "command": "text_font_import",
+      "integration": "native"
+    },
+    {
+      "command": "text_fonts",
+      "integration": "native"
+    },
+    {
+      "command": "text_paragraphs",
+      "integration": "native"
+    },
+    {
+      "command": "text_edit_layout",
+      "integration": "native"
+    },
+    {
+      "command": "text_edit",
+      "integration": "native"
+    },
+    {
+      "command": "doc_revisions",
+      "integration": "native"
+    },
+    {
+      "command": "doc_open_revision",
+      "integration": "native"
+    },
+    {
+      "command": "doc_optimize",
+      "integration": "native"
+    },
+    {
+      "command": "doc_flatten",
+      "integration": "native"
+    },
+    {
+      "command": "xfa_to_static",
+      "integration": "native"
+    },
+    {
+      "command": "edit_undo",
+      "integration": "native"
+    },
+    {
+      "command": "edit_redo",
+      "integration": "native"
+    },
+    {
+      "command": "command_list",
+      "integration": "application",
+      "reason": "office_document_tools provides category/schema discovery."
+    },
+    {
+      "command": "command_run",
+      "integration": "application",
+      "reason": "Covered by direct discovered commands; registry indirection is not exposed."
+    },
+    {
+      "command": "command_batch",
+      "integration": "application",
+      "reason": "Covered by native command operations and host serialization; registry indirection is not exposed."
+    },
+    {
+      "command": "doc_inspect",
+      "integration": "application",
+      "reason": "doc_info, object_list and targeted native reads provide inspection."
+    },
+    {
+      "command": "render_preview",
+      "integration": "application",
+      "reason": "Native page_render and the application renderer provide previews."
+    }
+  ]
+}

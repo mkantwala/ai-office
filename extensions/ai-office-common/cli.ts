@@ -5,6 +5,7 @@
 
 import { readFile, writeFile, rename, unlink, realpath, stat } from 'node:fs/promises';
 import { resolve, dirname, extname, basename, relative, isAbsolute, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { randomBytes, createHash } from 'node:crypto';
 import { openEngine } from './model.js';
 import type { Kind } from './types.js';
@@ -36,7 +37,7 @@ async function main() {
 	const extension = extname(input).toLowerCase();
 	const kind: Kind = extension === '.docx' ? 'word' : extension === '.pdf' ? 'pdf' : extension === '.pptx' ? 'slides' : (() => { throw new Error('Use a DOCX, PDF or PPTX file.'); })();
 	const original = await readBounded(input, 128 * 1024 * 1024);
-	const engine = await openEngine(kind, basename(input), original, resolve(__dirname, '../..'), process.env.AI_OFFICE_PASSWORD);
+	const engine = await openEngine(kind, basename(input), original, resolve(__dirname, '../..'), process.env.AI_OFFICE_PASSWORD, { resourceRoot: root, artifactRoot: root ? join(root, '.sangam-pdf-artifacts') : undefined, sourceUri: pathToFileURL(input).href });
 	try {
 		if (action === 'commands') { process.stdout.write(JSON.stringify(engine.commands(), null, 2) + '\n'); return; }
 		if (action === 'inspect') {

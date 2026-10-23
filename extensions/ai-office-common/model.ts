@@ -3,11 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { readFile } from 'node:fs/promises';
+import { readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { readWordIdentities, writeWordIdentities } from './wordIdentity.js';
+import { NativePdfEngine } from './nativePdf.js';
 import { SlidesEngine } from './slides.js';
 import type { Engine, Kind, State, Command } from './types.js';
 
@@ -36,7 +37,7 @@ interface WasmDocument {
  * or shape ids between inspect and run.
  */
 const contentCommands: Command[] = [
-	{ id: 'content.find', label: 'Find text', params: { find: 'string', occurrence: 'match number (default 1)', page: 'PDF/slides page (default current)' } },
+	{ id: 'content.find', label: 'Find text', readOnly: true, params: { find: 'string', occurrence: 'match number (default 1)', page: 'PDF/slides page (default current)' } },
 	{ id: 'content.replace', label: 'Replace text', params: { find: 'string', text: 'replacement string', occurrence: 'match number (default 1)', all: 'replace every match (default false)', page: 'PDF/slides page (default current)' } },
 	{ id: 'content.delete', label: 'Delete text', params: { find: 'string', occurrence: 'match number (default 1)', all: 'delete every match (default false)', page: 'PDF/slides page (default current)' } },
 	{ id: 'content.append', label: 'Append text', params: { text: 'string', page: 'PDF/slides page (default last)' } }
@@ -192,18 +193,26 @@ function withContentCommands(kind: Kind, base: Engine): Engine {
 			}
 		},
 		export: () => base.export(),
+		saved: base.saved ? () => base.saved!() : undefined,
 		render: (page, scale) => base.render(page, scale),
+		renderAsync: base.renderAsync ? (page, scale) => base.renderAsync!(page, scale) : undefined,
 		tablePreview: base.tablePreview,
 		dispose: () => base.dispose()
 	};
 }
 
-export async function openEngine(kind: Kind, name: string, bytes: Uint8Array, extensionsRoot: string, password?: string): Promise<Engine> {
+export async function openEngine(kind: Kind, name: string, bytes: Uint8Array, extensionsRoot: string, password?: string, options?: { artifactRoot?: string; sourceUri?: string; resourceRoot?: string }): Promise<Engine> {
 	if (bytes.length > 128 * 1024 * 1024) { throw new Error('Document exceeds the 128 MB limit.'); }
 	if (bytes.length < 22) { throw new Error('This file is empty or incomplete. Create a valid document in its original application, then open it here.'); }
 	if (kind === 'slides') { return withContentCommands(kind, await SlidesEngine.open(bytes)); }
-	const project = kind === 'word' ? 'wordcraft' : 'pdfcraft';
-	const directory = join(extensionsRoot, 'ai-office-pdf/media', kind === 'word' ? 'word-engine' : 'engine');
+	if (kind === 'pdf') {
+		const executable = join(extensionsRoot, 'ai-office-pdf/media/native', process.platform + '-' + process.arch, process.platform === 'win32' ? 'sangam-pdf.exe' : 'sangam-pdf');
+		try { await access(executable); }
+		catch { throw new Error('Build the native PDF engine for this platform with node extensions/ai-office-pdf/build.mts --native. PDF operations require the complete engine.'); }
+		return withContentCommands(kind, await NativePdfEngine.open(executable, name, bytes, password, options));
+	}
+	const project = 'wordcraft';
+	const directory = join(extensionsRoot, 'ai-office-pdf/media', 'word-engine');
 	// Generated engine loaders are selected at runtime and kept outside the host bundle.
 	// eslint-disable-next-line no-restricted-syntax
 	const module = await import(pathToFileURL(join(directory, project + '.js')).href);
@@ -215,7 +224,6 @@ export async function openEngine(kind: Kind, name: string, bytes: Uint8Array, ex
 	}
 	const state = (serialized = doc.state()): State => {
 		const value = JSON.parse(serialized);
-		if (kind === 'pdf') { value.blocks = value.blocks.map((block: { paragraph: number; text: string; editor_text: string; rect: number[]; font: string; size: number }) => ({ id: block.paragraph, text: block.editor_text || block.text, rect: block.rect, font: block.font, size: block.size })); }
 		return value;
 	};
 	const engine: Engine = {
@@ -233,21 +241,8 @@ export async function openEngine(kind: Kind, name: string, bytes: Uint8Array, ex
 			reviewProjection: () => doc.review_projection?.() || ''
 		} : undefined,
 		pages: () => JSON.parse(doc.pages()), state,
-		commands: () => {
-			const commands: Command[] = JSON.parse(doc.commands());
-			if (kind === 'pdf') { commands.push({ id: 'image.insert', label: 'Image', params: { page: '1-based page', data: 'base64 image', name: 'filename' } }, { id: 'select.page', label: 'Select page', params: { page: '1-based page' } }); }
-			return commands;
-		},
-		execute: async (id, args) => {
-			if (kind === 'word') { return state(doc.execute(id, JSON.stringify(args))); }
-			if (id === 'image.insert' && doc.image) {
-				if (typeof args.data !== 'string' || args.data.length > 24 * 1024 * 1024) { throw new Error('Image data is missing or too large.'); }
-				const page = Number(args.page);
-				if (!Number.isInteger(page) || page < 1) { throw new Error('Page must be a positive integer.'); }
-				doc.image(page - 1, typeof args.name === 'string' ? args.name : 'image.png', Buffer.from(args.data, 'base64'));
-			} else { doc.execute(id, JSON.stringify(args)); }
-			return state();
-		},
+		commands: () => JSON.parse(doc.commands()),
+		execute: async (id, args) => state(doc.execute(id, JSON.stringify(args))),
 		export: async () => {
 			const bytes = doc.export();
 			return kind === 'word' && doc.agent_metadata && !password ? writeWordIdentities(bytes, JSON.parse(doc.agent_metadata())) : bytes;

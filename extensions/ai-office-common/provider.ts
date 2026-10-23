@@ -15,6 +15,7 @@ import { activeAgentRequest, activeAgentLabel, DocumentHistory, withAgentToolReq
 import { prepareWordFormatting, canRebaseTextEdits } from './wordFormatting.js';
 import { DocumentVersions } from './documentVersions.js';
 import { DocumentDrafts } from './documentDrafts.js';
+import { discoverCommands, boundedCommandResult, projectCommandResult } from './documentCapabilities.js';
 
 interface View { state: State; pages: number[][]; commands?: Command[] }
 class Document implements vscode.CustomDocument {
@@ -34,6 +35,8 @@ class Document implements vscode.CustomDocument {
 	view!: View;
 	latestBytes!: Uint8Array;
 	agentActivity?: { region?: ActivityRegion; updated: number };
+	commandResult?: { id: string; version: string; value: unknown };
+	readonly commandResults = new Map<string, { id: string; version: string; value: unknown; size: number }>();
 	private snapshotRevision = -1;
 	password?: string;
 	baseHash = '';
@@ -49,12 +52,13 @@ class Document implements vscode.CustomDocument {
 	async load(bytes: Uint8Array) {
 		this.instance = randomUUID();
 		this.history.clear();
+		this.commandResult = undefined; this.commandResults.clear();
 		this.drafts.discard();
 		this.reviewRequest = undefined;
 		this.reviewVersion++;
 		this.review = undefined;
 		this.versionRequests.clear();
-		this.view = await this.client.request<View>('open', { kind: this.kind, name: basename(this.uri.path), bytes, extensionsRoot: vscode.Uri.joinPath(this.context.extensionUri, '..').fsPath, password: this.password });
+		this.view = await this.client.request<View>('open', { kind: this.kind, name: basename(this.uri.path), bytes, extensionsRoot: vscode.Uri.joinPath(this.context.extensionUri, '..').fsPath, password: this.password, sourceUri: this.uri.toString(), artifactRoot: this.context.globalStorageUri ? vscode.Uri.joinPath(this.context.globalStorageUri, 'pdf-artifacts').fsPath : undefined });
 		this.latestBytes = bytes;
 		this.snapshotRevision = this.view.state.revision;
 	}
@@ -62,6 +66,12 @@ class Document implements vscode.CustomDocument {
 		const task = this.serial.then(operation);
 		this.serial = task.then(() => { }, () => { });
 		return task;
+	}
+	async saved() {
+		if (this.kind !== 'pdf') { return; }
+		this.view = { ...this.view, ...await this.client.request<View>('saved') };
+		this.snapshotRevision = this.view.state.revision;
+		await this.broadcast();
 	}
 	async snapshot(): Promise<Uint8Array> {
 		if (this.kind === 'word' && this.snapshotRevision !== this.view.state.revision) {
@@ -71,12 +81,12 @@ class Document implements vscode.CustomDocument {
 		return this.latestBytes;
 	}
 	async broadcast(command?: string) {
-		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'state', kind: this.kind, ...this.view, name: basename(this.uri.path), command })));
+		await Promise.all([...this.panels].filter(panel => this.kind !== 'pdf' || panel.visible !== false).map(panel => panel.webview.postMessage({ type: 'state', kind: this.kind, ...this.view, ...(this.kind === 'pdf' ? { state: { ...this.view.state, pdfNewArtifacts: undefined, pdfArtifacts: this.view.state.pdfArtifacts?.slice(0, 20), pdfArtifactCount: this.view.state.pdfArtifacts?.length || 0 } } : {}), name: basename(this.uri.path), command })));
 		if (this.kind === 'word') {
 			const changes = this.review?.changes.length ? await this.client.request<DocumentReview['changes']>('reviewLayout', { changes: this.review.changes }) : [];
-			await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'review', review: { ...this.review, version: this.version, reviewVersion: this.reviewVersion, changes } })));
+			await Promise.all([...this.panels].filter(panel => this.kind !== 'pdf' || panel.visible !== false).map(panel => panel.webview.postMessage({ type: 'review', review: { ...this.review, version: this.version, reviewVersion: this.reviewVersion, changes } })));
 			const drafts = await Promise.all(this.drafts.pending().map(async section => ({ ...section, anchorRects: await this.client.request<State['rects']>('agentRects', { blockId: section.anchor.id }).catch(() => []) })));
-			await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'draft', sections: drafts, label: this.draftAgentLabel, request: this.draftRequest, workingId: this.draftWorkingUntil > Date.now() ? this.draftWorkingId || drafts[0]?.id : undefined, expiresAt: this.draftWorkingUntil })));
+			await Promise.all([...this.panels].filter(panel => this.kind !== 'pdf' || panel.visible !== false).map(panel => panel.webview.postMessage({ type: 'draft', sections: drafts, label: this.draftAgentLabel, request: this.draftRequest, workingId: this.draftWorkingUntil > Date.now() ? this.draftWorkingId || drafts[0]?.id : undefined, expiresAt: this.draftWorkingUntil })));
 		}
 		if (this.activity) { await this.sendActivity(this.activity.rects); }
 	}
@@ -89,7 +99,7 @@ class Document implements vscode.CustomDocument {
 			if (this.activity !== activity || revision !== this.view.state.revision) { return; }
 			activity.rects = rects; activity.insertions = located.insertions; activity.revision = revision;
 		}
-		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'agentActivity', rects: rects || [], label: activity?.label || activeAgentLabel(), ...(activity ? { insertions: activity.insertions, intent: activity.intent, expiresAt: activity.expiresAt, request: activity.request, revision: activity.revision } : {}) })));
+		await Promise.all([...this.panels].filter(panel => this.kind !== 'pdf' || panel.visible !== false).map(panel => panel.webview.postMessage({ type: 'agentActivity', rects: rects || [], label: activity?.label || activeAgentLabel(), ...(activity ? { insertions: activity.insertions, intent: activity.intent, expiresAt: activity.expiresAt, request: activity.request, revision: activity.revision } : {}) })));
 	}
 	async stopActivity(force = false) { if (!force && activeAgentRequest() && this.activity?.request && this.activity.request !== activeAgentRequest()) { return; } if (this.activity) { clearTimeout(this.activity.timer); this.activity = undefined; } await this.sendActivity([]); }
 	async renewActivity(request: string) {
@@ -132,7 +142,7 @@ class Document implements vscode.CustomDocument {
 		if (!region && this.agentActivity?.region && now - this.agentActivity.updated < 3000) { region = this.agentActivity.region; }
 		this.agentActivity = { region, updated: now };
 		if (!region || !this.panels.size) { return; }
-		await Promise.all([...this.panels].map(panel => panel.webview.postMessage({ type: 'agent', label: command, region })));
+		await Promise.all([...this.panels].filter(panel => this.kind !== 'pdf' || panel.visible !== false).map(panel => panel.webview.postMessage({ type: 'agent', label: command, region })));
 	}
 	dispose() { if (this.activity) { clearTimeout(this.activity.timer); } this.onDispose(); this.client.dispose(); }
 }
@@ -377,7 +387,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				if (appToolbar) { toolbarPanels.set(panelId, { doc, panel }); }
 				doc.panels.add(panel);
 				if (panel.active) { lastActive.set(kind, doc); }
-				panel.onDidChangeViewState(() => { if (panel.active) { lastActive.set(kind, doc); if (appToolbar) { void panel.webview.postMessage({ type: 'publishToolbar' }); } } });
+				panel.onDidChangeViewState(() => { if (kind === 'pdf' && panel.visible) { void doc.broadcast(); } if (panel.active) { lastActive.set(kind, doc); if (appToolbar) { void panel.webview.postMessage({ type: 'publishToolbar' }); } } });
 				const output = vscode.Uri.joinPath(context.extensionUri, 'out');
 				panel.webview.options = { enableScripts: true, localResourceRoots: [output] };
 				const nonce = randomBytes(24).toString('hex');
@@ -403,7 +413,20 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 									const result = await doc.client.request('render', { page: message.page, scale: message.scale, ...(kind === 'word' ? { frame: message.request, base: message.base } : {}) });
 									await panel.webview.postMessage({ type: 'rendered', request: message.request, page: message.page, result }); break;
 								}
-								case 'execute': await execute(doc, message.command, message.args || {}); break;
+								case 'pdfPickResource': {
+									if (kind !== 'pdf' || typeof message.request !== 'string' || message.request.length > 100) { break; }
+									const picked = await vscode.window.showOpenDialog({ canSelectFiles: message.folders !== true, canSelectFolders: message.folders === true, canSelectMany: false });
+									await panel.webview.postMessage({ type: 'pdfResource', request: message.request, uri: picked?.[0]?.toString() }); break;
+								}
+								case 'pdfArtifactList': {
+									if (kind !== 'pdf') { break; }
+									const chosen = await vscode.window.showQuickPick((doc.view.state.pdfArtifacts || []).map(artifact => ({ label: artifact.name, description: `${Math.ceil(artifact.size / 1024)} KB`, artifact })), { title: 'Generated PDF Files' });
+									if (chosen) { await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(chosen.artifact.uri)); } break;
+								}
+								case 'pdfOpenArtifact': {
+									if (kind === 'pdf' && typeof message.uri === 'string' && doc.view.state.pdfArtifacts?.some(artifact => artifact.uri === message.uri)) { await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(message.uri)); } break;
+								}
+								case 'execute': { if (message.revision !== undefined && message.revision !== doc.view.state.revision) { throw new Error('Document changed. Reopen the PDF tools before applying.'); } const result = await execute(doc, message.command, message.args || {}); if (kind === 'pdf' && message.inspect === true) { await panel.webview.postMessage({ type: 'pdfInspection', result: result.state.agentCommandResult }); } break; }
 								case 'reviewDecide':
 									void vscode.commands.executeCommand('aiOffice.word.reviewDecide', doc.uri.toString(), message.version, message.reviewVersion, message.action, message.ids).then(undefined, async error => {
 										await panel.webview.postMessage({ type: 'error', error: String(error) });
@@ -447,6 +470,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 					doc.saving = true;
 					try { await writeAtomic(doc.uri, bytes); doc.baseHash = hash(bytes); doc.dirty = false; }
 					finally { doc.saving = false; }
+					try { await doc.saved(); } catch { void vscode.window.showErrorMessage?.('The file was saved, but PDF session metadata could not refresh. Reopen the document before continuing.'); }
 					await captureVersion(doc, 'Saved Version');
 				});
 			},
@@ -500,6 +524,40 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			if (matches.length > 1) { throw new Error(`"${target}" matches more than one open document: ${list(matches)}.`); }
 			throw new Error(`No open ${kind} document matches "${target}". Open: ${list(candidates)}.`);
 		};
+		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.' + kind + '.capabilities', async (input: { uri?: string; command?: string; category?: string; offset?: number; limit?: number; version?: string; params?: Record<string, unknown>; run?: boolean; operation?: string; resultId?: string; resultPath?: string }, token: vscode.CancellationToken) => {
+			checkAgentAccess(token);
+			if (!input.run && input.operation === 'list') { return { documents: open().map(doc => ({ uri: doc.uri.toString(), name: basename(doc.uri.path), kind, version: doc.version })) }; }
+			if (!input.run && input.operation === 'open') {
+				if (!input.uri) { throw new Error('Opening a document requires its full file URI.'); }
+				const uri = vscode.Uri.parse(input.uri);
+				if (!['file', 'vscode-remote'].includes(uri.scheme) || !uri.path.toLowerCase().endsWith(kind === 'pdf' ? '.pdf' : '.docx')) { throw new Error('Open requires a document URI matching the selected format.'); }
+				if (!documents.has(uri.toString())) { await vscode.commands.executeCommand('vscode.openWith', uri, 'aiOffice.' + kind); }
+			}
+			if (!input.run && input.operation && !['open', 'list', 'discover'].includes(input.operation)) { throw new Error('Use discover, open or list.'); }
+			const request = activeAgentRequest(), bound = request ? requestDocuments.get(request) : undefined;
+			const doc = resolveDocument(input.uri || bound);
+			if (doc.kind !== kind) { throw new Error('The requested document format does not match this command.'); }
+			if (request && !bound) { requestDocuments.set(request, doc.uri.toString()); if (requestDocuments.size > 256) { requestDocuments.delete(requestDocuments.keys().next().value!); } }
+			if (input.run && kind === 'pdf' && ['edit_undo', 'edit_redo'].includes(input.command || '')) { return history(doc, { operation: input.command === 'edit_redo' ? 'redo' : 'undo', version: input.version }, token); }
+			return doc.enqueue(async () => {
+				checkAgentAccess(token);
+				if (!input.run && input.resultId) { const receipt = doc.commandResults.get(input.resultId); if (!receipt) { throw new Error('This result is no longer cached. Use a current receipt.'); } return { uri: doc.uri.toString(), sourceVersion: receipt.version, resultId: input.resultId, ...projectCommandResult(receipt.value, input.resultPath, input.offset, input.limit) }; }
+				if (!input.run) { return { uri: doc.uri.toString(), kind, version: doc.version, ...discoverCommands(doc.view.commands || [], input) }; }
+				if (kind !== 'pdf') { throw new Error('Use the guarded document tools for Word. Generic command execution currently supports PDF only.'); }
+				const definition = doc.view.commands?.find(command => command.id === input.command);
+				if (!definition) { throw new Error('Discover the command schema before running a supported command.'); }
+				if (!definition.readOnly && input.version !== doc.version) { throw new Error('Document changed. Discover its current version before editing.'); }
+				if (!input.params || typeof input.params !== 'object' || Array.isArray(input.params) || JSON.stringify(input.params).length > 100000) { throw new Error('params must be an object within 100,000 characters.'); }
+				const params = { ...input.params };
+				if (input.command === 'text_extract' && (!Array.isArray(params.pages) || !params.pages.length || params.pages.length > 10)) { throw new Error('Read text in explicit page ranges of 1–10 pages.'); }
+				const beforeRevision = doc.view.state.revision;
+				const result = await execute(doc, definition.id, params, true, true, token);
+				doc.commandResult = { id: randomUUID(), version: doc.version, value: { result: result.state.agentCommandResult, artifacts: result.state.pdfNewArtifacts || [] } };
+				doc.commandResults.set(doc.commandResult.id, { ...doc.commandResult, size: JSON.stringify(doc.commandResult.value).length });
+				while (doc.commandResults.size > 1 && (doc.commandResults.size > 4 || [...doc.commandResults.values()].reduce((size, receipt) => size + receipt.size, 0) > 4 * 1024 * 1024)) { doc.commandResults.delete(doc.commandResults.keys().next().value!); }
+				return { uri: doc.uri.toString(), kind, version: doc.version, completed: true, modified: result.state.revision !== beforeRevision, saved: false, pages: result.pages.length, result: boundedCommandResult(result.state.agentCommandResult), resultId: doc.commandResult.id, artifacts: (result.state.pdfNewArtifacts || []).slice(0, 20), artifactCount: result.state.pdfNewArtifacts?.length || 0, guidance: result.state.revision !== beforeRevision ? 'Applied to the open document through native undo. Verify the affected pages; save normally when ready.' : undefined };
+			});
+		}));
 		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.' + kind + '.execute', async (uriOrName: string | undefined, command: string, args: Record<string, unknown> = {}, token?: vscode.CancellationToken) => {
 			checkAgentAccess(token);
 			if (typeof command !== 'string' || !command) { throw new Error(`A command id is required: 'aiOffice.${kind}.execute(fileNameOrUri, command, params)'.`); }
@@ -530,6 +588,23 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			const viewType = (vscode.window.tabGroups.activeTabGroup?.activeTab?.input as { viewType?: string } | undefined)?.viewType;
 			return viewType?.startsWith('aiOffice.') ? viewType.slice('aiOffice.'.length) as Kind : undefined;
 		};
+		for (const tool of ['tools', 'run'] as const) {
+			context.subscriptions.push(vscode.lm.registerTool<DocumentToolInput>('office_document_' + tool, {
+				prepareInvocation: () => ({ invocationMessage: tool === 'tools' ? 'Discovering document tools' : 'Working on the PDF document' }),
+				async invoke(options, token) {
+					try {
+						const input = options.input;
+						const kind = input.kind !== undefined ? input.kind as Kind : kindOfTarget(input.uri);
+						if (!kind || !kinds.includes(kind)) { throw new Error('Open a supported document or specify its URI and kind.'); }
+						const result = await withAgentToolRequest(options.toolInvocationToken, async () => vscode.commands.executeCommand('aiOffice.' + kind + '.capabilities', { ...input, run: tool === 'run' }, token));
+						return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result))]);
+					} catch (error) {
+						if (token.isCancellationRequested) { throw error; }
+						return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify({ error: String(error), guidance: 'Use discovery for the current version and exact command schema. Do not repeat an unchanged refused call.' }))]);
+					}
+				}
+			}));
+		}
 		context.subscriptions.push(vscode.lm.registerTool<{ command: string; file?: string; params?: Record<string, unknown> }>('aiOfficeEdit', {
 			invoke: async (options, token) => {
 				checkAgentAccess(token);
@@ -659,6 +734,11 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 			const request = activeAgentRequest(); if (!request || !Array.isArray(uris)) { return; }
 			await Promise.all(uris.slice(0, 200).map(uri => { const doc = documents.get(uri); return doc?.enqueue(() => doc.renewActivity(request)); }));
 		})));
+		context.subscriptions.push(vscode.commands.registerCommand('_aiOffice.document.activeDocument', () => {
+			const candidates = [...documents.values()];
+			const doc = focusedReviewDocument() || candidates.find(doc => [...doc.panels].some(panel => panel.active)) || (candidates.length === 1 ? candidates[0] : undefined);
+			return doc ? { uri: doc.uri.toString(), name: basename(doc.uri.path), kind: doc.kind } : undefined;
+		}));
 		context.subscriptions.push(vscode.commands.registerCommand('_aiOffice.word.activeDocument', () => {
 			const candidates = [...documents.values()].filter(doc => doc.kind === 'word');
 			const doc = focusedReviewDocument() || candidates.find(doc => [...doc.panels].some(panel => panel.active)) || (candidates.includes(lastActive.get('word')!) ? lastActive.get('word') : undefined) || (candidates.length === 1 ? candidates[0] : undefined);
