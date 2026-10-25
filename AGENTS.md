@@ -6,11 +6,11 @@ For detailed project overview, architecture, coding guidelines, and validation s
 
 ## Wordcraft upstream reference
 
-Before implementing a Word feature, inspect the original Wordcraft implementation at `../wordcraft-upstream` (repository: https://github.com/storytold/wordcraft). This separate checkout is a reference, not an application build input. If absent, clone it beside this repository. Fetch upstream updates when needed and compare against the pinned revision in `engines/sources.json`; do not automatically upgrade the engine or overwrite our patches.
+Before implementing a Word feature, inspect the original Wordcraft implementation at `../wordcraft-upstream` (repository: https://github.com/storytold/wordcraft) or `../wordcraft`. These separate checkouts are references, not application build inputs. The Word engine is vendored in `engines/wordcraft/`: copy the upstream code you need into that vendored tree and commit it, instead of patching or pinning upstream. Keep the vendored workspace trimmed to what the DOCX viewer needs (no egui, MCP or desktop apps), preserve upstream LICENSE/NOTICE/ATTRIBUTION files, and verify adapted behavior with focused tests, including DOCX round trips when serialization changes.
 
 Reuse upstream document, layout, rendering and DOCX behavior in Rust where practical. Use TypeScript for VS Code integration, toolbar/property controls and agent orchestration. Check both engine support and upstream UI/command wiring before reimplementing a feature. Preserve internal block identities, guarded edits, native history, comments and Keep/Undo review when adapting upstream functionality.
 
-Persist Rust adaptations in `engines/wordcraft.patch` and update its checksum in `engines/sources.json` using the existing build workflow. Changes only in the ignored `.build/engines/wordcraft` checkout are not deliverable. Verify adapted behavior with focused tests, including DOCX round trips when serialization changes. Review upstream license and attribution requirements when copying code.
+Commit Word engine adaptations directly in the vendored `engines/wordcraft/` tree; there is no Wordcraft patch or pin anymore. Changes only in the ignored `.build/engines/wordcraft` checkout or a sibling reference clone are not deliverable. Review upstream license and attribution requirements when copying code.
 
 ## Pdfcraft upstream reference
 

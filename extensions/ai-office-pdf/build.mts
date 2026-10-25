@@ -15,7 +15,12 @@ const root = resolve(extension, '../..');
 const word = process.argv.includes('--word');
 const project = word ? 'wordcraft' : 'pdfcraft';
 const prepared = resolve(root, '.build/engines', project);
-const source = (word ? process.env.WORDCRAFT_SOURCE : process.env.PDFCRAFT_SOURCE) || (existsSync(prepared) ? prepared : resolve(root, `../${project}`));
+const vendored = resolve(root, 'engines/wordcraft');
+/* The Wordcraft view engine is vendored in-repo for the DOCX viewer; the fetch+patch
+ * path only applies to PdfCraft (and to a WORDCRAFT_SOURCE override for experiments). */
+const source = (word
+	? (process.env.WORDCRAFT_SOURCE || (existsSync(vendored) ? vendored : (existsSync(prepared) ? prepared : resolve(root, `../${project}`))))
+	: (process.env.PDFCRAFT_SOURCE || (existsSync(prepared) ? prepared : resolve(root, `../${project}`))));
 const target = process.env.CARGO_TARGET_DIR || (existsSync(prepared) ? resolve(root, '.build/office-rust-target') : resolve(root, '../pdfcraft/target'));
 const native = !word;
 const output = native ? join(extension, 'media/native', process.platform + '-' + process.arch) : join(extension, word ? 'media/word-engine' : 'media/engine');
@@ -92,5 +97,6 @@ for (const [crate, folder] of [['epaint_default_fonts', 'fonts'], ['hayro-cmap',
 	if (!copied) { throw new Error(`Missing bundled asset licences for ${crate}-${version} in the Cargo registry.`); }
 }
 const revision = spawnSync('git', ['-c', `safe.directory=${source.replaceAll('\\', '/')}`, 'rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' });
-await writeFile(join(output, 'BUILD.txt'), `${project} ${revision.stdout.trim()} with local content-only preview crate.\nRust ${native ? 'native ' + process.platform + '-' + process.arch : 'wasm32-unknown-unknown'}; profile low-disk; ${native ? 'persistent confined automation engine (OCR excluded)' : 'content-only preview renderer'}.\n`);
+const engineLabel = (word && source === vendored) ? 'vendored engines/wordcraft (DOCX view engine)' : revision.stdout.trim();
+await writeFile(join(output, 'BUILD.txt'), `${project} ${engineLabel} with local content-only preview crate.\nRust ${native ? 'native ' + process.platform + '-' + process.arch : 'wasm32-unknown-unknown'}; profile low-disk; ${native ? 'persistent confined automation engine (OCR excluded)' : 'content-only preview renderer'}.\n`);
 console.log(`${project} engine installed in ${output}`);

@@ -10,7 +10,7 @@ Timeline/local history, markers, multi-diff and comments are retained for docume
 
 ## Source and build
 
-All AI Office application changes are in this repository. Pinned Wordcraft/Pdfcraft revisions and patches are stored under [engines](engines/README.md), so a fresh checkout does not depend on unpublished sibling-repository changes.
+All AI Office application changes are in this repository. The Wordcraft engine is vendored under [engines](engines/README.md), and the Pdfcraft revision and patch are stored there too, so a fresh checkout does not depend on unpublished sibling-repository changes for any engine work.
 
 Install the normal VS Code development prerequisites and dependencies described in the upstream contributor documentation. Install the slide extension's dependencies with `npm install --ignore-scripts` inside `extensions/ai-office-slides`. The office extension builds require Node 24, Rust's `wasm32-unknown-unknown` target, and wasm-bindgen CLI 0.2.129.
 

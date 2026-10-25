@@ -15,7 +15,7 @@ node extensions/ai-office-pdf/build.mts
 node extensions/ai-office-pdf/build.mts --word
 ```
 
-Run `node scripts/prepare-office-engines.mts` first to prepare the pinned sources. PDF requires a native Rust toolchain; Word requires Rust wasm32-unknown-unknown and wasm-bindgen 0.2.129 at `.build/pdf-tools/bin` (or WASM_BINDGEN). The shared worker and CLI also require the dependencies installed in `extensions/ai-office-slides`. PDFCRAFT_SOURCE, WORDCRAFT_SOURCE and CARGO_TARGET_DIR override source/target paths. `--ui-only` rebuilds TypeScript; `--package-only` packages existing Rust builds. Notices accompany generated engines. Opening a document does not save it.
+Run `node scripts/prepare-office-engines.mts` first to prepare the pinned Pdfcraft sources. The Wordcraft engine is vendored in this repository under `engines/wordcraft` and needs no fetch or patch step. PDF requires a native Rust toolchain; Word requires Rust wasm32-unknown-unknown and wasm-bindgen 0.2.129 at `.build/pdf-tools/bin` (or WASM_BINDGEN). The shared worker and CLI also require the dependencies installed in `extensions/ai-office-slides`. PDFCRAFT_SOURCE, WORDCRAFT_SOURCE and CARGO_TARGET_DIR override source/target paths. `--ui-only` rebuilds TypeScript; `--package-only` packages existing Rust builds. Notices accompany generated engines. Opening a document does not save it.
 
 ## Word agent
 
