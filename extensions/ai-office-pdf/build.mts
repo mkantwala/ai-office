@@ -29,12 +29,9 @@ await Promise.all([
 	build({ entryPoints: [join(extension, '../ai-office-common/cli.ts')], bundle: true, platform: 'node', format: 'cjs', outfile: join(extension, 'out/cli.cjs') }),
 	build({ entryPoints: [join(extension, 'extension.ts')], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], outfile: join(extension, 'out/extension.js'), sourcemap: true }),
 	build({ entryPoints: [join(extension, '../ai-office-common/editor.ts')], bundle: true, platform: 'browser', outfile: join(extension, 'out/editor.js'), sourcemap: true }),
-	build({ entryPoints: [join(extension, 'opencode/mcpProxy.ts')], bundle: true, platform: 'node', format: 'cjs', outfile: join(extension, 'out/opencodeMcpProxy.cjs') })
-]);
+	]);
 await writeFile(join(extension, 'out/editor.css'), (await readFile(join(root, 'src/vs/base/browser/ui/documentToolbar/documentToolbar.css'), 'utf8')) + '\n' + (await readFile(join(extension, '../ai-office-common/editor.css'), 'utf8')));
 await mkdir(join(extension, 'out/licenses'), { recursive: true });
-await copyFile(join(extension, 'node_modules/@agentclientprotocol/sdk/LICENSE'), join(extension, 'out/licenses/acp-sdk.txt'));
-await copyFile(join(extension, 'node_modules/zod/LICENSE'), join(extension, 'out/licenses/zod.txt'));
 for (const [name, file] of [['pptx', '@office-kit/pptx/LICENSE'], ['pptx-preview', '@office-kit/pptx-preview/LICENSE'], ['dompurify', 'dompurify/LICENSE'], ['fflate', 'fflate/LICENSE']]) {
 	await copyFile(join(extension, '../ai-office-slides/node_modules', file), join(extension, `out/licenses/${name}.txt`));
 }
@@ -45,7 +42,7 @@ function run(command: string, args: string[], cwd = source) {
 }
 if (!process.argv.includes('--package-only')) {
 	if (native) { run('cargo', ['build', '-p', 'pdfcraft-preview', '--bin', 'sangam-pdf', '--locked', '--target-dir', target, '--profile', 'low-disk', '-j', '2']); }
-	else { run('cargo', ['build', '-p', `${project}-preview`, '--locked', '--target-dir', target, '--target', 'wasm32-unknown-unknown', '--profile', 'low-disk', '-j', '2']); }
+	else { run('cargo', ['build', '-p', `${project}-preview`, '--locked', '--target-dir', target, '--target', 'wasm32-unknown-unknown', '--profile', 'release', '-j', '2']); }
 }
 await mkdir(output, { recursive: true });
 if (native) {
@@ -55,7 +52,7 @@ if (native) {
 } else {
 	await writeFile(join(output, 'package.json'), '{"type":"module"}\n');
 	const bindgen = process.env.WASM_BINDGEN || join(root, '.build/pdf-tools/bin', process.platform === 'win32' ? 'wasm-bindgen.exe' : 'wasm-bindgen');
-	run(bindgen, ['--target', 'web', '--out-dir', output, '--out-name', project, join(target, `wasm32-unknown-unknown/low-disk/${project}_preview.wasm`)]);
+	run(bindgen, ['--target', 'web', '--out-dir', output, '--out-name', project, join(target, `wasm32-unknown-unknown/release/${project}_preview.wasm`)]);
 }
 for (const name of ['LICENSE-MIT', 'LICENSE-APACHE', 'NOTICE', 'ATTRIBUTION.md', ...(word ? [] : ['ATTRIBUTION.toml'])]) {
 	await copyFile(join(source, name), join(output, name));
@@ -98,5 +95,5 @@ for (const [crate, folder] of [['epaint_default_fonts', 'fonts'], ['hayro-cmap',
 }
 const revision = spawnSync('git', ['-c', `safe.directory=${source.replaceAll('\\', '/')}`, 'rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' });
 const engineLabel = (word && source === vendored) ? 'vendored engines/wordcraft (DOCX view engine)' : revision.stdout.trim();
-await writeFile(join(output, 'BUILD.txt'), `${project} ${engineLabel} with local content-only preview crate.\nRust ${native ? 'native ' + process.platform + '-' + process.arch : 'wasm32-unknown-unknown'}; profile low-disk; ${native ? 'persistent confined automation engine (OCR excluded)' : 'content-only preview renderer'}.\n`);
+await writeFile(join(output, 'BUILD.txt'), `${project} ${engineLabel} with local content-only preview crate.\nRust ${native ? 'native ' + process.platform + '-' + process.arch : 'wasm32-unknown-unknown'}; profile ${native ? 'low-disk' : 'release'}; ${native ? 'persistent confined automation engine (OCR excluded)' : 'content-only preview renderer'}.\n`);
 console.log(`${project} engine installed in ${output}`);

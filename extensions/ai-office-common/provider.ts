@@ -543,19 +543,26 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 				checkAgentAccess(token);
 				if (!input.run && input.resultId) { const receipt = doc.commandResults.get(input.resultId); if (!receipt) { throw new Error('This result is no longer cached. Use a current receipt.'); } return { uri: doc.uri.toString(), sourceVersion: receipt.version, resultId: input.resultId, ...projectCommandResult(receipt.value, input.resultPath, input.offset, input.limit) }; }
 				if (!input.run) { return { uri: doc.uri.toString(), kind, version: doc.version, ...discoverCommands(doc.view.commands || [], input) }; }
-				if (kind !== 'pdf') { throw new Error('Use the guarded document tools for Word. Generic command execution currently supports PDF only.'); }
 				const definition = doc.view.commands?.find(command => command.id === input.command);
 				if (!definition) { throw new Error('Discover the command schema before running a supported command.'); }
 				if (!definition.readOnly && input.version !== doc.version) { throw new Error('Document changed. Discover its current version before editing.'); }
-				if (!input.params || typeof input.params !== 'object' || Array.isArray(input.params) || JSON.stringify(input.params).length > 100000) { throw new Error('params must be an object within 100,000 characters.'); }
-				const params = { ...input.params };
-				if (input.command === 'text_extract' && (!Array.isArray(params.pages) || !params.pages.length || params.pages.length > 10)) { throw new Error('Read text in explicit page ranges of 1–10 pages.'); }
+				if (kind === 'pdf') {
+					if (!input.params || typeof input.params !== 'object' || Array.isArray(input.params) || JSON.stringify(input.params).length > 100000) { throw new Error('params must be an object within 100,000 characters.'); }
+					const params = { ...input.params };
+					if (input.command === 'text_extract' && (!Array.isArray(params.pages) || !params.pages.length || params.pages.length > 10)) { throw new Error('Read text in explicit page ranges of 1–10 pages.'); }
+					const beforeRevision = doc.view.state.revision;
+					const result = await execute(doc, definition.id, params, true, true, token);
+					doc.commandResult = { id: randomUUID(), version: doc.version, value: { result: result.state.agentCommandResult, artifacts: result.state.pdfNewArtifacts || [] } };
+					doc.commandResults.set(doc.commandResult.id, { ...doc.commandResult, size: JSON.stringify(doc.commandResult.value).length });
+					while (doc.commandResults.size > 1 && (doc.commandResults.size > 4 || [...doc.commandResults.values()].reduce((size, receipt) => size + receipt.size, 0) > 4 * 1024 * 1024)) { doc.commandResults.delete(doc.commandResults.keys().next().value!); }
+					return { uri: doc.uri.toString(), kind, version: doc.version, completed: true, modified: result.state.revision !== beforeRevision, saved: false, pages: result.pages.length, result: boundedCommandResult(result.state.agentCommandResult), resultId: doc.commandResult.id, artifacts: (result.state.pdfNewArtifacts || []).slice(0, 20), artifactCount: result.state.pdfNewArtifacts?.length || 0, guidance: result.state.revision !== beforeRevision ? 'Applied to the open document through native undo. Verify the affected pages; save normally when ready.' : undefined };
+				}
+				if (input.params !== undefined && (typeof input.params !== 'object' || Array.isArray(input.params) || JSON.stringify(input.params).length > 100000)) { throw new Error('params must be an object within 100,000 characters.'); }
+				const params: Record<string, unknown> = input.params && typeof input.params === 'object' && !Array.isArray(input.params) ? { ...(input.params as Record<string, unknown>) } : {};
 				const beforeRevision = doc.view.state.revision;
 				const result = await execute(doc, definition.id, params, true, true, token);
-				doc.commandResult = { id: randomUUID(), version: doc.version, value: { result: result.state.agentCommandResult, artifacts: result.state.pdfNewArtifacts || [] } };
-				doc.commandResults.set(doc.commandResult.id, { ...doc.commandResult, size: JSON.stringify(doc.commandResult.value).length });
-				while (doc.commandResults.size > 1 && (doc.commandResults.size > 4 || [...doc.commandResults.values()].reduce((size, receipt) => size + receipt.size, 0) > 4 * 1024 * 1024)) { doc.commandResults.delete(doc.commandResults.keys().next().value!); }
-				return { uri: doc.uri.toString(), kind, version: doc.version, completed: true, modified: result.state.revision !== beforeRevision, saved: false, pages: result.pages.length, result: boundedCommandResult(result.state.agentCommandResult), resultId: doc.commandResult.id, artifacts: (result.state.pdfNewArtifacts || []).slice(0, 20), artifactCount: result.state.pdfNewArtifacts?.length || 0, guidance: result.state.revision !== beforeRevision ? 'Applied to the open document through native undo. Verify the affected pages; save normally when ready.' : undefined };
+				const changed = result.state.revision !== beforeRevision;
+				return { uri: doc.uri.toString(), kind, version: doc.version, completed: true, modified: changed, saved: false, pages: result.pages.length, result: boundedCommandResult(result.state.agentCommandResult), guidance: changed ? 'Applied to the open document through native undo; save normally when ready.' : 'Read-only command completed. Use office_document_read to inspect the affected blocks.' };
 			});
 		}));
 		context.subscriptions.push(vscode.commands.registerCommand('aiOffice.' + kind + '.execute', async (uriOrName: string | undefined, command: string, args: Record<string, unknown> = {}, token?: vscode.CancellationToken) => {
@@ -830,7 +837,7 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 						const commands = doc.view.commands || [];
 						const category = typeof input.category === 'string' ? input.category : '';
 						const matches = commands.filter(command => input.command ? command.id === input.command : category ? command.id.startsWith(category + '.') : true);
-						return input.command || category ? { commands: matches, ...(matches.length ? {} : { error: 'No exact command matched. Use category with one of the available prefixes.', categories: [...new Set(commands.map(command => command.id.split('.')[0]))] }), targeted: 'Use office_document_edit operation=command with a block ID. caret.*, select.* and edit.* are UI-only; other enabled commands run on the target.' } : { categories: [...new Set(commands.map(command => command.id.split('.')[0]))], operations: ['insert', 'update', 'replaceText', 'replaceBlocks', 'delete', 'command', 'batch'], guides: ['content', 'commands', 'identity', 'drafting', 'comments'], tools: ['read', 'edit', 'format', 'draft', 'comments', 'history', 'activity', 'help'], history: historyStatus(doc), guidance: 'Read the ai-office-docs skill. Request one category or command for its exact parameters; IDs are internal and must not appear in user-facing messages.' };
+						return input.command || category ? { commands: matches, ...(matches.length ? {} : { error: 'No exact command matched. Use category with one of the available prefixes.', categories: [...new Set(commands.map(command => command.id.split('.')[0]))] }), targeted: 'Use office_document_edit for block-guarded edits, or office_document_run/aiOfficeEdit to run any engine command on the document. Selection commands such as select.text or select.all establish the engine caret for caret.* and edit.* commands.' } : { categories: [...new Set(commands.map(command => command.id.split('.')[0]))], operations: ['insert', 'update', 'replaceText', 'replaceBlocks', 'delete', 'command', 'batch'], guides: ['content', 'commands', 'identity', 'drafting', 'comments'], tools: ['read', 'edit', 'format', 'draft', 'comments', 'history', 'activity', 'help', 'tools', 'run'], history: historyStatus(doc), guidance: 'Read the ai-office-docs skill. Request one category or command for its exact parameters; IDs are internal and must not appear in user-facing messages.' };
 					}
 					return { uri: doc.uri.toString(), version: doc.version, history: historyStatus(doc), draft: doc.drafts.status(), ...await doc.client.request<Record<string, unknown>>('agentRead', { args: input }) };
 				});

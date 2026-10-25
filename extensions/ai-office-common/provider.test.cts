@@ -204,7 +204,9 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		assert.equal(discovery.uri, '/memo.docx');
 		assert.ok(discovery.categories.length);
 		assert.equal(discovery.commands, undefined, 'Initial discovery never loads every schema');
-		assert.match((await invoke('run', { uri: '/memo.docx', command: 'format.bold', params: {} })).error, /guarded document tools for Word/);
+		assert.match((await invoke('run', { uri: '/memo.docx', command: 'format.bold', params: {} })).error, /Discover its current version/);
+		const bold = await invoke('run', { uri: '/memo.docx', command: 'format.bold', params: { value: true }, version: discovery.version });
+		assert.equal(bold.modified, false, 'Word run executes the engine command and reports an unchanged revision');
 		const initial = await invoke('read', {});
 		assert.equal(initial.blocks[0].text, 'Initial content');
 		const other = await provider.openCustomDocument(uri('/other.docx'), {});

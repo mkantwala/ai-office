@@ -1482,78 +1482,16 @@
 			{
 				"command": "aiOffice.cloudflare.clearCredentials",
 				"title": "Sangam One: Remove Stored Cloudflare Credentials"
-			},
-			{
-				"command": "aiOffice.opencode.newSession",
-				"title": "OpenCode: New Agent Session"
-			},
-			{
-				"command": "aiOffice.opencode.settings",
-				"title": "OpenCode: Configure Connection"
-			},
-			{
-				"command": "aiOffice.agents.switch",
-				"title": "Sangam One: Switch Agent",
-				"icon": "$(hubot)"
-			},
-			{
-				"command": "aiOffice.opencode.returnToAgent",
-				"title": "Return to Built-in Agent",
-				"icon": "$(arrow-left)"
 			}
-		],
-		"chatSessions": [
-			{
-				"type": "opencode",
-				"canDelegate": true,
-				"name": "opencode",
-				"displayName": "OpenCode",
-				"description": "Run OpenCode with your configured providers and document tools.",
-				"icon": "$(terminal)",
-				"welcomeTitle": "OpenCode",
-				"welcomeMessage": "Use your OpenCode providers, models and agents in Sangam One.",
-				"inputPlaceholder": "Ask OpenCode to work on your documents or workspace",
-				"order": 4,
-				"requiresCopilotSignIn": false,
-				"capabilities": {
-					"supportsFileAttachments": true,
-					"supportsImageAttachments": false
-				}
-			}
-		],
-		"configuration": {
-			"title": "OpenCode",
-			"properties": {
-				"aiOffice.opencode.path": {
-					"type": "string",
-					"default": "opencode",
-					"scope": "machine",
-					"description": "OpenCode executable name or absolute path. Uses your existing OpenCode provider authentication."
-				}
-			}
-		},
-		"menus": {
-			"view/title": [
-				{
-					"command": "aiOffice.opencode.returnToAgent",
-					"when": "view == workbench.panel.chat.view.copilot && chatSessionType == opencode",
-					"group": "navigation@0"
-				}
-			]
-		}
+		]
 	},
 	"enabledApiProposals": [
 		"defaultChatParticipant",
 		"chatParticipantPrivate",
 		"chatProvider",
-		"chatSessionsProvider",
 		"chatParticipantAdditions"
 	],
 	"icon": "media/sangam-one.png",
-	"dependencies": {
-		"@agentclientprotocol/sdk": "1.9.0",
-		"zod": "^4.0.0"
-	},
 	"devDependencies": {
 		"esbuild": "0.28.1"
 	}

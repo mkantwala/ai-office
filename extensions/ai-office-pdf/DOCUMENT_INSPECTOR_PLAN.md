@@ -11,7 +11,7 @@ Use one guarded document service for editing and inspection. Keep stable interna
 | Geometry | Native `agent.rects` gives block rectangles; page sizes and table geometry already support the editor | Expose bounded, revision-tagged geometry to agents, including coordinate units and page numbering |
 | Pixels | Native `OfficeDocument.render` rasterizes pages; `engineWorker.ts` returns RGBA pixels to the editor | Encode selected pages as PNG and support image tool results; current document tools return text only |
 | Errors | Command failures and stale-version failures reach tool callers | Give inspector findings structured codes, severity, target IDs and evidence |
-| External agent transport | `opencode/documentBridge.ts` is a thin authenticated loopback MCP adapter; its callback uses `vscode.lm.invokeTool` | Preserve this shared implementation and cancellation/request attribution |
+| External agent transport | Built-in `vscode.lm` document tools plus `aiOfficeEdit` are the only agent surface; the former `opencode/documentBridge.ts` MCP adapter was removed | Keep request attribution and cancellation on `vscode.lm` invoke paths if an external transport is re-added |
 
 Upstream WordCraft provides `inspect_document`, `get_text` and `render_page` in `crates/mcp/src/tools.rs`. Its headless backend renders without a browser. `screenshot`, `click`, `key` and `ui_inspect` need a connected WordCraft desktop UI; those desktop controls are not automatically available in Sangam One's webview.
 
