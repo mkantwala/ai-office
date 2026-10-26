@@ -20,13 +20,11 @@
 	overflow: hidden;
 	flex-shrink: 1;
 	flex-grow: 1;
-	align-items: center;
+	align-items: flex-start;
 	justify-content: space-between;
 	user-select: none;
 	-webkit-user-select: none;
 	display: flex;
-	flex-wrap: wrap;
-	align-content: flex-start;
 	height: 100%;
 	width: 100%;
 }
@@ -66,14 +64,22 @@
 	-webkit-app-region: drag;
 }
 
-/* Full-width document control row beneath the title bar row. Registered by
- * the workbench-level document toolbar contribution; the row adds its height
- * to the part via part.minimumHeight and must sit above the drag region. */
+/* Full-width document control row beneath the title bar row; registered by
+ * the workbench-level document toolbar contribution. The row overlays the
+ * drag region (positioned + z-index) and is marked no-drag so controls stay
+ * clickable; its height is part minimumHeight via part.minimumHeight. */
 .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-document-toolbar-row {
-	flex: 0 0 100%;
-	position: relative;
+	position: absolute;
+	top: var(--sangam-titlebar-row-height, 35px);
+	left: 0;
+	right: 0;
 	z-index: 1;
 	-webkit-app-region: no-drag;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-document-toolbar-row > .sangam-document-toolbar {
+	flex: 1 1 auto;
+	min-width: 0;
 }
 
 .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left,
