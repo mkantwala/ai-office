@@ -2236,7 +2236,9 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 		this.documentToolbar = element;
 		this.documentToolbarHeight = height;
 		element.style.height = `${height}px`;
-		this.editorContainer.before(element);
+		// The document toolbar renders as the first control row of the group, directly beneath
+		// the window menu bar and above the editor tab strip.
+		this.titleContainer.before(element);
 		this.relayout();
 		return toDisposable(() => {
 			if (this.documentToolbar !== element) { return; }
