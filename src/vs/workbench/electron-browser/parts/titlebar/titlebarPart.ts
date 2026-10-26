@@ -274,7 +274,11 @@ export class NativeTitlebarPart extends BrowserTitlebarPart {
 		super.layout(width, height);
 
 		if (useWindowControlsOverlay(this.configurationService)) {
-			const newHeight = Math.round(height * getZoomFactor(getWindow(this.element)));
+			const zoomFactor = getZoomFactor(getWindow(this.element));
+			// The native window controls belong to the title bar row only; the
+			// full-width document toolbar row must not resize the native controls.
+			const toolbarHeight = this.preventZoom ? this.documentToolbarHeight / zoomFactor : this.documentToolbarHeight;
+			const newHeight = Math.round((height - toolbarHeight) * zoomFactor);
 			if (newHeight !== this.cachedWindowControlHeight) {
 				this.cachedWindowControlHeight = newHeight;
 				this.nativeHostService.updateWindowControls({

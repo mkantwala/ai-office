@@ -275,9 +275,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	private centerContent!: HTMLElement;
 	private rightContent!: HTMLElement;
 
-	private documentToolbarRow: HTMLElement | undefined;
+	protected documentToolbarRow: HTMLElement | undefined;
 	private documentToolbarElement: HTMLElement | undefined;
-	private documentToolbarHeight = 0;
+	protected documentToolbarHeight = 0;
 	private disposed = false;
 
 	protected readonly customMenubar = this._register(new MutableDisposable<CustomMenubarControl>());
