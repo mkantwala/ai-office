@@ -12,7 +12,7 @@ import { MenuBarVisibility, getTitleBarStyle, getMenuBarVisibility, hasCustomTit
 import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
 import { StandardMouseEvent } from '../../../../base/browser/mouseEvent.js';
 import { IConfigurationService, IConfigurationChangeEvent } from '../../../../platform/configuration/common/configuration.js';
-import { DisposableStore, IDisposable, MutableDisposable } from '../../../../base/common/lifecycle.js';
+import { DisposableStore, IDisposable, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { IBrowserWorkbenchEnvironmentService } from '../../../services/environment/browser/environmentService.js';
 import { IColorTheme, IThemeService } from '../../../../platform/theme/common/themeService.js';
 import { MODERN_UI_INACTIVE_SHELL_BACKGROUND, MODERN_UI_SHELL_BACKGROUND, TITLE_BAR_ACTIVE_BACKGROUND, TITLE_BAR_ACTIVE_FOREGROUND, TITLE_BAR_INACTIVE_FOREGROUND, TITLE_BAR_INACTIVE_BACKGROUND, TITLE_BAR_BORDER, WORKBENCH_BACKGROUND } from '../../../common/theme.js';
@@ -86,6 +86,12 @@ export interface ITitlebarPart extends IDisposable {
 	 * Adds variables to be supported in the window title.
 	 */
 	registerVariables(variables: ITitleVariable[]): void;
+
+	/**
+	 * Mount a full-window-width control row beneath the title bar row. The
+	 * part grows by the provided height until the disposable is disposed.
+	 */
+	registerToolbar(element: HTMLElement, height: number): IDisposable;
 }
 
 export class BrowserTitleService extends MultiWindowParts<BrowserTitlebarPart> implements ITitleService {
@@ -217,6 +223,10 @@ export class BrowserTitleService extends MultiWindowParts<BrowserTitlebarPart> i
 		}
 	}
 
+	registerToolbar(element: HTMLElement, height: number): IDisposable {
+		return this.mainPart.registerToolbar(element, height);
+	}
+
 	get windowTitle(): WindowTitle {
 		return this.mainPart.windowTitle;
 	}
@@ -238,7 +248,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 			value = Math.max(value, getWCOTitlebarAreaRect(getWindow(this.element))?.height ?? 0);
 		}
 
-		return value / (this.preventZoom ? getZoomFactor(getWindow(this.element)) : 1);
+		return (value + this.documentToolbarHeight) / (this.preventZoom ? getZoomFactor(getWindow(this.element)) : 1);
 	}
 
 	get maximumHeight(): number { return this.minimumHeight; }
@@ -264,6 +274,11 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	private leftContent!: HTMLElement;
 	private centerContent!: HTMLElement;
 	private rightContent!: HTMLElement;
+
+	private documentToolbarRow: HTMLElement | undefined;
+	private documentToolbarElement: HTMLElement | undefined;
+	private documentToolbarHeight = 0;
+	private disposed = false;
 
 	protected readonly customMenubar = this._register(new MutableDisposable<CustomMenubarControl>());
 	private readonly customMenubarDisposables = this._register(new DisposableStore());
@@ -462,6 +477,26 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 
 	registerVariables(variables: ITitleVariable[]): void {
 		this.windowTitle.registerVariables(variables);
+	}
+
+	registerToolbar(element: HTMLElement, height: number): IDisposable {
+		if (this.documentToolbarElement) { throw new Error('A document toolbar is already registered in the title bar.'); }
+		this.documentToolbarElement = element;
+		this.documentToolbarHeight = height;
+		element.style.height = `${height}px`;
+		if (!this.documentToolbarRow) {
+			this.documentToolbarRow = append(this.rootContainer, $('.titlebar-document-toolbar-row'));
+		}
+		this.documentToolbarRow.append(element);
+		// The row contributes to the part minimum height; nothing else observes the resize.
+		this._onDidChange.fire(undefined);
+		if (!this.disposed) { this.layoutService.layout(); }
+		return toDisposable(() => {
+			if (this.documentToolbarElement !== element) { return; }
+			element.remove(); this.documentToolbarElement = undefined; this.documentToolbarHeight = 0;
+			this._onDidChange.fire(undefined);
+			if (!this.disposed) { this.layoutService.layout(); }
+		});
 	}
 
 	protected override createContentArea(parent: HTMLElement): HTMLElement {
@@ -972,6 +1007,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		const zoomFactor = getZoomFactor(getWindow(this.element));
 
 		this.element.style.setProperty('--zoom-factor', zoomFactor.toString());
+		this.element.style.setProperty('--sangam-titlebar-row-height', `${this.isCommandCenterVisible ? DEFAULT_CUSTOM_TITLEBAR_HEIGHT : 30}px`);
 		this.rootContainer.classList.toggle('counter-zoom', this.preventZoom);
 
 		if (this.customMenubar.value) {
@@ -999,6 +1035,8 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	}
 
 	override dispose(): void {
+		this.disposed = true;
+
 		this._onWillDispose.fire();
 
 		super.dispose();

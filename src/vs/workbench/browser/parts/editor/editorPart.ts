@@ -235,11 +235,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 		});
 	}
 
-	registerToolbar(element: HTMLElement, height: number): IDisposable {
-		return this.activeGroup.registerToolbar(element, height);
-	}
-
-	private top = 0;
+	private top = 0;	private top = 0;
 	private left = 0;
 	private _contentDimension!: Dimension;
 	get contentDimension(): Dimension { return this._contentDimension; }

@@ -12,7 +12,7 @@ import { hasCustomTitlebar, hasNativeTitlebar, DEFAULT_CUSTOM_TITLEBAR_HEIGHT, T
 import { IContextMenuService } from '../../../platform/contextview/browser/contextView.js';
 import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
 import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
-import { DisposableStore } from '../../../base/common/lifecycle.js';
+import { DisposableStore, Disposable, IDisposable } from '../../../base/common/lifecycle.js';
 import { IThemeService } from '../../../platform/theme/common/themeService.js';
 import { agentsBackground, agentsPanelForeground } from '../../common/theme.js';
 import { isLinux, isMacintosh, isWeb, isNative, platformLocale } from '../../../base/common/platform.js';
@@ -144,6 +144,11 @@ export class TitlebarPart extends Part implements ITitlebarPart {
 
 	registerVariables(_variables: ITitleVariable[]): void {
 		// No window title variables in simplified titlebar
+	}
+
+	registerToolbar(_element: HTMLElement, _height: number): IDisposable {
+		// No full-width document control row in simplified titlebar
+		return Disposable.None;
 	}
 
 	updateOptions(_options: { compact: boolean }): void {
@@ -518,6 +523,10 @@ export class TitleService extends MultiWindowParts<TitlebarPart> implements ITit
 		for (const part of this.parts) {
 			part.registerVariables(variables);
 		}
+	}
+
+	registerToolbar(element: HTMLElement, height: number): IDisposable {
+		return this.mainPart.registerToolbar(element, height);
 	}
 
 	private _windowTitle: WindowTitle | undefined;

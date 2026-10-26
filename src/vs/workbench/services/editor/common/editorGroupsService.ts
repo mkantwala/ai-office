@@ -479,9 +479,6 @@ export interface IEditorGroupsContainer {
  */
 export interface IEditorPart extends IEditorGroupsContainer {
 
-	/** Mount the shared toolbar below the active editor group’s tabs. */
-	registerToolbar(element: HTMLElement, height: number): IDisposable;
-
 	/**
 	 * An event for when the editor part is layed out.
 	 */

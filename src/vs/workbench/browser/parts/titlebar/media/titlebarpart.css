@@ -25,6 +25,8 @@
 	user-select: none;
 	-webkit-user-select: none;
 	display: flex;
+	flex-wrap: wrap;
+	align-content: flex-start;
 	height: 100%;
 	width: 100%;
 }
@@ -64,11 +66,21 @@
 	-webkit-app-region: drag;
 }
 
+/* Full-width document control row beneath the title bar row. Registered by
+ * the workbench-level document toolbar contribution; the row adds its height
+ * to the part via part.minimumHeight and must sit above the drag region. */
+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-document-toolbar-row {
+	flex: 0 0 100%;
+	position: relative;
+	z-index: 1;
+	-webkit-app-region: no-drag;
+}
+
 .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left,
 .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-center,
 .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-right {
 	display: flex;
-	height: 100%;
+	height: var(--sangam-titlebar-row-height, 35px);
 	align-items: center;
 }
 

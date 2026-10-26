@@ -13,6 +13,7 @@ import { localize } from '../../../../nls.js';
 import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
+import { ITitleService } from '../../../services/title/browser/titleService.js';
 import { CustomEditorInput } from '../../customEditor/browser/customEditorInput.js';
 
 /** One window-level control surface; document selection remains owned by its editor. */
@@ -32,6 +33,7 @@ class DocumentToolbarContribution extends Disposable implements IWorkbenchContri
 	constructor(
 		@IEditorService private readonly editors: IEditorService,
 		@IEditorGroupsService private readonly groups: IEditorGroupsService,
+		@ITitleService private readonly title: ITitleService,
 		@ICommandService private readonly commands: ICommandService,
 		@INotificationService private readonly notifications: INotificationService,
 	) {
@@ -76,7 +78,7 @@ class DocumentToolbarContribution extends Disposable implements IWorkbenchContri
 		this.target = undefined; this.interaction = undefined; this.shape = '';
 		this.controls?.dispose(); this.controls = undefined; this.toolbar.replaceChildren();
 		if (!input) { this.registration.clear(); return; }
-		if (!this.registration.value) { this.registration.value = this.groups.mainPart.registerToolbar(this.host, 54); }
+		if (!this.registration.value) { this.registration.value = this.title.registerToolbar(this.host, 54); }
 		this.host.setAttribute('aria-busy', 'true');
 		this.toolbar.setAttribute('aria-label', localize('documentToolbar.loading', "Loading Document Formatting"));
 		void this.commands.executeCommand(`_aiOffice.${input.viewType.slice('aiOffice.'.length)}.requestToolbar`, input.resource).catch(() => { /* The document extension publishes its controls when ready. */ });

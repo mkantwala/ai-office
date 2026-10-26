@@ -130,8 +130,6 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 	private readonly progressBar: ProgressBar;
 
 	private readonly editorContainer: HTMLElement;
-	private documentToolbar?: HTMLElement;
-	private documentToolbarHeight = 0;
 	private readonly editorPane: EditorPanes;
 
 	/**
@@ -2231,22 +2229,6 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 	private _onDidChange = this._register(new Relay<{ width: number; height: number } | undefined>());
 	readonly onDidChange = this._onDidChange.event;
 
-	registerToolbar(element: HTMLElement, height: number): IDisposable {
-		if (this.documentToolbar) { throw new Error('An editor toolbar is already registered.'); }
-		this.documentToolbar = element;
-		this.documentToolbarHeight = height;
-		element.style.height = `${height}px`;
-		// The document toolbar renders as the first control row of the group, directly beneath
-		// the window menu bar and above the editor tab strip.
-		this.titleContainer.before(element);
-		this.relayout();
-		return toDisposable(() => {
-			if (this.documentToolbar !== element) { return; }
-			element.remove(); this.documentToolbar = undefined; this.documentToolbarHeight = 0;
-			if (!this.disposed) { this.relayout(); }
-		});
-	}
-
 	layout(width: number, height: number, top: number, left: number): void {
 		this.lastLayout = { width, height, top, left };
 		this.element.classList.toggle('max-height-478px', height <= 478);
@@ -2256,7 +2238,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 		// Keep tabs full-width while the header and editor pane follow the content inset.
 		const titleControlSize = this.titleControl.layout({
 			container: new Dimension(width, height),
-			available: new Dimension(width, height - this.editorPane.minimumHeight - this.documentToolbarHeight)
+			available: new Dimension(width, height - this.editorPane.minimumHeight)
 		}, contentWidth);
 
 		// Update progress bar location
@@ -2264,11 +2246,10 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 
 		// The editor pane is inset on the right by `_contentRightInset` so a docked
 		// panel can sit beside it under the full-width title (0 = fill the group).
-		const editorHeight = Math.max(0, height - titleControlSize.height - this.documentToolbarHeight);
-		if (this.documentToolbar) { this.documentToolbar.style.width = `${contentWidth}px`; }
+		const editorHeight = Math.max(0, height - titleControlSize.height);
 		this.editorContainer.style.width = `${contentWidth}px`;
 		this.editorContainer.style.height = `${editorHeight}px`;
-		this.editorPane.layout({ width: contentWidth, height: editorHeight, top: top + titleControlSize.height + this.documentToolbarHeight, left });
+		this.editorPane.layout({ width: contentWidth, height: editorHeight, top: top + titleControlSize.height, left });
 	}
 
 	/**
