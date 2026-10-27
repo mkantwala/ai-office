@@ -139,6 +139,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	const increase = ownerDocument.createElement('button');
 	for (const [button, label, text, delta] of [[decrease, 'Decrease Font Size', '−', -1], [increase, 'Increase Font Size', '+', 1]] as const) {
 		button.type = 'button'; button.textContent = text; button.title = label; button.setAttribute('aria-label', label);
+		button.classList.add('word-size-step');
 		button.addEventListener('pointerdown', event => event.preventDefault(), listen);
 		button.addEventListener('click', () => {
 			const current = Number(controls.size.dataset.currentSize || controls.size.dataset.lastSize || 11);
@@ -172,7 +173,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	paintButton.addEventListener('pointerdown', event => event.preventDefault());
 	const paintGroup = group('Formatting', [paintButton]);
 	const style = group('Styles', [menus.style]);
-	const font = group('Font', [dropdowns[0].element, dropdowns[1].element, increase, decrease]);
+	const font = group('Font', [dropdowns[0].element, decrease, dropdowns[1].element, increase]);
 	const emphasis = group('Text Formatting', [...controls.emphasis, ...(controls.strike ? [controls.strike] : [])]);
 	if (controls.strike) { controls.strike.classList.add('word-emphasis-button'); controls.strike.style.textDecoration = 'line-through'; }
 	const colors = [controls.color, controls.highlight].filter((item): item is HTMLSelectElement => !!item).map(select => { select.dataset.palette = 'true'; return menus.selector(select, icon(select === controls.color ? 'color' : 'highlight', ownerDocument)); });

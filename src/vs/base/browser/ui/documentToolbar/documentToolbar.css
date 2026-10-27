@@ -306,6 +306,8 @@
 .word-toolbar-group[data-label="Font"] > .word-button-control:first-child .word-dropdown-button { width: 100%; max-width: none; min-width: 0; }
 .word-toolbar-group[data-label="Font"] > .word-button-control:nth-of-type(2) { width: 56px; flex: 0 0 56px; }
 .word-toolbar-group[data-label="Font"] > .word-button-control:nth-of-type(2) .word-dropdown-button { width: 100%; min-width: 0; }
+/* Size stepper: minus on the left of the value, plus on the right, as in Docs. */
+.word-toolbar .word-size-step { display: inline-flex; align-items: center; justify-content: center; width: 24px; min-width: 24px; height: 32px; padding: 0; border: 1px solid var(--vscode-widget-border, transparent); border-radius: 4px; font-size: 14px; line-height: 1; }
 .word-control-value { display: block; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; }
 .word-dropdown-button::after { flex: 0 0 5px; }
 .word-option-menu button[aria-checked="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }

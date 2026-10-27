@@ -282,8 +282,6 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 
 	protected readonly customMenubar = this._register(new MutableDisposable<CustomMenubarControl>());
 	private readonly customMenubarDisposables = this._register(new DisposableStore());
-	protected appIcon: HTMLElement | undefined;
-	private appIconBadge: HTMLElement | undefined;
 	protected menubar?: HTMLElement;
 	private lastLayoutDimensions: Dimension | undefined;
 
@@ -508,11 +506,6 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		this.leftContent = append(this.rootContainer, $('.titlebar-left'));
 		this.centerContent = append(this.rootContainer, $('.titlebar-center'));
 		this.rightContent = append(this.rootContainer, $('.titlebar-right'));
-
-		// App Icon (Windows, Linux)
-		if ((isWindows || isLinux) && !hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {
-			this.appIcon = prepend(this.leftContent, $('a.window-appicon'));
-		}
 
 		// Draggable region that we can manipulate for #52522
 		this.dragRegion = prepend(this.rootContainer, $('div.titlebar-drag-region'));
@@ -890,10 +883,6 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 			const shellBackground = this.getColor(isInactive ? MODERN_UI_INACTIVE_SHELL_BACKGROUND : MODERN_UI_SHELL_BACKGROUND, makeOpaque) || this.getColor(MODERN_UI_SHELL_BACKGROUND, makeOpaque) || titleBackground;
 			this.element.style.backgroundColor = titleBackground;
 			this.layoutService.getContainer(getWindow(this.element)).style.setProperty('--modern-ui-shell-background', shellBackground);
-
-			if (this.appIconBadge) {
-				this.appIconBadge.style.backgroundColor = titleBackground;
-			}
 
 			if (titleBackground && Color.fromHex(titleBackground).isLighter()) {
 				this.element.classList.add('light');

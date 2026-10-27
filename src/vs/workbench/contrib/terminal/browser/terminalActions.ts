@@ -357,11 +357,6 @@ export function registerTerminalActions() {
 		id: TerminalCommandId.NewInNewWindow,
 		title: terminalStrings.newInNewWindow,
 		precondition: sharedWhenClause.terminalAvailable,
-		keybinding: {
-			primary: KeyMod.CtrlCmd | KeyMod.Shift | KeyMod.Alt | KeyCode.Backquote,
-			mac: { primary: KeyMod.WinCtrl | KeyMod.Shift | KeyMod.Alt | KeyCode.Backquote },
-			weight: KeybindingWeight.WorkbenchContrib
-		},
 		run: async (c) => {
 			const instance = await c.service.createTerminal({
 				location: {
@@ -1215,11 +1210,6 @@ export function registerTerminalActions() {
 		title: localize2('workbench.action.terminal.new', 'Create New Terminal'),
 		precondition: ContextKeyExpr.or(TerminalContextKeys.processSupported, TerminalContextKeys.webExtensionContributedProfile),
 		icon: newTerminalIcon,
-		keybinding: {
-			primary: KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Backquote,
-			mac: { primary: KeyMod.WinCtrl | KeyMod.Shift | KeyCode.Backquote },
-			weight: KeybindingWeight.WorkbenchContrib
-		},
 		run: async (c, accessor, args) => {
 			let eventOrOptions = isObject(args) ? args as MouseEvent | ICreateTerminalOptions : undefined;
 			const workspaceContextService = accessor.get(IWorkspaceContextService);
