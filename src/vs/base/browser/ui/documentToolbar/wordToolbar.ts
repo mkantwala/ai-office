@@ -44,6 +44,7 @@ const paths = {
 	undo: 'M9 5 4 10l5 5M4 10h10a6 6 0 0 1 0 12',
 	redo: 'm15 5 5 5-5 5m5-5H10a6 6 0 0 0 0 12',
 	save: 'M5 3h12l4 4v14H3V3h2m2 0v6h10V3M7 21v-8h10v8',
+	paintFormat: 'M5 3h10v6H5zM15 4h3a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-5M9 9v3a2 2 0 0 0 2 2h1v7',
 	align: 'M4 5h16M4 10h10M4 15h16M4 20h10',
 	list: 'M9 5h11M9 12h11M9 19h11M4 5h.01M4 12h.01M4 19h.01',
 	spacing: 'm3 7 3-3 3 3M6 4v16m-3-3 3 3 3-3M13 5h8M13 12h8M13 19h8',
@@ -113,11 +114,18 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 		controls.emphasis[index].setAttribute('aria-label', label);
 		controls.emphasis[index].classList.add('word-emphasis-button');
 	}
-	controls.save.classList.add('word-save-button');
-	const history = group('Document', [iconButton(controls.undo, 'undo'), iconButton(controls.redo, 'redo')]);
+	// Docs-style row order: history, paint format, style, font+size, emphasis,
+	// color+highlight, reset, spacing/align/list, inserts, more, suggestions.
+	const more = ownerDocument.createElement('button');
+	more.type = 'button';
+	more.textContent = 'More';
+	more.title = 'More Formatting';
+	more.setAttribute('aria-label', 'More Formatting');
+	more.setAttribute('aria-expanded', 'false');
+	iconButton(more, 'more');
+	more.classList.add('word-more-button');
 	const host = toolbar.closest<HTMLElement>('.monaco-workbench') || ownerDocument.body;
 	const menus = wordMenus(controls.style, controls.table, insertTable, focusDocument, host, () => more.focus());
-	const style = group('Styles', [menus.style]);
 	const dropdowns = [menus.selector(controls.font, 'Font'), menus.selector(controls.size, 'Size'), menus.selector(controls.align, icon('align', ownerDocument)), menus.selector(controls.spacing, icon('spacing', ownerDocument)), menus.selector(controls.list, icon('list', ownerDocument))];
 	const decrease = ownerDocument.createElement('button');
 	const increase = ownerDocument.createElement('button');
@@ -148,24 +156,25 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	controls.size.addEventListener('formatstate', syncFont, listen);
 	const fontObserver = new targetWindow.MutationObserver(syncFont); fontObserver.observe(controls.size, { attributes: true, attributeFilter: ['disabled'] });
 	syncFont();
-	const font = group('Font', [dropdowns[0].element, decrease, dropdowns[1].element, increase]);
+	const history = group('Document', [iconButton(controls.undo, 'undo'), iconButton(controls.redo, 'redo')]);
+	// Visual affordance only; its command mapping follows the snapshot work.
+	const paintButton = iconButton(ownerDocument.createElement('button'), 'paintFormat');
+	paintButton.type = 'button'; paintButton.title = 'Paint Format'; paintButton.setAttribute('aria-label', 'Paint Format');
+	paintButton.addEventListener('pointerdown', event => event.preventDefault());
+	const paintGroup = group('Formatting', [paintButton]);
+	const style = group('Styles', [menus.style]);
+	const font = group('Font', [dropdowns[0].element, dropdowns[1].element, increase, decrease]);
 	const emphasis = group('Text Formatting', [...controls.emphasis, ...(controls.strike ? [controls.strike] : [])]);
 	if (controls.strike) { controls.strike.classList.add('word-emphasis-button'); controls.strike.style.textDecoration = 'line-through'; }
 	const colors = [controls.color, controls.highlight].filter((item): item is HTMLSelectElement => !!item).map(select => { select.dataset.palette = 'true'; return menus.selector(select, icon(select === controls.color ? 'color' : 'highlight', ownerDocument)); });
 	dropdowns.push(...colors);
-	emphasis.append(...colors.map(item => item.element));
-	const paragraph = group('Paragraph', [...dropdowns.slice(2, 5).map(item => item.element), ...(controls.properties ? [iconButton(controls.properties, 'properties')] : [])]);
-	const insert = group('Insert', [iconButton(controls.link, 'link'), iconButton(controls.comment, 'comment'), iconButton(controls.image, 'image')]);
-	const table = group('Insert', [...(controls.text ? [controls.text] : []), iconButton(controls.table, 'table')]);
-	const groups = [history, style, font, emphasis, paragraph, insert];
-	const more = ownerDocument.createElement('button');
-	more.type = 'button';
-	more.textContent = 'More';
-	more.title = 'More Formatting';
-	more.setAttribute('aria-label', 'More Formatting');
-	more.setAttribute('aria-expanded', 'false');
-	iconButton(more, 'more');
-	more.classList.add('word-more-button');
+	const colorsGroup = group('Colors', colors.map(item => item.element));
+	const clearGroup = controls.clear ? group('Reset', [iconButton(controls.clear, 'clear')]) : undefined;
+	const paragraph = group('Paragraph', [dropdowns[3].element, dropdowns[2].element, dropdowns[4].element, ...(controls.properties ? [iconButton(controls.properties, 'properties')] : [])]);
+	const commentButton = iconButton(controls.comment, 'comment'); commentButton.classList.add('word-comment-badge');
+	const insert = group('Insert', [...(controls.text ? [controls.text] : []), iconButton(controls.image, 'image'), iconButton(controls.table, 'table'), iconButton(controls.link, 'link'), commentButton]);
+	const groups: HTMLElement[] = [history, paintGroup, style, font, emphasis, colorsGroup, paragraph, insert];
+	if (clearGroup) { groups.splice(6, 0, clearGroup); }
 	const overflow = ownerDocument.createElement('div');
 	overflow.id = 'word-toolbar-overflow';
 	overflow.className = 'word-toolbar-overflow';
@@ -174,12 +183,41 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	overflow.setAttribute('aria-label', 'More Formatting');
 	more.setAttribute('aria-controls', overflow.id);
 	more.popoverTargetElement = overflow;
-	if (controls.clear) { table.append(iconButton(controls.clear, 'clear')); }
-	overflow.append(table);
+	const extras = ownerDocument.createElement('div');
+	extras.className = 'word-toolbar-group word-overflow-extras';
+	extras.setAttribute('role', 'group');
+	extras.setAttribute('aria-label', 'Extended formatting');
+	// Placeholders for menus that follow: clicking one must not collapse the popup.
+	extras.setAttribute('data-word-menu', '');
+	const extraButton = (text: string, label: string, dropdown: boolean) => {
+		const button = ownerDocument.createElement('button');
+		button.type = 'button'; button.textContent = text; button.title = label; button.setAttribute('aria-label', label);
+		button.classList.add('word-extra');
+		if (dropdown) { button.classList.add('word-dropdown-button'); }
+		return button;
+	};
+	extras.append(
+		extraButton('A²', 'Superscript', false),
+		extraButton('A₂', 'Subscript', false),
+		extraButton('Ag', 'Small Caps', true),
+		extraButton('Ab', 'Letter Spacing', true),
+		extraButton('¶', 'Paragraph Mark', false),
+		extraButton('⇥', 'Indent', true),
+		extraButton('Aa', 'Line Spacing Options', true),
+		extraButton('”', 'Block Quote', true),
+	);
+	overflow.append(extras);
 	const headerFooter = [controls.margins, controls.pageBorders, controls.header, controls.footer].filter((control): control is HTMLButtonElement => !!control);
 	if (headerFooter.length) { overflow.append(group('Page Layout', headerFooter)); }
 	const allControls = [...headerFooter, controls.undo, controls.redo, decrease, increase, controls.properties, controls.text, menus.styleButton, ...dropdowns.map(item => item.button), ...controls.emphasis, controls.strike, controls.clear, controls.table, controls.image, controls.link, controls.comment, more].filter((control): control is HTMLButtonElement => !!control);
-	row.append(...groups, more);
+	const suggestions = ownerDocument.createElement('button');
+	suggestions.type = 'button';
+	suggestions.title = 'Suggestions';
+	suggestions.setAttribute('aria-label', 'Suggestions');
+	suggestions.className = 'word-suggestions-chip';
+	suggestions.addEventListener('pointerdown', event => event.preventDefault());
+	suggestions.replaceChildren(icon('comment', ownerDocument), ownerDocument.createTextNode('Suggestions'));
+	row.append(...groups, more, suggestions);
 	toolbar.replaceChildren(row);
 	host.append(overflow);
 
@@ -219,9 +257,11 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 		const focused = ownerDocument.activeElement;
 		for (const element of groups) { row.insertBefore(element, more); }
 		// Move real controls, preserving their listeners, disabled state and values.
-		for (const element of [insert, paragraph, style, emphasis, history, font]) {
+		// Paint format and the suggestions chip stay pinned to the row.
+		for (const element of [insert, paragraph, clearGroup, colorsGroup, emphasis, style, history, font]) {
 			if (row.scrollWidth <= row.clientWidth) { break; }
-			overflow.insertBefore(element, table);
+			if (!element) { continue; }
+			overflow.appendChild(element);
 		}
 		if (focused instanceof targetWindow.HTMLElement && groups.some(element => element.contains(focused))) {
 			if (overflow.contains(focused)) { more.focus({ preventScroll: true }); }

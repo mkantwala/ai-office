@@ -25,8 +25,7 @@
 }
 
 .word-toolbar-row > .word-toolbar-group {
-	padding-inline-end: 8px;
-	border-inline-end: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, transparent));
+	padding-inline-end: 2px;
 }
 
 .word-toolbar button,
@@ -139,38 +138,40 @@
 
 .word-toolbar-row .word-more-button { margin-inline-start: auto; }
 
+/* The "more tools" surface is a single horizontal strip under the ⋯ button. */
 .word-toolbar-overflow {
 	position: fixed;
 	inset: auto;
 	margin: 0;
-	width: 272px;
+	box-sizing: border-box;
+	width: max-content;
 	max-width: calc(100vw - 16px);
-	padding: 8px;
+	padding: 6px;
 	border: 1px solid var(--vscode-contrastBorder, var(--vscode-widget-border, transparent));
-	border-radius: 8px;
+	border-radius: 6px;
 	background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
 	color: var(--vscode-foreground);
 	box-shadow: 0 8px 24px var(--vscode-widget-shadow, transparent);
-	overflow: auto;
+	overflow-x: auto;
+	overflow-y: hidden;
 }
 
+.word-toolbar-overflow:popover-open { display: flex; align-items: center; gap: 6px; }
+
 .word-toolbar-overflow .word-toolbar-group {
-	flex-wrap: wrap;
-	padding: 8px 4px;
+	flex-wrap: nowrap;
+	padding: 0;
 	gap: 4px;
 }
 
 .word-toolbar-overflow .word-toolbar-group + .word-toolbar-group {
-	border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, transparent));
+	border-top: 0;
+	border-inline-start: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, transparent));
+	padding-inline-start: 6px;
 }
 
-.word-toolbar-overflow .word-toolbar-group::before {
-	content: attr(data-label);
-	width: 100%;
-	padding: 0 4px 4px;
-	font-size: 11px;
-	color: var(--vscode-descriptionForeground);
-}
+/* Cluster captions would crowd the strip; titles remain on each control. */
+.word-toolbar-overflow .word-toolbar-group::before { content: none; }
 
 .word-toolbar-overflow .word-icon-select { gap: 8px; }
 .word-toolbar-overflow .word-emphasis-button { min-width: 32px; }
@@ -273,21 +274,22 @@
 .word-toolbar button:disabled, .word-toolbar select:disabled, .word-toolbar-overflow button:disabled, .word-toolbar-overflow select:disabled { opacity: .35; cursor: default; }
 .word-toolbar button:focus-visible, .word-toolbar select:focus-visible, .word-toolbar-overflow button:focus-visible, .word-toolbar-overflow select:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 .word-toolbar button[aria-pressed="true"], .word-toolbar-overflow button[aria-pressed="true"] { background: color-mix(in srgb, var(--vscode-focusBorder) 22%, transparent); border-color: var(--vscode-focusBorder); }
-.sangam-document-toolbar { display: flex; box-sizing: border-box; padding: 6px 8px; background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background)); }
-.sangam-document-toolbar > .word-toolbar { position: relative; top: 0; margin: 0; height: 42px; padding: 4px 8px; font: 12px var(--vscode-font-family); color: var(--vscode-foreground); }
+.sangam-document-toolbar { display: flex; box-sizing: border-box; padding: 3px 8px; background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background)); }
+/* Docs-style second chrome row: full-bleed 48px strip, controls centered. */
+.sangam-document-toolbar > .word-toolbar { position: relative; top: 0; margin: 0; height: 48px; padding: 0 4px; box-sizing: border-box; font: 12px var(--vscode-font-family); color: var(--vscode-foreground); background: transparent; border: 0; border-radius: 0; box-shadow: none; }
 /* The editor-part header is flex; allow the compact row to shrink into its overflow menu. */
 .sangam-document-toolbar > .word-toolbar { box-sizing: border-box; flex: 1; min-width: 0; width: 100%; }
 
 /* Compact button strip: option lists appear only after an explicit click. */
-#toolbar.word-toolbar, .sangam-document-toolbar > .word-toolbar {
+#toolbar.word-toolbar {
 	border-radius: 8px; box-shadow: none; background: var(--vscode-editor-background); border-color: var(--vscode-widget-border, transparent);
 }
-.word-toolbar-row { gap: 6px; }
-.word-toolbar .word-style-select { width: 48px; font-size: 17px; }
+.word-toolbar-row { gap: 3px; }
+.word-toolbar .word-style-select { width: 104px; font-size: 13px; }
 .word-button-control { display: inline-flex; flex: 0 0 auto; }
-.word-toolbar .word-dropdown-button, .word-toolbar-overflow .word-dropdown-button { display: inline-flex; align-items: center; gap: 8px; min-width: 42px; padding: 5px 8px; }
+.word-toolbar .word-dropdown-button, .word-toolbar-overflow .word-dropdown-button { display: inline-flex; align-items: center; gap: 5px; height: 32px; min-width: 42px; padding: 0 6px; border: 1px solid var(--vscode-widget-border, transparent); }
 .word-dropdown-button::after, .word-style-select::after { content: ''; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); }
-.word-toolbar button.word-style-select { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.word-toolbar button.word-style-select { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 8px; border: 1px solid var(--vscode-widget-border, transparent); }
 .word-toolbar .word-emphasis-button { font-size: 17px; }
 .word-option-menu { min-width: 170px; max-height: min(360px, 70vh); overflow-y: auto; padding: 6px; }
 .word-option-menu button { background: transparent; border-radius: 4px; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; text-align: left; padding: 6px 10px; color: var(--vscode-foreground); }
@@ -300,9 +302,9 @@
 .word-toolbar-group[data-label="Font"] > .word-button-control:nth-of-type(2) .word-dropdown-button { min-width: 44px; font-variant-numeric: tabular-nums; }
 
 /* Fixed value slots keep long font names from changing the toolbar layout. */
-.word-toolbar-group[data-label="Font"] > .word-button-control:first-child { width: 124px; min-width: 0; flex: 0 0 124px; }
+.word-toolbar-group[data-label="Font"] > .word-button-control:first-child { width: 144px; min-width: 0; flex: 0 0 144px; }
 .word-toolbar-group[data-label="Font"] > .word-button-control:first-child .word-dropdown-button { width: 100%; max-width: none; min-width: 0; }
-.word-toolbar-group[data-label="Font"] > .word-button-control:nth-of-type(2) { width: 52px; flex: 0 0 52px; }
+.word-toolbar-group[data-label="Font"] > .word-button-control:nth-of-type(2) { width: 56px; flex: 0 0 56px; }
 .word-toolbar-group[data-label="Font"] > .word-button-control:nth-of-type(2) .word-dropdown-button { width: 100%; min-width: 0; }
 .word-control-value { display: block; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; }
 .word-dropdown-button::after { flex: 0 0 5px; }
@@ -324,3 +326,55 @@
 .word-color-reset .word-color-swatch { width: 18px; height: 18px; flex-shrink: 0; }
 .word-custom-color { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; margin-top: 6px; padding: 6px 8px; border-radius: 4px; background: var(--vscode-toolbar-hoverBackground, #8882); font-size: 11px; text-transform: uppercase; }
 .word-custom-color input { width: 32px; height: 26px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+
+/* --- Docs-style second chrome row ----------------------------------------- */
+/* The suggestions affordance owns the trailing space; ⋯ sits with its groups. */
+.sangam-document-toolbar .word-more-button { width: 28px; padding: 0; margin-inline-start: 0; }
+
+/* Comment balloon carries the "add" superscript badge. */
+.word-toolbar .word-comment-badge { position: relative; }
+.word-toolbar .word-comment-badge::after {
+	content: '+';
+	position: absolute;
+	top: 2px;
+	right: 1px;
+	font: 700 9px/1 var(--vscode-font-family, sans-serif);
+	color: var(--vscode-focusBorder, currentColor);
+}
+
+/* Extended formatting placeholder buttons inside the more-tools strip. */
+.word-toolbar-overflow .word-extra {
+	height: 32px;
+	min-width: 0;
+	padding: 0 8px;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	gap: 4px;
+}
+.word-toolbar-overflow .word-extra.word-dropdown-button { min-width: 0; padding: 0 6px; }
+
+/* Suggestions chip pinned to the trailing end of the row. */
+.word-suggestions-chip {
+	margin-inline-start: auto;
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: 3px;
+	height: 30px;
+	padding: 0 8px;
+	border-radius: 9999px;
+	border: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 45%, transparent);
+	background: color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent);
+	color: var(--vscode-foreground);
+	font-size: 13px;
+	cursor: pointer;
+}
+.word-suggestions-chip svg { width: 15px; height: 15px; }
+.word-suggestions-chip:hover, .word-suggestions-chip:focus-visible { background: color-mix(in srgb, var(--vscode-focusBorder) 20%, transparent); }
+.word-suggestions-chip:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 0; }
+
+@media (forced-colors: active) {
+	.word-toolbar .word-style-select, .word-toolbar .word-dropdown-button, .word-suggestions-chip { border-color: ButtonText; }
+}
