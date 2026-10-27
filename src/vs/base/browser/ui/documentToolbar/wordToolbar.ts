@@ -34,35 +34,43 @@ interface WordToolbarControls {
 	comment: HTMLButtonElement;
 }
 
-// Original line icons. Keep the assets local to the webview and inherit theme colors.
+// Original line icons. Keep the assets local to the webview and inherit theme colors;
+// palette tools carry a themed guide bar (text color, highlight) as in Docs.
+interface IconSegment {
+	d: string;
+	stroke?: string;
+}
 const paths = {
-	versions: 'M3 11a9 9 0 1 1 2 7M3 4v7h7M12 7v5l3 2',
-	properties: 'M4 5h16M4 10h10M4 15h10M4 20h16M18 9v7m-3-3 3 3 3-3',
-	color: 'm6 17 6-14 6 14M8 12h8M4 21h16',
-	highlight: 'm8 15 9-11 4 4-9 11-4-4Zm0 0-4 4h8M3 22h18',
-	clear: 'm4 14 9-11 8 7-9 11H9l-5-5v-2Zm5-6 8 7M14 21h8',
-	undo: 'M9 5 4 10l5 5M4 10h10a6 6 0 0 1 0 12',
-	redo: 'm15 5 5 5-5 5m5-5H10a6 6 0 0 0 0 12',
-	save: 'M5 3h12l4 4v14H3V3h2m2 0v6h10V3M7 21v-8h10v8',
-	paintFormat: 'M5 3h10v6H5zM15 4h3a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-5M9 9v3a2 2 0 0 0 2 2h1v7',
-	align: 'M4 5h16M4 10h10M4 15h16M4 20h10',
-	list: 'M9 5h11M9 12h11M9 19h11M4 5h.01M4 12h.01M4 19h.01',
-	spacing: 'm3 7 3-3 3 3M6 4v16m-3-3 3 3 3-3M13 5h8M13 12h8M13 19h8',
-	table: 'M3 4h18v16H3V4m0 5h18M3 14h18M9 4v16M15 4v16',
-	image: 'M3 3h18v18H3V3m0 14 6-6 4 4 3-3 5 5M16 7h.01',
-	link: 'm10 13 4-4m-6 7-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 10a4 4 0 0 0 6 0l4-4a4 4 0 0 0-6-6l-1 1',
-	comment: 'M21 15a3 3 0 0 1-3 3H8l-5 4V5a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v10M8 10h8m-4-4v8',
-	more: 'M5 12h.01M12 12h.01M19 12h.01',
-};
+	versions: [{ d: 'M3 11a9 9 0 1 1 2 7M3 4v7h7M12 7v5l3 2' }],
+	properties: [{ d: 'M4 5h16M4 10h10M4 15h10M4 20h16M18 9v7m-3-3 3 3 3-3' }],
+	color: [{ d: 'm6 17 6-14 6 14M8 12h8' }, { d: 'M4 21h16', stroke: 'var(--word-red, #d93025)' }],
+	highlight: [{ d: 'm8 15 9-11 4 4-9 11-4-4Zm0 0-4 4h8' }, { d: 'M3 22h18', stroke: 'var(--word-yellow, #f9cc0d)' }],
+	clear: [{ d: 'm4 14 9-11 8 7-9 11H9l-5-5v-2Zm5-6 8 7M14 21h8' }],
+	undo: [{ d: 'M9 5 4 10l5 5M4 10h10a6 6 0 0 1 0 12' }],
+	redo: [{ d: 'm15 5 5 5-5 5m5-5H10a6 6 0 0 0 0 12' }],
+	save: [{ d: 'M5 3h12l4 4v14H3V3h2m2 0v6h10V3M7 21v-8h10v8' }],
+	paintFormat: [{ d: 'M5 3h10v6H5zM15 4h3a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-5M9 9v3a2 2 0 0 0 2 2h1v7' }],
+	align: [{ d: 'M4 5h16M4 10h10M4 15h16M4 20h10' }],
+	list: [{ d: 'M9 5h11M9 12h11M9 19h11M4 5h.01M4 12h.01M4 19h.01' }],
+	spacing: [{ d: 'm3 7 3-3 3 3M6 4v16m-3-3 3 3 3-3M13 5h8M13 12h8M13 19h8' }],
+	table: [{ d: 'M3 4h18v16H3V4m0 5h18M3 14h18M9 4v16M15 4v16' }],
+	image: [{ d: 'M3 3h18v18H3V3m0 14 6-6 4 4 3-3 5 5M16 7h.01' }],
+	link: [{ d: 'm10 13 4-4m-6 7-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 10a4 4 0 0 0 6 0l4-4a4 4 0 0 0-6-6l-1 1' }],
+	comment: [{ d: 'M21 15a3 3 0 0 1-3 3H8l-5 4V5a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v10M8 10h8m-4-4v8' }],
+	more: [{ d: 'M5 12h.01M12 12h.01M19 12h.01' }],
+} satisfies Record<string, IconSegment[]>;
 
 function icon(name: keyof typeof paths, ownerDocument: Document): SVGSVGElement {
 	const svg = ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'svg');
 	svg.setAttribute('viewBox', '0 0 24 24');
 	svg.setAttribute('aria-hidden', 'true');
 	svg.setAttribute('focusable', 'false');
-	const path = ownerDocument.createElementNS(svg.namespaceURI, 'path');
-	path.setAttribute('d', paths[name]);
-	svg.append(path);
+	for (const segment of paths[name]) {
+		const path = ownerDocument.createElementNS(svg.namespaceURI, 'path');
+		path.setAttribute('d', segment.d);
+		if (segment.stroke) { path.style.stroke = segment.stroke; }
+		svg.append(path);
+	}
 	return svg;
 }
 
@@ -160,6 +168,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	// Visual affordance only; its command mapping follows the snapshot work.
 	const paintButton = iconButton(ownerDocument.createElement('button'), 'paintFormat');
 	paintButton.type = 'button'; paintButton.title = 'Paint Format'; paintButton.setAttribute('aria-label', 'Paint Format');
+	paintButton.classList.add('word-paint-button');
 	paintButton.addEventListener('pointerdown', event => event.preventDefault());
 	const paintGroup = group('Formatting', [paintButton]);
 	const style = group('Styles', [menus.style]);

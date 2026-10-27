@@ -13,7 +13,9 @@ export function wordMenus(select: HTMLSelectElement, table: HTMLButtonElement, i
 	const styleButton = ownerDocument.createElement('button');
 	styleButton.type = 'button'; styleButton.disabled = select.disabled; styleButton.className = 'word-style-select';
 	styleButton.title = 'Paragraph Style'; styleButton.setAttribute('aria-label', 'Paragraph Style');
-	styleButton.textContent = 'Aa';
+	const styleLabel = ownerDocument.createElement('span'); styleLabel.className = 'word-control-value'; styleLabel.textContent = 'Aa';
+	styleButton.append(styleLabel);
+	// The pill carries the live style name once the engine reports selection state.
 	select.hidden = true;
 	const wrapper = ownerDocument.createElement('span'); wrapper.className = 'word-style-control'; wrapper.append(styleButton, select);
 	const create = (button: HTMLButtonElement, id: string, label: string, initialFocus: () => HTMLElement | undefined) => {
@@ -52,7 +54,8 @@ export function wordMenus(select: HTMLSelectElement, table: HTMLButtonElement, i
 	styles.menu.setAttribute('role', 'menu'); styleButton.setAttribute('aria-haspopup', 'menu');
 	select.addEventListener('formatstate', () => { styleButton.disabled = select.disabled;
 		const current = select.dataset.currentStyle;
-		styleButton.textContent = 'Aa';
+		const match = [...select.options].find(option => option.value === current);
+		styleLabel.textContent = match?.textContent || 'Normal';
 		for (const item of styleItems) { item.setAttribute('aria-checked', String(item.dataset.style === current)); }
 	}, listen);
 	styles.menu.addEventListener('keydown', event => {
