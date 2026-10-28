@@ -26,8 +26,10 @@ test('custom editor saves, backs up, undoes and rejects external conflicts witho
 		LanguageModelToolResult: class { constructor(content) { this.content = content; } },
 		window: {
 			registerCustomEditorProvider: (_id, value) => { provider = value; return { dispose() { } }; },
-			tabGroups: { activeTabGroup: undefined }
+			createStatusBarItem: () => ({ show() { }, hide() { }, dispose() { } }),
+			tabGroups: { activeTabGroup: undefined, onDidChangeTabs: () => ({ dispose() { } }) }
 		},
+		StatusBarAlignment: { Left: 1, Right: 2 },
 		lm: { registerTool: (id, tool) => { tools.set(id, tool); return { dispose() { } }; } },
 		commands: {
 			registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() { } }; },
@@ -146,7 +148,8 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		LanguageModelTextPart: class { constructor(value) { this.value = value; } },
 		LanguageModelToolResult: class { constructor(content) { this.content = content; } },
 		lm: { registerTool: (name, value) => { tools.set(name, value); return { dispose() { } }; } },
-		window: { registerCustomEditorProvider: (_id, value) => { provider = value; providers.set(_id, value); return { dispose() { } }; } },
+		window: { registerCustomEditorProvider: (_id, value) => { provider = value; providers.set(_id, value); return { dispose() { } }; }, createStatusBarItem: () => ({ show() { }, hide() { }, dispose() { } }), tabGroups: { activeTabGroup: undefined, onDidChangeTabs: () => ({ dispose() { } }) } },
+		StatusBarAlignment: { Left: 1, Right: 2 },
 		commands: {
 			registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() { } }; }, executeCommand: async (id, ...args) => {
 				if (id === '_aiOffice.documentHistory') {

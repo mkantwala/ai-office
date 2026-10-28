@@ -18,6 +18,9 @@ import { DocumentDrafts } from './documentDrafts.js';
 import { discoverCommands, boundedCommandResult, projectCommandResult } from './documentCapabilities.js';
 
 interface View { state: State; pages: number[][]; commands?: Command[] }
+interface DocumentStats { words: number; characters: number; charactersWithSpaces: number; pages: number }
+/** Set by registerEditors so a stats refresh can update the status bar item. */
+let documentStatsSync: (doc: Document) => void = () => { };
 class Document implements vscode.CustomDocument {
 	readonly client: EngineClient;
 	readonly panels = new Set<vscode.WebviewPanel>();
@@ -33,6 +36,7 @@ class Document implements vscode.CustomDocument {
 	readonly versions?: DocumentVersions;
 	readonly versionRequests = new Set<string>();
 	view!: View;
+	stats?: DocumentStats;
 	latestBytes!: Uint8Array;
 	agentActivity?: { region?: ActivityRegion; updated: number };
 	commandResult?: { id: string; version: string; value: unknown };
@@ -57,6 +61,7 @@ class Document implements vscode.CustomDocument {
 		this.reviewRequest = undefined;
 		this.reviewVersion++;
 		this.review = undefined;
+		this.stats = undefined;
 		this.versionRequests.clear();
 		this.view = await this.client.request<View>('open', { kind: this.kind, name: basename(this.uri.path), bytes, extensionsRoot: vscode.Uri.joinPath(this.context.extensionUri, '..').fsPath, password: this.password, sourceUri: this.uri.toString(), artifactRoot: this.context.globalStorageUri ? vscode.Uri.joinPath(this.context.globalStorageUri, 'pdf-artifacts').fsPath : undefined });
 		this.latestBytes = bytes;
@@ -89,6 +94,15 @@ class Document implements vscode.CustomDocument {
 			await Promise.all([...this.panels].filter(panel => this.kind !== 'pdf' || panel.visible !== false).map(panel => panel.webview.postMessage({ type: 'draft', sections: drafts, label: this.draftAgentLabel, request: this.draftRequest, workingId: this.draftWorkingUntil > Date.now() ? this.draftWorkingId || drafts[0]?.id : undefined, expiresAt: this.draftWorkingUntil })));
 		}
 		if (this.activity) { await this.sendActivity(this.activity.rects); }
+		if (this.kind === 'word') { this.refreshStats(); }
+	}
+	refreshStats() {
+		if (this.kind !== 'word') { return; }
+		this.client.request<Partial<DocumentStats>>('wordCount').then(stats => {
+			if (typeof stats.words !== 'number' || typeof stats.pages !== 'number') { return; }
+			this.stats = { words: stats.words, characters: stats.characters || 0, charactersWithSpaces: stats.charactersWithSpaces || 0, pages: stats.pages };
+			documentStatsSync(this);
+		}, () => { /* Statistics are cosmetic; a busy or failing worker is not an editor error. */ });
 	}
 	async sendActivity(rects: State['rects']) {
 		const activity = this.activity;
@@ -231,6 +245,30 @@ export function registerEditors(context: vscode.ExtensionContext, kinds: Kind[])
 		return resource?.scheme === 'ai-office-review' ? documents.get(resource.query) : undefined;
 	};
 	for (const kind of kinds) {
+		if (kind === 'word') {
+			/**
+			 * Docs-style document statistics in the status bar: driven by the active
+			 * tab, refreshed by the document after every broadcast (see refreshStats).
+			 */
+			const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 20);
+			statusItem.name = 'Document Statistics';
+			const activeWordDocument = () => {
+				const input = vscode.window.tabGroups.activeTabGroup?.activeTab?.input as { viewType?: string; uri?: vscode.Uri } | undefined;
+				return input?.viewType === 'aiOffice.word' && input.uri ? documents.get(input.uri.toString()) : undefined;
+			};
+			const showStats = (doc: Document) => {
+				if (activeWordDocument() !== doc) { return; }
+				if (!doc.stats) { statusItem.hide(); return; }
+				statusItem.text = `Words: ${doc.stats.words}  Chars: ${doc.stats.charactersWithSpaces}  Page: ${(doc.view.state.page ?? 0) + 1} of ${doc.stats.pages}`;
+				statusItem.tooltip = `${basename(doc.uri.path)} — ${doc.stats.words} words, ${doc.stats.characters} characters excluding spaces, ${doc.stats.pages} pages`;
+				statusItem.show();
+			};
+			documentStatsSync = showStats;
+			context.subscriptions.push(statusItem, vscode.window.tabGroups.onDidChangeTabs(() => {
+				const active = activeWordDocument();
+				if (active) { showStats(active); } else { statusItem.hide(); }
+			}));
+		}
 		const toolbarPanels = new Map<string, { doc: Document; panel: vscode.WebviewPanel }>();
 		context.subscriptions.push(vscode.commands.registerCommand(`_aiOffice.${kind}.requestToolbar`, async (uri: vscode.Uri) => {
 			const target = [...toolbarPanels.values()].find(({ doc, panel }) => doc.uri.toString() === uri.toString() && panel.active);

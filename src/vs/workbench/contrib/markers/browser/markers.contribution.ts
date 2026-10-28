@@ -21,8 +21,7 @@ import { IMarkersView } from './markers.js';
 import { LifecyclePhase } from '../../../services/lifecycle/common/lifecycle.js';
 import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
 import { Disposable, IDisposable, MutableDisposable } from '../../../../base/common/lifecycle.js';
-import { IStatusbarEntryAccessor, IStatusbarService, StatusbarAlignment, IStatusbarEntry } from '../../../services/statusbar/browser/statusbar.js';
-import { IMarkerService, MarkerStatistics } from '../../../../platform/markers/common/markers.js';
+import { IMarkerService } from '../../../../platform/markers/common/markers.js';
 import { ViewContainer, IViewContainersRegistry, Extensions as ViewContainerExtensions, ViewContainerLocation, IViewsRegistry, WindowEnablement } from '../../../common/views.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
 import { getVisbileViewContextKey, FocusedViewContext } from '../../../common/contextkeys.js';
@@ -568,128 +567,6 @@ registerAction2(class extends Action2 {
 		}
 	}
 });
-
-class MarkersStatusBarContributions extends Disposable implements IWorkbenchContribution {
-
-	private markersStatusItem: IStatusbarEntryAccessor;
-	private markersStatusItemOff: IStatusbarEntryAccessor | undefined;
-
-	constructor(
-		@IMarkerService private readonly markerService: IMarkerService,
-		@IStatusbarService private readonly statusbarService: IStatusbarService,
-		@IConfigurationService private readonly configurationService: IConfigurationService
-	) {
-		super();
-		this.markersStatusItem = this._register(this.statusbarService.addEntry(this.getMarkersItem(), 'status.problems', StatusbarAlignment.LEFT, 50 /* Medium Priority */));
-
-		const addStatusBarEntry = () => {
-			this.markersStatusItemOff = this.statusbarService.addEntry(this.getMarkersItemTurnedOff(), 'status.problemsVisibility', StatusbarAlignment.LEFT, 49);
-		};
-
-		// Add the status bar entry if the problems is not visible
-		let config = this.configurationService.getValue('problems.visibility');
-		if (!config) {
-			addStatusBarEntry();
-		}
-
-		this._register(this.markerService.onMarkerChanged(() => {
-			this.markersStatusItem.update(this.getMarkersItem());
-		}));
-
-		this._register(this.configurationService.onDidChangeConfiguration(e => {
-			if (e.affectsConfiguration('problems.visibility')) {
-				this.markersStatusItem.update(this.getMarkersItem());
-
-				// Update based on what setting was changed to.
-				config = this.configurationService.getValue('problems.visibility');
-				if (!config && !this.markersStatusItemOff) {
-					addStatusBarEntry();
-				} else if (config && this.markersStatusItemOff) {
-					this.markersStatusItemOff.dispose();
-					this.markersStatusItemOff = undefined;
-				}
-			}
-		}));
-	}
-
-	private getMarkersItem(): IStatusbarEntry {
-		const markersStatistics = this.markerService.getStatistics();
-		const tooltip = this.getMarkersTooltip(markersStatistics);
-		return {
-			name: localize('status.problems', "Problems"),
-			text: this.getMarkersText(markersStatistics),
-			ariaLabel: tooltip,
-			tooltip,
-			command: 'workbench.actions.view.toggleProblems'
-		};
-	}
-
-	private getMarkersItemTurnedOff(): IStatusbarEntry {
-		// Update to true, config checked before `getMarkersItemTurnedOff` is called.
-		this.statusbarService.updateEntryVisibility('status.problemsVisibility', true);
-		const openSettingsCommand = 'workbench.action.openSettings';
-		const configureSettingsLabel = '@id:problems.visibility';
-		const tooltip = localize('status.problemsVisibilityOff', "Problems are turned off. Click to open settings.");
-		return {
-			name: localize('status.problemsVisibility', "Problems Visibility"),
-			text: '$(whole-word)',
-			ariaLabel: tooltip,
-			tooltip,
-			kind: 'warning',
-			command: { title: openSettingsCommand, arguments: [configureSettingsLabel], id: openSettingsCommand }
-		};
-	}
-
-	private getMarkersTooltip(stats: MarkerStatistics): string {
-		const errorTitle = (n: number) => localize('totalErrors', "Errors: {0}", n);
-		const warningTitle = (n: number) => localize('totalWarnings', "Warnings: {0}", n);
-		const infoTitle = (n: number) => localize('totalInfos', "Infos: {0}", n);
-
-		const titles: string[] = [];
-
-		if (stats.errors > 0) {
-			titles.push(errorTitle(stats.errors));
-		}
-
-		if (stats.warnings > 0) {
-			titles.push(warningTitle(stats.warnings));
-		}
-
-		if (stats.infos > 0) {
-			titles.push(infoTitle(stats.infos));
-		}
-
-		if (titles.length === 0) {
-			return localize('noProblems', "No Problems");
-		}
-
-		return titles.join(', ');
-	}
-
-	private getMarkersText(stats: MarkerStatistics): string {
-		const problemsText: string[] = [];
-
-		// Errors
-		problemsText.push('$(error) ' + this.packNumber(stats.errors));
-
-		// Warnings
-		problemsText.push('$(warning) ' + this.packNumber(stats.warnings));
-
-		// Info (only if any)
-		if (stats.infos > 0) {
-			problemsText.push('$(info) ' + this.packNumber(stats.infos));
-		}
-
-		return problemsText.join(' ');
-	}
-
-	private packNumber(n: number): string {
-		const manyProblems = localize('manyProblems', "10K+");
-		return n > 9999 ? manyProblems : n > 999 ? n.toString().charAt(0) + 'K' : n.toString();
-	}
-}
-
-workbenchRegistry.registerWorkbenchContribution(MarkersStatusBarContributions, LifecyclePhase.Restored);
 
 registerWorkbenchContribution2(MarkerChatContextContribution.ID, MarkerChatContextContribution, WorkbenchPhase.AfterRestored);
 

@@ -50,6 +50,7 @@ parentPort?.on('message', message => {
 						result = { state: await engine.execute(message.command, message.args), pages: engine.pages() };
 						if (message.review) { engine.agent?.reviewFinish?.(); } break;
 					case 'tablePreview': result = engine.tablePreview?.(message.args); break;
+					case 'wordCount': result = (await engine.execute('review.wordCount', message.args || {})).agentCommandResult; break;
 					case 'export': result = await engine.export(); break;
 					case 'saved': result = { state: engine.saved ? await engine.saved() : engine.state(), pages: engine.pages() }; break;
 					case 'render': {

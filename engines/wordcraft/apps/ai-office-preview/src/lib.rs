@@ -73,12 +73,18 @@ impl OfficeDocument {
             }
         }
         self.session.close_typing();
-        self.session.run(command, &args).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let result = self.session.run(command, &args).map_err(|e| JsValue::from_str(&e.to_string()))?;
         if self.session.rev() != revision && !self.id_prefix.is_empty() {
             agent::normalize(&mut self.session.doc, &self.id_prefix, &mut self.id_counter);
         }
         self.layout = self.session.layout();
-        self.state()
+        let mut state: Value = serde_json::from_str(&self.state()?).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        // Commands carry their result to the host the way the native engines do:
+        // inside the state, bounded so a huge listing cannot bloat every broadcast.
+        if !result.is_null() && result.to_string().len() <= 64 * 1024 {
+            state["agentCommandResult"] = result;
+        }
+        Ok(state.to_string())
     }
 
     pub fn commands(&self) -> Result<String, JsValue> {
@@ -459,6 +465,7 @@ fn allowed(command: &str) -> bool {
             | "insert.link"
             | "review.newComment"
             | "review.comments"
+            | "review.wordCount"
             | "edit.undo"
             | "edit.redo"
     )
