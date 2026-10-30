@@ -165,7 +165,7 @@ impl OfficeDocument {
             _ => "body",
         };
         let style = self.session.doc.para(sel.focus.story, &sel.focus.path).and_then(|p| p.props.style.as_deref()).unwrap_or("Normal");
-        serde_json::to_string(&json!({"image":images::selected(&self.session,&self.layout),"pageSetup":page_setup,"pageRegions":regions,"editingRegion":editing_region,"formatting":wordcraft_engine::cmd::format::state(&self.session),"paragraph":paragraph,"pageRuler":page_ruler,"undoDepth":self.session.undo_depth(),"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo()})).map_err(|e| JsValue::from_str(&e.to_string()))
+        serde_json::to_string(&json!({"image":images::selected(&self.session,&self.layout),"pageSetup":page_setup,"pageRegions":regions,"editingRegion":editing_region,"formatting":wordcraft_engine::cmd::format::state(&self.session),"paragraph":paragraph,"pageRuler":page_ruler,"undoDepth":self.session.undo_depth(),"paragraphStyle":style,"selection":sel,"caret":caret,"rects":rects,"comments":comments,"selectedText":self.session.selected_text(),"revision":self.session.rev(),"undo":self.session.can_undo(),"redo":self.session.can_redo(),"find":if self.session.find.results.is_empty() { None } else { Some(json!({"count":self.session.find.results.len(),"current":self.session.find.current})) },"painter":self.session.painter.as_ref().map(|(_,_,sticky)| json!({"active":true,"sticky":*sticky}))})).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Geometry only for the page being rendered; no document-wide scan on typing.
@@ -466,6 +466,14 @@ fn allowed(command: &str) -> bool {
             | "review.newComment"
             | "review.comments"
             | "review.wordCount"
+            | "edit.goto"
+            | "edit.find"
+            | "edit.findNext"
+            | "edit.findPrevious"
+            | "edit.replace"
+            | "edit.replaceAll"
+            | "edit.formatPainter"
+            | "edit.pasteFormat"
             | "edit.undo"
             | "edit.redo"
     )

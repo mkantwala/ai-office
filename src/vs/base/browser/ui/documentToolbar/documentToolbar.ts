@@ -19,6 +19,8 @@ export interface DocumentToolbarAction { control: string; value?: string; rows?:
 export interface DocumentToolbarSnapshot {
 	uri: string; kind: 'word' | 'pdf' | 'slides'; panel: string; instance: string; context: string;
 	controls: DocumentToolbarControl[]; paragraphStyle?: string;
+	/** The word format painter is armed (picked formatting not yet applied). */
+	painter?: boolean;
 }
 
 /** Render the same compact controls in app chrome without owning document selection or mutations. */
@@ -44,14 +46,14 @@ export function createDocumentToolbar(element: HTMLElement, descriptors: Documen
 	const select = (key: string) => controls.get(key) as HTMLSelectElement;
 	const emphasis = ['bold', 'italic', 'underline'].map(key => button(key));
 	for (const [index, control] of emphasis.entries()) { control.textContent = ['B', 'I', 'U'][index]; control.style.fontWeight = index === 0 ? '700' : ''; control.style.fontStyle = index === 1 ? 'italic' : ''; control.style.textDecoration = index === 2 ? 'underline' : ''; }
-	const dispose = arrangeWordToolbar(element, {
+	const disposed = arrangeWordToolbar(element, {
 		text: button('text'), margins: button('margins'), pageBorders: button('pageBorders'), header: button('header'), footer: button('footer'), undo: button('undo'), redo: button('redo'), save: button('save'), versions: button('versions'), properties: button('properties'),
 		strike: button('strike'), clear: button('clear'), color: select('color'), highlight: select('highlight'),
 		style: select('style'), font: select('font'), size: select('size'), emphasis,
 		align: select('align'), list: select('list'), spacing: select('spacing'), table: button('table'), image: button('image'), link: button('link'), comment: button('comment')
-	}, (rows, cols) => action({ control: 'table', rows, cols }), focusDocument);
+	}, (rows, cols) => action({ control: 'table', rows, cols }), focusDocument, sticky => action({ control: 'paintFormat', value: sticky ? 'sticky' : 'pick' }));
 	return {
-		update(descriptors: DocumentToolbarControl[], paragraphStyle?: string) {
+		update(descriptors: DocumentToolbarControl[], paragraphStyle?: string, painter?: boolean) {
 			for (const descriptor of descriptors) {
 				const control = controls.get(descriptor.key); if (!control) { continue; }
 				control.disabled = descriptor.disabled;
@@ -59,8 +61,10 @@ export function createDocumentToolbar(element: HTMLElement, descriptors: Documen
 				if (descriptor.pressed !== undefined) { control.setAttribute('aria-pressed', String(descriptor.pressed)); }
 			}
 			const style = select('style'); style.dataset.currentStyle = paragraphStyle || ''; style.dispatchEvent(new Event('formatstate'));
+			disposed.paintButton.setAttribute('aria-pressed', String(!!painter));
 		},
-		dispose
+		closeMenus: () => disposed.closeMenus(),
+		dispose: () => disposed.dispose()
 	};
 }
 
@@ -70,6 +74,7 @@ export function isDocumentToolbarSnapshot(value: unknown): value is DocumentTool
 	const snapshot = value as DocumentToolbarSnapshot;
 	if (!['word', 'pdf', 'slides'].includes(snapshot.kind) || ['uri', 'panel', 'instance', 'context'].some(key => typeof snapshot[key as keyof DocumentToolbarSnapshot] !== 'string' || String(snapshot[key as keyof DocumentToolbarSnapshot]).length > 2000)) { return false; }
 	if (snapshot.paragraphStyle !== undefined && (typeof snapshot.paragraphStyle !== 'string' || snapshot.paragraphStyle.length > 200)) { return false; }
+	if (snapshot.painter !== undefined && typeof snapshot.painter !== 'boolean') { return false; }
 	if (!Array.isArray(snapshot.controls) || snapshot.controls.length > 28) { return false; }
 	const selectKeys = ['style', 'font', 'size', 'align', 'list', 'spacing', 'color', 'highlight'];
 	const buttonKeys = ['margins', 'pageBorders', 'header', 'footer', 'text', 'bold', 'italic', 'underline', 'table', 'image', 'link', 'comment', 'undo', 'redo', 'save', 'properties', 'versions', 'strike', 'clear'];

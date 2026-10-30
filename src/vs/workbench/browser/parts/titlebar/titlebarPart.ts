@@ -253,6 +253,14 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 
 	get maximumHeight(): number { return this.minimumHeight; }
 
+	/**
+	 * Height of the first row of the title bar (menus, title, window controls).
+	 * The document toolbar row is stacked beneath it.
+	 */
+	protected get titleRowHeight(): number {
+		return this.isCommandCenterVisible ? DEFAULT_CUSTOM_TITLEBAR_HEIGHT : 30;
+	}
+
 	//#endregion
 
 	//#region Events
@@ -996,7 +1004,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		const zoomFactor = getZoomFactor(getWindow(this.element));
 
 		this.element.style.setProperty('--zoom-factor', zoomFactor.toString());
-		this.element.style.setProperty('--sangam-titlebar-row-height', `${this.isCommandCenterVisible ? DEFAULT_CUSTOM_TITLEBAR_HEIGHT : 30}px`);
+		this.element.style.setProperty('--sangam-titlebar-row-height', `${this.titleRowHeight}px`);
 		this.rootContainer.classList.toggle('counter-zoom', this.preventZoom);
 
 		if (this.customMenubar.value) {

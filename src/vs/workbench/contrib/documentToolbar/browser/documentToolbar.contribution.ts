@@ -52,9 +52,34 @@ class DocumentToolbarContribution extends Disposable implements IWorkbenchContri
 				this.controls?.dispose(); this.toolbar.replaceChildren(); this.shape = shape;
 				this.controls = createDocumentToolbar(this.toolbar, value.controls, action => this.dispatch(action), () => { const input = this.activeInput(); if (input?.viewType === 'aiOffice.word') { this.focusWord(input, this.target?.instance); } else { this.editors.activeEditorPane?.focus(); } });
 			}
-			this.controls?.update(value.controls, value.paragraphStyle);
+			this.controls?.update(value.controls, value.paragraphStyle, value.painter);
 			this.host.setAttribute('aria-busy', 'false');
 			return true;
+		}));
+		// Wheel scrolling and scrollbar drags happen inside the webview; the document editor
+		// notices them and asks the toolbar to dismiss its menus, like Word does.
+		this._register(CommandsRegistry.registerCommand('_sangamOne.documentToolbar.dismiss', () => { this.controls?.closeMenus(); }));
+		// The activity bar's Search opens the file search, which can never look inside a
+		// .docx; route it to the document's own Find and Replace, driven by the engine.
+		// The activity action consults this command before opening the search pane.
+		this._register(CommandsRegistry.registerCommand('_sangamOne.documentToolbar.openFindForActive', () => {
+			const input = this.activeInput();
+			if (input?.viewType !== 'aiOffice.word') { return false; }
+			// The webview's openFind focuses the Find input itself; focusing the
+			// webview again would hand focus back to the document.
+			void input.webview.postMessage({ type: 'openFind' });
+			return true;
+		}));
+		const openSearchView = CommandsRegistry.getCommand('workbench.view.search');
+		this._register(CommandsRegistry.registerCommand('workbench.view.search', (accessor, ...args: unknown[]) => {
+			const input = this.activeInput();
+			if (input?.viewType === 'aiOffice.word') {
+				// The webview's openFind focuses the Find input itself; focusing the
+				// webview again would hand focus back to the document.
+				void input.webview.postMessage({ type: 'openFind' });
+				return;
+			}
+			void openSearchView?.handler(accessor, ...args);
 		}));
 		const capture = () => { this.interaction = this.target; };
 		this.host.addEventListener('pointerdown', capture); this.host.addEventListener('focusin', capture);

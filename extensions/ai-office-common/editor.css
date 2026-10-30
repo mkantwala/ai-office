@@ -115,7 +115,7 @@ dialog::backdrop{background:#0005}dialog label{display:block;margin-bottom:12px;
 .word-table-context .destructive { color: var(--vscode-errorForeground); padding-left: 40px; }
 .word-table-context .destructive svg { display: none; }
 .word-table-context summary { padding-left: 40px; }
-.word-table-context summary::after { content: '›'; margin-left: auto; }
+.word-table-context summary::after { content: '›'; margin-left: auto; } // allow-any-unicode-next-line
 .word-table-context details[open] summary::after { transform: rotate(90deg); }
 .word-table-context details button { padding-left: 24px; }
 .word-table-palette { display: flex; justify-content: space-between; gap: 4px; padding: 8px 10px; }
@@ -244,3 +244,14 @@ html::-webkit-scrollbar-track, html::-webkit-scrollbar-corner { background: var(
 @keyframes pdf-menu-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){.pdf-object,.pdf-object-actions button,.pdf-context button,.pdf-toolbox button{transition:none}.pdf-context{animation:none}}
 .pdf-drag-preview canvas{display:block;width:100%;height:100%;opacity:.85}
+
+/* Document Find & Replace: floats over the pages, driven by the engine's inbuilt find commands. */
+.find-bar{position:fixed;top:14px;right:26px;z-index:12;display:flex;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--vscode-widget-border,#555);border-radius:8px;background:var(--vscode-editorWidget-background,#252526);color:var(--vscode-editorWidget-foreground,#eee);box-shadow:0 5px 18px #0004;max-width:min(430px,calc(100vw - 40px))}
+.find-bar .find-row{display:flex;align-items:center;gap:5px}
+.find-bar input{flex:1;min-width:130px;min-height:29px;margin:0;padding:4px 7px;border:1px solid var(--vscode-input-border,#8886);background:var(--vscode-input-background);color:var(--vscode-input-foreground);border-radius:4px}
+.find-bar button{flex:none;min-height:29px;padding:4px 9px;border:0;background:transparent;color:inherit;border-radius:4px;cursor:pointer}
+.find-bar button:hover{background:var(--vscode-toolbar-hoverBackground,#7773)}
+.find-bar button:disabled{opacity:.4;cursor:default}
+.find-bar .find-count{flex:none;min-width:52px;text-align:center;font-size:11px;color:var(--vscode-descriptionForeground);white-space:nowrap}
+.find-bar .find-close{width:26px;padding:4px}
+@media(prefers-reduced-motion:reduce){.find-bar{transition:none}}

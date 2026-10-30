@@ -65,8 +65,8 @@ function icon(name: keyof typeof paths, ownerDocument: Document): SVGSVGElement 
 	svg.setAttribute('viewBox', '0 0 24 24');
 	svg.setAttribute('aria-hidden', 'true');
 	svg.setAttribute('focusable', 'false');
-	for (const segment of paths[name]) {
-		const path = ownerDocument.createElementNS(svg.namespaceURI, 'path');
+	for (const segment of paths[name] as IconSegment[]) {
+		const path = ownerDocument.createElementNS(svg.namespaceURI, 'path') as SVGPathElement;
 		path.setAttribute('d', segment.d);
 		if (segment.stroke) { path.style.stroke = segment.stroke; }
 		svg.append(path);
@@ -85,7 +85,7 @@ function iconButton(button: HTMLButtonElement, name: keyof typeof paths): HTMLBu
 }
 
 /** Reorganize the existing controls without duplicating document commands or selection state. */
-export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarControls, insertTable: (rows: number, cols: number) => void, focusDocument: () => void): () => void {
+export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarControls, insertTable: (rows: number, cols: number) => void, focusDocument: () => void, paint?: (sticky: boolean) => void): { dispose(): void; closeMenus(): void; paintButton: HTMLButtonElement } {
 	const ownerDocument = toolbar.ownerDocument;
 	const targetWindow = ownerDocument.defaultView!;
 	const events = new AbortController();
@@ -137,7 +137,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	const dropdowns = [menus.selector(controls.font, 'Font'), menus.selector(controls.size, 'Size'), menus.selector(controls.align, icon('align', ownerDocument)), menus.selector(controls.spacing, icon('spacing', ownerDocument)), menus.selector(controls.list, icon('list', ownerDocument))];
 	const decrease = ownerDocument.createElement('button');
 	const increase = ownerDocument.createElement('button');
-	for (const [button, label, text, delta] of [[decrease, 'Decrease Font Size', '−', -1], [increase, 'Increase Font Size', '+', 1]] as const) {
+	for (const [button, label, text, delta] of [[decrease, 'Decrease Font Size', '−', -1], [increase, 'Increase Font Size', '+', 1]] as const) { // allow-any-unicode-next-line
 		button.type = 'button'; button.textContent = text; button.title = label; button.setAttribute('aria-label', label);
 		button.classList.add('word-size-step');
 		button.addEventListener('pointerdown', event => event.preventDefault(), listen);
@@ -166,11 +166,14 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	const fontObserver = new targetWindow.MutationObserver(syncFont); fontObserver.observe(controls.size, { attributes: true, attributeFilter: ['disabled'] });
 	syncFont();
 	const history = group('Document', [iconButton(controls.undo, 'undo'), iconButton(controls.redo, 'redo')]);
-	// Visual affordance only; its command mapping follows the snapshot work.
+	// Upstream's ribbon: one click picks the selection's formatting (armed until it is
+	// applied); a double click arms it sticky so it survives until the next pick.
 	const paintButton = iconButton(ownerDocument.createElement('button'), 'paintFormat');
 	paintButton.type = 'button'; paintButton.title = 'Paint Format'; paintButton.setAttribute('aria-label', 'Paint Format');
 	paintButton.classList.add('word-paint-button');
 	paintButton.addEventListener('pointerdown', event => event.preventDefault());
+	paintButton.addEventListener('click', () => paint?.(false), listen);
+	paintButton.addEventListener('dblclick', () => paint?.(true), listen);
 	const paintGroup = group('Formatting', [paintButton]);
 	const style = group('Styles', [menus.style]);
 	const font = group('Font', [dropdowns[0].element, decrease, dropdowns[1].element, increase]);
@@ -207,14 +210,14 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 		return button;
 	};
 	extras.append(
-		extraButton('A²', 'Superscript', false),
-		extraButton('A₂', 'Subscript', false),
+		extraButton('A²', 'Superscript', false), // allow-any-unicode-next-line
+		extraButton('A₂', 'Subscript', false), // allow-any-unicode-next-line
 		extraButton('Ag', 'Small Caps', true),
 		extraButton('Ab', 'Letter Spacing', true),
-		extraButton('¶', 'Paragraph Mark', false),
-		extraButton('⇥', 'Indent', true),
+		extraButton('¶', 'Paragraph Mark', false), // allow-any-unicode-next-line
+		extraButton('⇥', 'Indent', true), // allow-any-unicode-next-line
 		extraButton('Aa', 'Line Spacing Options', true),
-		extraButton('”', 'Block Quote', true),
+		extraButton('”', 'Block Quote', true), // allow-any-unicode-next-line
 	);
 	overflow.append(extras);
 	const headerFooter = [controls.margins, controls.pageBorders, controls.header, controls.footer].filter((control): control is HTMLButtonElement => !!control);
@@ -283,8 +286,12 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	observer.observe(row);
 	layout();
 	const disposeFeedback = wordToolbarFeedback(host);
-	return () => {
-		observer.disconnect(); fontObserver.disconnect(); events.abort(); disposeFeedback(); menus.dispose(); overflow.remove();
-		toolbar.classList.remove('word-toolbar');
+	return {
+		dispose: () => {
+			observer.disconnect(); fontObserver.disconnect(); events.abort(); disposeFeedback(); menus.dispose(); overflow.remove();
+			toolbar.classList.remove('word-toolbar');
+		},
+		closeMenus: () => menus.closeMenus(),
+		paintButton
 	};
 }

@@ -39,9 +39,15 @@ export class NativeTitlebarPart extends BrowserTitlebarPart {
 			return super.minimumHeight;
 		}
 
-		return (this.isCommandCenterVisible ? DEFAULT_CUSTOM_TITLEBAR_HEIGHT : this.macTitlebarSize) / (this.preventZoom ? getZoomFactor(getWindow(this.element)) : 1);
+		return (this.titleRowHeight + this.documentToolbarHeight) / (this.preventZoom ? getZoomFactor(getWindow(this.element)) : 1);
 	}
 	override get maximumHeight(): number { return this.minimumHeight; }
+
+	// macOS renders the title row at the native menu size when the command
+	// center is hidden, and the document toolbar row always stacks beneath it.
+	protected override get titleRowHeight(): number {
+		return this.isCommandCenterVisible ? DEFAULT_CUSTOM_TITLEBAR_HEIGHT : this.macTitlebarSize;
+	}
 
 	private tahoeOrNewer: boolean;
 	private get macTitlebarSize() {

@@ -39,6 +39,8 @@ export interface State {
 	rects?: { page: number; x: number; y: number; width: number; height: number }[];
 	selection?: unknown; selectedText?: string;
 	paragraphStyle?: string;
+	find?: { count: number; current: number };
+	painter?: { active: boolean; sticky: boolean };
 	comments?: { commentId?: number; parentId?: number | null; resolved?: boolean; author?: string; text: string }[];
 }
 export interface Command { id: string; label: string; description?: string; params?: unknown; readOnly?: boolean; destructive?: boolean }
