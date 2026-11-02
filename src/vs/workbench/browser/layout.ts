@@ -739,6 +739,9 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			resetLayout: Boolean(this.layoutOptions?.resetLayout)
 		});
 
+		// Permanently hide activity bar for Sangam One custom layout
+		this.stateModel.setRuntimeValue(LayoutStateKeys.ACTIVITYBAR_HIDDEN, true);
+
 		this._register(this.stateModel.onDidChangeState(change => {
 			if (change.key === LayoutStateKeys.ACTIVITYBAR_HIDDEN) {
 				this.setActivityBarHidden(change.value as boolean);
@@ -2593,7 +2596,6 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 	}
 
 	private arrangeMiddleSectionNodes(nodes: { editor: ISerializedNode; panel: ISerializedNode; activityBar: ISerializedNode; sideBar: ISerializedNode; auxiliaryBar: ISerializedNode }, availableWidth: number, availableHeight: number): ISerializedNode[] {
-		const activityBarSize = this.stateModel.getRuntimeValue(LayoutStateKeys.ACTIVITYBAR_HIDDEN) ? 0 : nodes.activityBar.size;
 		const sideBarSize = this.stateModel.getRuntimeValue(LayoutStateKeys.SIDEBAR_HIDDEN) ? 0 : nodes.sideBar.size;
 		const auxiliaryBarSize = this.stateModel.getRuntimeValue(LayoutStateKeys.AUXILIARYBAR_HIDDEN) ? 0 : nodes.auxiliaryBar.size;
 		const panelSize = this.stateModel.getInitializationValue(LayoutStateKeys.PANEL_SIZE) ? 0 : nodes.panel.size;
@@ -2604,7 +2606,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		const result = [] as ISerializedNode[];
 		if (!isHorizontal(panelPostion)) {
 			result.push(nodes.editor);
-			nodes.editor.size = availableWidth - activityBarSize - sideBarSize - panelSize - auxiliaryBarSize;
+			nodes.editor.size = availableWidth - sideBarSize - panelSize - auxiliaryBarSize; // Removed activityBarSize
 			if (panelPostion === Position.RIGHT) {
 				result.push(nodes.panel);
 			} else {
@@ -2614,18 +2616,18 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			if (sideBarPosition === Position.LEFT) {
 				result.push(nodes.auxiliaryBar);
 				result.splice(0, 0, nodes.sideBar);
-				result.splice(0, 0, nodes.activityBar);
+				// Removed activityBar
 			} else {
 				result.splice(0, 0, nodes.auxiliaryBar);
 				result.push(nodes.sideBar);
-				result.push(nodes.activityBar);
+				// Removed activityBar
 			}
 		} else {
 			const panelAlignment = this.stateModel.getRuntimeValue(LayoutStateKeys.PANEL_ALIGNMENT);
 			const sideBarNextToEditor = !(panelAlignment === 'center' || (sideBarPosition === Position.LEFT && panelAlignment === 'right') || (sideBarPosition === Position.RIGHT && panelAlignment === 'left'));
 			const auxiliaryBarNextToEditor = !(panelAlignment === 'center' || (sideBarPosition === Position.RIGHT && panelAlignment === 'right') || (sideBarPosition === Position.LEFT && panelAlignment === 'left'));
 
-			const editorSectionWidth = availableWidth - activityBarSize - (sideBarNextToEditor ? 0 : sideBarSize) - (auxiliaryBarNextToEditor ? 0 : auxiliaryBarSize);
+			const editorSectionWidth = availableWidth - (sideBarNextToEditor ? 0 : sideBarSize) - (auxiliaryBarNextToEditor ? 0 : auxiliaryBarSize); // Removed activityBarSize
 
 			const editorNodes = this.arrangeEditorNodes({
 				editor: nodes.editor,
@@ -2657,11 +2659,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 				}
 			}
 
-			if (sideBarPosition === Position.LEFT) {
-				result.splice(0, 0, nodes.activityBar);
-			} else {
-				result.push(nodes.activityBar);
-			}
+			// Removed activityBar placement
 		}
 
 		return result;
@@ -2698,7 +2696,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			type: 'leaf',
 			data: { type: Parts.ACTIVITYBAR_PART },
 			size: activityBarWidth,
-			visible: !this.stateModel.getRuntimeValue(LayoutStateKeys.ACTIVITYBAR_HIDDEN)
+			visible: false // Permanently hidden for Sangam One custom layout
 		};
 
 		const sideBarNode: ISerializedLeafNode = {
