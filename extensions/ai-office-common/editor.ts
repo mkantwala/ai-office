@@ -74,6 +74,8 @@ const toolbar = el("toolbar");
 const appToolbar = document.body.classList.contains("app-toolbar-hosted");
 let toolbarControls: Record<string, HTMLButtonElement | HTMLSelectElement> = {};
 let toolbarContext = "";
+/** Docs' "Set Next Paragraph Style": paragraphs typed after the current one take this style. */
+let nextParagraphStyle = "";
 function publishToolbar() {
 	if (!appToolbar || !initialized) {
 		return;
@@ -116,6 +118,9 @@ function publishToolbar() {
 					options: Array.from(control.options).map((option) => ({
 						value: option.value,
 						label: option.textContent || "",
+						...(option.dataset.section
+							? { section: option.dataset.section as "minor" | "major" | "my" }
+							: {}),
 					})),
 				}
 			: {}),
@@ -183,6 +188,17 @@ function toolbarAction(
 			"edit.formatPainter",
 			action.value === "sticky" ? { sticky: true } : {},
 		);
+		focusWordInput();
+		return;
+	}
+	// "@next:<style>" arms the next-paragraph style; "@next:" alone clears it. The
+	// choice never touches the selection, so it needs no formatting context.
+	if (
+		action.control === "style" &&
+		typeof action.value === "string" &&
+		action.value.startsWith("@next:")
+	) {
+		nextParagraphStyle = action.value.slice(6);
 		focusWordInput();
 		return;
 	}
@@ -725,7 +741,7 @@ function button(
 }
 function menu(
 	label: string,
-	items: [string, string][],
+	items: [string, string, string?][],
 	action: (value: string) => void,
 	disabled = false,
 ) {
@@ -737,10 +753,14 @@ function menu(
 	placeholder.textContent = label;
 	placeholder.value = "";
 	select.append(placeholder);
-	for (const [value, text] of items) {
+	for (const [value, text, section] of items) {
 		const option = document.createElement("option");
 		option.value = value;
 		option.textContent = text;
+		// Theme assignment for the font family menu's Docs-style sections.
+		if (section) {
+			option.dataset.section = section;
+		}
 		select.append(option);
 	}
 	select.addEventListener("change", () => {
@@ -823,21 +843,77 @@ function buildToolbar() {
 	const font = menu(
 		"Font",
 		(kind === "pdf"
-			? [
+			? ([
 					["helvetica", "Sans"],
 					["times", "Serif"],
 					["courier", "Mono"],
-				]
-			: [
-					"Aptos",
-					"Arial",
-					"Calibri",
-					"Cambria",
-					"Georgia",
-					"Times New Roman",
-					"Verdana",
-					"Courier New",
-				].map((font) => [font, font])) as [string, string][],
+				] as [string, string, string?][])
+			: (
+					(): [string, string, string?][] => {
+						// The menu offers the document theme's fonts first, then every family
+						// the engine reports as available (each rendered in its own typeface
+						// by the menu). The classic list only backs engines built before the
+						// state carried a font list.
+						const options: [string, string, string?][] = [];
+						const push = (value: string, label: string, section?: string) => {
+							if (
+								value &&
+								!options.some(([existing]) => existing === value)
+							) {
+								options.push([value, label, section]);
+							}
+						};
+						const fonts = state.fonts;
+						const theme = state.themeFonts;
+						if (fonts?.length) {
+							push(theme?.minor || "", theme?.minor || "", "minor");
+							push(theme?.major || "", theme?.major || "", "major");
+							for (const family of fonts.filter(
+								(family) => family !== theme?.minor && family !== theme?.major,
+							).slice(0, 100)) {
+								push(family, family, "my");
+							}
+						} else {
+							for (const family of [
+								"Aptos",
+								"Arial",
+								"Calibri",
+								"Cambria",
+								"Georgia",
+								"Times New Roman",
+								"Verdana",
+								"Courier New",
+							]) {
+								push(family, family, "my");
+							}
+						}
+						// Families installed on this machine join the engine's own behind
+						// the theme rows. The machine's long list is trimmed so the toolbar
+						// snapshot stays inside its option budget.
+						const installed = (
+							window as Window & { __officeSystemFonts?: unknown }
+						).__officeSystemFonts;
+						const installedFamilies = Array.isArray(installed)
+							? installed.filter(
+									(family): family is string => typeof family === "string",
+								)
+							: [];
+						for (const installedFamily of installedFamilies.slice(
+							0,
+							Math.max(0, 590 - options.length),
+						)) {
+							push(installedFamily, installedFamily, "my");
+						}
+						// The formatting in use stays selectable even when it is not one of
+						// the engine families (a document authored with Word's fonts).
+						const currentFont = state.formatting?.font || "";
+						push(currentFont, currentFont, currentFont ? "my" : undefined);
+						if (!options.length) {
+							push("Calibri", "Calibri", "my");
+						}
+						return options;
+					}
+				)()),
 		(font) => format("font", font),
 	);
 	const size = menu(
@@ -851,16 +927,12 @@ function buildToolbar() {
 			"14",
 			"16",
 			"18",
-			"20",
-			"22",
 			"24",
-			"26",
-			"28",
-			"32",
 			"36",
 			"48",
-			"72",
-		].map((x) => [x, x]),
+			"58",
+			"70",
+		].map((x) => [x, x] as [string, string, string?]),
 		(size) => format("size", Number(size)),
 	);
 	const emphasis: HTMLButtonElement[] = [];
@@ -1204,6 +1276,9 @@ function buildToolbar() {
 				() => keyboard.focus({ preventScroll: true }),
 				(sticky) =>
 					execute("edit.formatPainter", sticky ? { sticky: true } : {}),
+				(style) => {
+					nextParagraphStyle = style;
+				},
 			);
 		}
 	}
@@ -1844,6 +1919,11 @@ document.addEventListener("keydown", (event) => {
 	if (commands[event.key]) {
 		consume();
 		execute(commands[event.key]);
+		// Docs-style "set next paragraph style": the paragraph just created takes
+		// the chosen style immediately after the new-paragraph command runs.
+		if (event.key === "Enter" && !event.shiftKey && nextParagraphStyle) {
+			execute("para.style", { style: nextParagraphStyle });
+		}
 	}
 });
 window.addEventListener("message", (event) => {

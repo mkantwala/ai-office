@@ -39,6 +39,10 @@ export interface State {
 	rects?: { page: number; x: number; y: number; width: number; height: number }[];
 	selection?: unknown; selectedText?: string;
 	paragraphStyle?: string;
+	/** Every family the engine can lay out with, for the font family menu. */
+	fonts?: string[];
+	/** The document theme's heading (major) and body (minor) fonts. */
+	themeFonts?: { major: string; minor: string };
 	find?: { count: number; current: number };
 	painter?: { active: boolean; sticky: boolean };
 	comments?: { commentId?: number; parentId?: number | null; resolved?: boolean; author?: string; text: string }[];

@@ -12,7 +12,7 @@ export function wordToolbarFeedback(host: HTMLElement): () => void {
 	let target: HTMLElement | undefined;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const titles = new Map<HTMLElement, string>();
-	const control = (node: EventTarget | null) => node instanceof targetWindow.Element ? node.closest<HTMLElement>('.word-toolbar button,.word-toolbar select,.word-toolbar-overflow button,.word-toolbar-overflow select,.word-visual-menu button') ?? undefined : undefined;
+	const control = (node: EventTarget | null) => node instanceof targetWindow.Element ? node.closest<HTMLElement>('.word-toolbar button,.word-toolbar select,.word-toolbar-overflow button,.word-toolbar-overflow select') ?? undefined : undefined;
 	const hide = () => {
 		clearTimeout(timer); timer = undefined;
 		if (tooltip.matches(':popover-open')) { tooltip.hidePopover(); }

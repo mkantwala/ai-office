@@ -11,6 +11,7 @@ export function wordMenus(
 	focusDocument: () => void,
 	host: HTMLElement = select.ownerDocument.body,
 	focusOverflow: () => void = focusDocument,
+	setNextStyle?: (style: string) => void,
 ) {
 	const ownerDocument = select.ownerDocument;
 	const targetWindow = ownerDocument.defaultView!;
@@ -71,12 +72,14 @@ export function wordMenus(
 					close(true);
 					return;
 				}
+				// Measure the anchor before sibling menus hide: a row anchored inside
+				// another popover (the next-style row) loses its rect once that hides.
+				const rect = button.getBoundingClientRect();
 				for (const other of menus) {
 					if (other.matches(":popover-open")) {
 						other.hidePopover();
 					}
 				}
-				const rect = button.getBoundingClientRect();
 				const overflow = button.closest<HTMLElement>(".word-toolbar-overflow");
 				if (overflow?.matches(":popover-open")) {
 					overflow.hidePopover();
@@ -161,6 +164,9 @@ export function wordMenus(
 		"Paragraph styles",
 		() => styleItems[0],
 	);
+	styles.menu.classList.add("word-style-menu");
+	styles.menu.setAttribute("role", "menu");
+	styleButton.setAttribute("aria-haspopup", "menu");
 	const styleItems: HTMLButtonElement[] = [];
 	for (const option of [...select.options].filter((option) => option.value)) {
 		const item = ownerDocument.createElement("button");
@@ -189,26 +195,111 @@ export function wordMenus(
 			listen,
 		);
 	}
-	styles.menu.setAttribute("role", "menu");
-	styleButton.setAttribute("aria-haspopup", "menu");
-	select.addEventListener(
-		"formatstate",
-		() => {
-			styleButton.disabled = select.disabled;
-			const current = select.dataset.currentStyle;
-			const match = [...select.options].find(
-				(option) => option.value === current,
+	// Docs keeps a trailing "Set Next Paragraph Style" row: the style paragraphs typed
+	// after the current one receive. Picking here hands the choice to the document
+	// owner without applying it to the selection.
+	const nextRow = ownerDocument.createElement("button");
+	nextRow.type = "button";
+	nextRow.className = "word-next-style";
+	nextRow.disabled = select.disabled;
+	const nextLabel = ownerDocument.createElement("span");
+	nextLabel.className = "word-next-style-label";
+	nextLabel.textContent = "Set Next Paragraph Style";
+	nextRow.append(nextLabel);
+	const nextItems: HTMLButtonElement[] = [];
+	const nextPick = (value: string, label: string) => {
+		nextLabel.textContent = value ? `Set Next Paragraph Style · ${label}` : "Set Next Paragraph Style";
+		for (const item of nextItems) {
+			item.setAttribute("aria-checked", String((item.dataset.value ?? "") === value));
+		}
+		setNextStyle?.(value);
+	};
+	if (setNextStyle) {
+		const nextMenu = create(
+			nextRow,
+			"word-next-style-menu",
+			"Set next paragraph style",
+			() => nextItems[0],
+		);
+		nextMenu.menu.classList.add("word-style-menu");
+		nextMenu.menu.setAttribute("role", "menu");
+		nextRow.setAttribute("aria-haspopup", "menu");
+		const none = ownerDocument.createElement("button");
+		none.type = "button";
+		none.className = "word-style-preview";
+		none.dataset.value = "";
+		none.setAttribute("role", "menuitemradio");
+		none.setAttribute("aria-checked", "true");
+		const noneCheck = ownerDocument.createElement("span");
+		noneCheck.className = "word-style-check";
+		noneCheck.setAttribute("aria-hidden", "true");
+		noneCheck.textContent = "✓";
+		const noneText = ownerDocument.createElement("span");
+		noneText.textContent = "None";
+		none.append(noneCheck, noneText);
+		none.addEventListener(
+			"click",
+			() => {
+				nextPick("", "None");
+				nextMenu.close();
+				focusDocument();
+			},
+			listen,
+		);
+		nextItems.push(none);
+		nextMenu.menu.append(none);
+		for (const option of [...select.options].filter((option) => option.value)) {
+			const item = ownerDocument.createElement("button");
+			item.type = "button";
+			item.className = "word-style-preview";
+			item.dataset.style = option.value;
+			item.dataset.value = option.value;
+			item.setAttribute("role", "menuitemradio");
+			item.setAttribute("aria-checked", "false");
+			const check = ownerDocument.createElement("span");
+			check.className = "word-style-check";
+			check.setAttribute("aria-hidden", "true");
+			check.textContent = "✓";
+			const sample = ownerDocument.createElement("span");
+			sample.textContent = option.textContent;
+			item.append(check, sample);
+			item.addEventListener(
+				"click",
+				() => {
+					nextPick(option.value, option.textContent || option.value);
+					nextMenu.close();
+					focusDocument();
+				},
+				listen,
 			);
-			styleLabel.textContent = match?.textContent || "Normal";
-			for (const item of styleItems) {
-				item.setAttribute(
-					"aria-checked",
-					String(item.dataset.style === current),
+			nextItems.push(item);
+			nextMenu.menu.append(item);
+		}
+		nextMenu.menu.addEventListener(
+			"keydown",
+			(event) => {
+				if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+					return;
+				}
+				event.preventDefault();
+				const index = nextItems.indexOf(
+					ownerDocument.activeElement as HTMLButtonElement,
 				);
-			}
-		},
-		listen,
-	);
+				nextItems[
+					event.key === "Home"
+						? 0
+						: event.key === "End"
+							? nextItems.length - 1
+							: (index +
+									(event.key === "ArrowDown" ? 1 : -1) +
+									nextItems.length) %
+								nextItems.length
+				]?.focus();
+			},
+			listen,
+		);
+		styles.menu.append(nextRow);
+	}
 	styles.menu.addEventListener(
 		"keydown",
 		(event) => {
@@ -229,6 +320,25 @@ export function wordMenus(
 								styleItems.length) %
 							styleItems.length
 			]?.focus();
+		},
+		listen,
+	);
+	select.addEventListener(
+		"formatstate",
+		() => {
+			styleButton.disabled = select.disabled;
+			nextRow.disabled = select.disabled;
+			const current = select.dataset.currentStyle;
+			const match = [...select.options].find(
+				(option) => option.value === current,
+			);
+			styleLabel.textContent = match?.textContent || "Normal";
+			for (const item of styleItems) {
+				item.setAttribute(
+					"aria-checked",
+					String(item.dataset.style === current),
+				);
+			}
 		},
 		listen,
 	);
@@ -421,13 +531,138 @@ export function wordMenus(
 		popup.menu.classList.add("word-option-menu");
 		popup.menu.setAttribute("role", "menu");
 		button.setAttribute("aria-haspopup", "menu");
+		const isFont = select.classList.contains("word-font-select");
+		const isSize = select.classList.contains("word-size-select");
+		if (isSize) {
+			popup.menu.classList.add("word-size-menu");
+		}
 		if (palette) {
 			popup.menu.classList.add("word-color-menu");
 		}
+		// Docs' font family menu: a live search above the theme + personal sections.
+		const buildFontMenu = () => {
+			popup.menu.classList.add("word-font-menu");
+			const head = ownerDocument.createElement("div");
+			head.className = "word-font-head";
+			const search = ownerDocument.createElement("input");
+			search.type = "search";
+			search.className = "word-font-search";
+			search.placeholder = "Search fonts";
+			search.setAttribute("aria-label", "Search fonts");
+			head.append(search);
+			const buildSection = (name: string) => {
+				const root = ownerDocument.createElement("div");
+				root.className = `word-font-section word-font-${name}`;
+				const heading = ownerDocument.createElement("div");
+				heading.className = "word-font-label";
+				heading.textContent = name === "theme" ? "Theme fonts" : "My fonts";
+				return { root, heading };
+			};
+			const theme = buildSection("theme");
+			const mine = buildSection("mine");
+			const item = (option: HTMLOptionElement, group: "theme" | "mine") => {
+				const entry = ownerDocument.createElement("button");
+				entry.type = "button";
+				entry.className = "word-font-item";
+				entry.dataset.value = option.value;
+				entry.setAttribute("role", "menuitemradio");
+				entry.setAttribute(
+					"aria-checked",
+					String(option.value === current()),
+				);
+				entry.setAttribute(
+					"aria-label",
+					(option.textContent || option.value) +
+						(group === "theme"
+							? option.dataset.section === "minor"
+								? " (body)"
+								: " (headings)"
+							: ""),
+				);
+				// Each family renders in its own typeface, as in Docs. Quoted: family
+				// values like "Source Sans 3" end in digits and are invalid unquoted.
+				const check = ownerDocument.createElement("span");
+				check.className = "word-item-check";
+				check.setAttribute("aria-hidden", "true");
+				check.textContent = "✓";
+				const name = ownerDocument.createElement("span");
+				name.className = "word-font-name";
+				name.textContent = option.textContent;
+				name.style.fontFamily = JSON.stringify(option.value);
+				entry.append(check, name);
+				if (group === "theme") {
+					const tag = ownerDocument.createElement("span");
+					tag.className = "word-font-tag";
+					tag.textContent = option.dataset.section === "minor" ? "Body" : "Headings";
+					entry.append(tag);
+				}
+				entry.addEventListener(
+					"click",
+					() => {
+						popup.close();
+						select.value = option.value;
+						select.dispatchEvent(
+							new targetWindow.Event("change", { bubbles: true }),
+						);
+						focusDocument();
+					},
+					listen,
+				);
+				(group === "theme" ? theme.root : mine.root).append(entry);
+				items.push(entry);
+			};
+			const themed = new Set<string>();
+			for (const option of [...select.options].filter(
+				(option) =>
+					option.value &&
+					(option.dataset.section === "major" || option.dataset.section === "minor"),
+			)) {
+				item(option, "theme");
+				themed.add(option.value);
+			}
+			for (const option of [...select.options].filter(
+				(option) => option.value && !themed.has(option.value),
+			)) {
+				item(option, "mine");
+			}
+			popup.menu.append(head, theme.heading, theme.root, mine.heading, mine.root);
+			// The search hides non-matching families and, with them, empty sections.
+			search.addEventListener(
+				"input",
+				() => {
+					const query = search.value.trim().toLowerCase();
+					for (const entry of items) {
+						entry.classList.toggle(
+							"word-font-hidden",
+							!!query &&
+								!(entry.dataset.value ?? "").toLowerCase().includes(query) &&
+								!(entry.textContent || "").toLowerCase().includes(query),
+						);
+					}
+					for (const section of [theme, mine]) {
+						section.heading.classList.toggle(
+							"word-font-hidden",
+							!section.root.querySelector(
+								".word-font-item:not(.word-font-hidden)",
+							),
+						);
+					}
+				},
+				listen,
+			);
+		};
+		if (!isFont) {
 		for (const option of [...select.options].filter((option) => option.value)) {
 			const item = ownerDocument.createElement("button");
 			item.type = "button";
-			item.textContent = option.textContent;
+			// Radio menus carry the leading check Docs uses; the value follows it.
+			const check = ownerDocument.createElement("span");
+			check.className = "word-item-check";
+			check.setAttribute("aria-hidden", "true");
+			check.textContent = "✓";
+			const label = ownerDocument.createElement("span");
+			label.textContent = option.textContent;
+			item.append(check, label);
 			item.setAttribute(
 				"role",
 				typeof content === "string" ? "menuitemradio" : "menuitem",
@@ -436,9 +671,6 @@ export function wordMenus(
 			item.setAttribute("aria-label", option.textContent || option.value);
 			if (typeof content === "string") {
 				item.setAttribute("aria-checked", String(option.value === current()));
-			}
-			if (select.classList.contains("word-font-select")) {
-				item.style.fontFamily = option.value;
 			}
 			if (select.dataset.palette) {
 				item.title = option.textContent || option.value;
@@ -485,6 +717,9 @@ export function wordMenus(
 			);
 			items.push(item);
 			popup.menu.append(item);
+		}
+		} else {
+			buildFontMenu();
 		}
 		if (textColor) {
 			const custom = ownerDocument.createElement("label");
@@ -582,22 +817,29 @@ export function wordMenus(
 					return;
 				}
 				event.preventDefault();
-				const index = items.indexOf(
+				// Font menus filter entries: hidden ones must not absorb navigation.
+				const list = isFont
+					? items.filter((item) => !item.classList.contains("word-font-hidden"))
+					: items;
+				if (!list.length) {
+					return;
+				}
+				const index = list.indexOf(
 					ownerDocument.activeElement as HTMLButtonElement,
 				);
 				const step =
 					palette && ["ArrowDown", "ArrowUp"].includes(event.key) ? 10 : 1;
-				items[
+				list[
 					event.key === "Home"
 						? 0
 						: event.key === "End"
-							? items.length - 1
+							? list.length - 1
 							: (index +
 									(["ArrowDown", "ArrowRight"].includes(event.key)
 										? step
 										: -step) +
-									items.length) %
-								items.length
+									list.length) %
+								list.length
 				]?.focus();
 			},
 			listen,

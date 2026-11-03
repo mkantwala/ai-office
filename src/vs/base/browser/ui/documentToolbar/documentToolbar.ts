@@ -13,7 +13,8 @@ export interface DocumentToolbarControl {
 	text?: string;
 	disabled: boolean;
 	pressed?: boolean;
-	options?: { value: string; label: string }[];
+	/** Theme assignment of a font list entry: minor (Body) or major (Headings); 'my' lists the engine's own fonts. */
+	options?: { value: string; label: string; section?: 'minor' | 'major' | 'my' }[];
 }
 export interface DocumentToolbarAction { control: string; value?: string; rows?: number; cols?: number }
 export interface DocumentToolbarSnapshot {
@@ -32,7 +33,10 @@ export function createDocumentToolbar(element: HTMLElement, descriptors: Documen
 		const control = ownerDocument.createElement(descriptor.type === 'select' ? 'select' : 'button');
 		control.title = descriptor.label; control.setAttribute('aria-label', descriptor.label); control.dataset.officeControl = descriptor.key;
 		if (control instanceof targetWindow.HTMLSelectElement) {
-			for (const option of descriptor.options || []) { control.add(new targetWindow.Option(option.label, option.value)); }
+			for (const option of descriptor.options || []) {
+				control.add(new targetWindow.Option(option.label, option.value));
+				if (option.section) { control.lastChild.dataset.section = option.section; }
+			}
 			control.addEventListener('change', () => { if (control.value) { action({ control: descriptor.key, value: control.value }); control.value = ''; } });
 		} else {
 			control.type = 'button'; control.textContent = descriptor.text || descriptor.label;
@@ -51,7 +55,7 @@ export function createDocumentToolbar(element: HTMLElement, descriptors: Documen
 		strike: button('strike'), clear: button('clear'), color: select('color'), highlight: select('highlight'),
 		style: select('style'), font: select('font'), size: select('size'), emphasis,
 		align: select('align'), list: select('list'), spacing: select('spacing'), table: button('table'), image: button('image'), link: button('link'), comment: button('comment')
-	}, (rows, cols) => action({ control: 'table', rows, cols }), focusDocument, sticky => action({ control: 'paintFormat', value: sticky ? 'sticky' : 'pick' }));
+	}, (rows, cols) => action({ control: 'table', rows, cols }), focusDocument, sticky => action({ control: 'paintFormat', value: sticky ? 'sticky' : 'pick' }), style => action({ control: 'style', value: '@next:' + style }));
 	return {
 		update(descriptors: DocumentToolbarControl[], paragraphStyle?: string, painter?: boolean) {
 			for (const descriptor of descriptors) {
@@ -81,7 +85,7 @@ export function isDocumentToolbarSnapshot(value: unknown): value is DocumentTool
 	const seen = new Set<string>();
 	for (const control of snapshot.controls) {
 		if (!control || seen.has(control.key) || ![...selectKeys, ...buttonKeys].includes(control.key) || control.type !== (selectKeys.includes(control.key) ? 'select' : 'button') || typeof control.label !== 'string' || control.label.length > 160 || typeof control.disabled !== 'boolean') { return false; }
-		if (control.type === 'select' && (!Array.isArray(control.options) || control.options.length > 40 || control.options.some(option => !option || typeof option.value !== 'string' || option.value.length > 200 || typeof option.label !== 'string' || option.label.length > 200))) { return false; }
+		if (control.type === 'select' && (!Array.isArray(control.options) || control.options.length > 600 || control.options.some(option => !option || typeof option.value !== 'string' || option.value.length > 200 || typeof option.label !== 'string' || option.label.length > 200 || (option.section !== undefined && !['minor', 'major', 'my'].includes(option.section))))) { return false; }
 		if (control.currentValue !== undefined && (!['font', 'size'].includes(control.key) || typeof control.currentValue !== 'string' || control.currentValue.length > 200)) { return false; }
 		seen.add(control.key);
 	}

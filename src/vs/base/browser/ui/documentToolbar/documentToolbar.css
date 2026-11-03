@@ -442,3 +442,119 @@
 		--word-green: Highlight;
 	}
 }
+
+/* --- Docs-style dropdown menus ----------------------------------------------
+   Paragraph style, Font family and Font size take Docs' proportions: generous
+   rows, section captions, each entry rendered in its own typeface where it
+   previews a style, leading checks for the active choice. ---------------------- */
+
+/* Paragraph style: narrow light sheet, 44px rows, no row arrows (rows apply
+   directly), the current style highlighted; the "Set Next Paragraph Style" row
+   sits below a divider. */
+.word-visual-menu.word-style-menu { width: 232px; padding: 6px 0; }
+.word-visual-menu.word-style-menu .word-style-preview {
+	min-height: 44px;
+	padding: 6px 10px 6px 9px;
+	gap: 14px;
+	font-size: 14px;
+	border-radius: 0;
+}
+.word-visual-menu.word-style-menu .word-style-preview + .word-style-preview { border-top-color: var(--vscode-widget-border, #8883); }
+.word-style-menu .word-style-preview[aria-checked="true"] {
+	background: var(--vscode-list-activeSelectionBackground);
+	color: var(--vscode-list-activeSelectionForeground);
+}
+.word-visual-menu button.word-next-style {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	width: 100%;
+	min-height: 40px;
+	margin-top: 8px;
+	padding: 6px 10px 6px 9px;
+	border-block-start: 1px solid var(--vscode-widget-border, #8883);
+	background: transparent;
+	text-align: left;
+	font-size: 13px;
+}
+.word-visual-menu button.word-next-style:hover,
+.word-visual-menu button.word-next-style:focus-visible {
+	background: var(--vscode-list-hoverBackground, #8882);
+}
+.word-next-style[aria-expanded="true"] { background: var(--vscode-list-activeSelectionBackground); }
+.word-next-style-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Font family: search on top with list/grid toggles, then Theme fonts and
+   My fonts sections; every family is rendered in its own typeface. */
+.word-option-menu.word-font-menu {
+	width: 264px;
+	max-height: min(460px, 80vh);
+	padding: 10px 8px;
+}
+.word-font-head { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+.word-font-search {
+	box-sizing: border-box;
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 30px;
+	padding: 0 8px;
+	border: 1px solid var(--vscode-widget-border, #8885);
+	border-radius: 4px;
+	background: var(--vscode-input-background, var(--vscode-editor-background));
+	color: var(--vscode-input-foreground, inherit);
+	font-size: 13px;
+}
+.word-font-search:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
+.word-font-label {
+	padding: 8px 2px 4px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: .08em;
+	text-transform: uppercase;
+	color: var(--vscode-descriptionForeground, #777);
+}
+.word-font-section { display: flex; flex-direction: column; }
+.word-option-menu.word-font-menu button.word-font-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	min-height: 40px;
+	padding: 6px 8px;
+	border-radius: 4px;
+	text-align: left;
+	color: var(--vscode-foreground);
+}
+.word-option-menu.word-font-menu button.word-font-item:hover,
+.word-option-menu.word-font-menu button.word-font-item:focus-visible { background: var(--vscode-list-hoverBackground, #8882); }
+.word-option-menu.word-font-menu button.word-font-item[aria-checked="true"] {
+	background: var(--vscode-list-activeSelectionBackground);
+	color: var(--vscode-list-activeSelectionForeground);
+}
+.word-font-item .word-font-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 15px;
+}
+.word-font-item .word-font-tag { flex: 0 0 auto; font-size: 11px; color: var(--vscode-descriptionForeground, #777); }
+.word-font-hidden { display: none; }
+.word-font-item.word-font-hidden, .word-font-label.word-font-hidden { display: none; }
+
+/* Font size: a narrow Docs list with 32px rows and the leading check. */
+.word-option-menu.word-size-menu { min-width: 0; width: 118px; padding: 8px; }
+.word-option-menu.word-size-menu button { min-height: 32px; padding: 4px 10px; font-size: 14px; }
+
+/* Leading check used by the Docs-style radio menus (font size, font family). */
+.word-option-menu .word-item-check {
+	flex: 0 0 14px;
+	visibility: hidden;
+	font-size: 13px;
+}
+.word-size-menu button[aria-checked="true"] .word-item-check,
+.word-font-item[aria-checked="true"] .word-item-check { visibility: visible; }
+/* These menus keep the check at the leading edge instead of the trailing one. */
+.word-size-menu button[aria-checked="true"]::after,
+.word-font-menu button[aria-checked="true"]::after { content: none; }

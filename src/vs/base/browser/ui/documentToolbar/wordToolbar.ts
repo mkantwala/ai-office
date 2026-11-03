@@ -85,7 +85,7 @@ function iconButton(button: HTMLButtonElement, name: keyof typeof paths): HTMLBu
 }
 
 /** Reorganize the existing controls without duplicating document commands or selection state. */
-export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarControls, insertTable: (rows: number, cols: number) => void, focusDocument: () => void, paint?: (sticky: boolean) => void): { dispose(): void; closeMenus(): void; paintButton: HTMLButtonElement } {
+export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarControls, insertTable: (rows: number, cols: number) => void, focusDocument: () => void, paint?: (sticky: boolean) => void, setNextStyle?: (style: string) => void): { dispose(): void; closeMenus(): void; paintButton: HTMLButtonElement } {
 	const ownerDocument = toolbar.ownerDocument;
 	const targetWindow = ownerDocument.defaultView!;
 	const events = new AbortController();
@@ -133,7 +133,7 @@ export function arrangeWordToolbar(toolbar: HTMLElement, controls: WordToolbarCo
 	iconButton(more, 'more');
 	more.classList.add('word-more-button');
 	const host = toolbar.closest<HTMLElement>('.monaco-workbench') || ownerDocument.body;
-	const menus = wordMenus(controls.style, controls.table, insertTable, focusDocument, host, () => more.focus());
+	const menus = wordMenus(controls.style, controls.table, insertTable, focusDocument, host, () => more.focus(), setNextStyle);
 	const dropdowns = [menus.selector(controls.font, 'Font'), menus.selector(controls.size, 'Size'), menus.selector(controls.align, icon('align', ownerDocument)), menus.selector(controls.spacing, icon('spacing', ownerDocument)), menus.selector(controls.list, icon('list', ownerDocument))];
 	const decrease = ownerDocument.createElement('button');
 	const increase = ownerDocument.createElement('button');

@@ -28,6 +28,7 @@ import {
 	withAgentToolRequest,
 } from "./agentRequest.js";
 import { prepareWordFormatting, canRebaseTextEdits } from "./wordFormatting.js";
+import { systemFontFamilies } from "./systemFonts.js";
 import { DocumentVersions } from "./documentVersions.js";
 import { DocumentDrafts } from "./documentDrafts.js";
 import {
@@ -1245,7 +1246,10 @@ export function registerEditors(
 				const nonce = randomBytes(24).toString("hex");
 				const resource = (name: string) =>
 					panel.webview.asWebviewUri(vscode.Uri.joinPath(output, name));
-				panel.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src data: blob:;"><link rel="stylesheet" href="${resource("editor.css")}"></head><body data-document-instance="${doc.instance}" class="${appToolbar ? "app-toolbar-hosted" : ""}"><header id="toolbar" aria-label="Document formatting"></header><div id="info"><span id="filename"></span><span id="hint"></span></div><div id="error" role="alert" hidden></div><main id="pages"></main><textarea id="keyboard" aria-label="Document text input" spellcheck="false"></textarea><dialog id="dialog"><form method="dialog"><label id="prompt-label" for="prompt"></label><input id="prompt"><div><button value="cancel">Cancel</button><button id="confirm" value="ok">Apply</button></div></form></dialog><script nonce="${nonce}" src="${resource("editor.js")}"></script></body></html>`;
+				// The family menu offers the machine's installed fonts by name only; no font
+				// data is read or bundled. `<` is escaped so the JSON stays inert markup.
+				const systemFonts = JSON.stringify(systemFontFamilies()).replace(/</g, "\\u003c");
+				panel.webview.html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${panel.webview.cspSource} 'unsafe-inline'; img-src data: blob:;"><link rel="stylesheet" href="${resource("editor.css")}"></head><body data-document-instance="${doc.instance}" class="${appToolbar ? "app-toolbar-hosted" : ""}"><header id="toolbar" aria-label="Document formatting"></header><div id="info"><span id="filename"></span><span id="hint"></span></div><div id="error" role="alert" hidden></div><main id="pages"></main><textarea id="keyboard" aria-label="Document text input" spellcheck="false"></textarea><dialog id="dialog"><form method="dialog"><label id="prompt-label" for="prompt"></label><input id="prompt"><div><button value="cancel">Cancel</button><button id="confirm" value="ok">Apply</button></div></form></dialog><script nonce="${nonce}">window.__officeSystemFonts=${systemFonts};</script><script nonce="${nonce}" src="${resource("editor.js")}"></script></body></html>`;
 				const listener = panel.webview.onDidReceiveMessage((message) => {
 					doc.serial = doc.serial.then(async () => {
 						try {
