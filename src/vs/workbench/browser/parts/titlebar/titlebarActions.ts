@@ -353,7 +353,10 @@ registerAction2(class ShowSearch extends Action2 {
 registerAction2(class OpenSettings extends Action2 {
 	constructor() {
 		super({
-			id: 'workbench.action.openSettings',
+			// A distinct id: registering the built-in 'workbench.action.openSettings'
+			// here would shadow its real handler, and this run() would then resolve
+			// to itself and never reach the Settings editor.
+			id: 'workbench.action.sangamOpenSettings',
 			title: localize2('openSettings', 'Settings'),
 			icon: Codicon.settingsGear,
 			menu: [{
