@@ -30,6 +30,7 @@ import { StringSHA1 } from '../../../base/common/hash.js';
 import { GestureEvent } from '../../../base/browser/touch.js';
 import { IPaneCompositePart } from './paneCompositePart.js';
 import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
+import { ICommandService } from '../../../platform/commands/common/commands.js';
 import { IViewsService } from '../../services/views/common/viewsService.js';
 
 interface IPlaceholderViewContainer {
@@ -779,6 +780,7 @@ class ViewContainerActivityAction extends CompositeBarAction {
 		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IActivityService private readonly activityService: IActivityService,
+		@ICommandService private readonly commandService: ICommandService,
 	) {
 		super(compositeBarActionItem);
 		this.updateActivity();
@@ -808,6 +810,20 @@ class ViewContainerActivityAction extends CompositeBarAction {
 			return;
 		}
 		this.lastRun = now;
+
+		// The activity bar's Search never executes a command: the click opens or toggles
+		// the Search pane directly. A document with its own engine (Word) instead wants
+		// the search activity to open the document's built-in Find and Replace, which
+		// can look inside the document; the document toolbar contributes the decision.
+		if (this.part === Parts.ACTIVITYBAR_PART && this.compositeBarActionItem.id === 'workbench.view.search') {
+			try {
+				if (await this.commandService.executeCommand('_sangamOne.documentToolbar.openFindForActive') === true) {
+					return;
+				}
+			} catch {
+				// No interception was contributed: keep the standard behavior.
+			}
+		}
 
 		const focus = (event && 'preserveFocus' in event) ? !event.preserveFocus : true;
 

@@ -5,5 +5,8 @@
 
 import * as vscode from 'vscode';
 import { registerEditors } from '../ai-office-common/provider.js';
-import { registerFullWord } from '../ai-office-common/wordProvider.js';
-export function activate(context: vscode.ExtensionContext) { registerEditors(context, ['pdf']); registerFullWord(context); }
+import { registerCloudflareAgent } from '../ai-office-common/cloudflareAgent.js';
+export function activate(context: vscode.ExtensionContext) {
+	registerEditors(context, ['pdf', 'word']);
+	registerCloudflareAgent(context);
+}

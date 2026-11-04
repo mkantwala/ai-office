@@ -394,9 +394,9 @@ suite('SessionTypePickerActionItem', () => {
 			label: 'Codex',
 			checked: false,
 			enabled: false,
-			description: '[Sign in](command:workbench.action.chat.triggerSetup)',
-			ariaDescription: 'Sign in. Sign in to GitHub Copilot to use this agent.',
-			hover: '[Sign in to GitHub Copilot](command:workbench.action.chat.triggerSetup) to use this agent.',
+			description: 'Requires GitHub Copilot',
+			ariaDescription: 'Requires GitHub Copilot. This agent requires a GitHub Copilot subscription.',
+			hover: 'This agent requires a GitHub Copilot subscription.',
 		});
 	});
 });

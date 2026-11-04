@@ -152,7 +152,7 @@ import { MeteredConnectionChannelClient, METERED_CONNECTION_CHANNEL } from '../.
 import { PlaywrightChannel } from '../../../platform/browserView/node/playwrightChannel.js';
 import { AgentNetworkFilterService } from '../../../platform/networkFilter/common/networkFilterService.js';
 import { ILocalGitService } from '../../../platform/git/common/localGitService.js';
-import { LocalGitService } from '../../../platform/git/node/localGitService.js';
+import { DisabledLocalGitService } from '../../../platform/git/common/disabledLocalGitService.js';
 
 class SharedProcessMain extends Disposable implements IClientConnectionFilter {
 
@@ -427,7 +427,7 @@ class SharedProcessMain extends Disposable implements IClientConnectionFilter {
 		services.set(ISharedWebContentExtractorService, new SyncDescriptor(SharedWebContentExtractorService));
 
 		// Local Git
-		services.set(ILocalGitService, new SyncDescriptor(LocalGitService, undefined, false /* proxied to other processes */));
+		services.set(ILocalGitService, new SyncDescriptor(DisabledLocalGitService, undefined, false /* proxied to other processes */));
 
 		// SSH Remote Agent Host
 		services.set(ISSHRemoteAgentHostMainService, new SyncDescriptor(SSHRemoteAgentHostMainService, undefined, true));

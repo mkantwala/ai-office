@@ -20,7 +20,7 @@
 	overflow: hidden;
 	flex-shrink: 1;
 	flex-grow: 1;
-	align-items: center;
+	align-items: flex-start;
 	justify-content: space-between;
 	user-select: none;
 	-webkit-user-select: none;
@@ -64,11 +64,29 @@
 	-webkit-app-region: drag;
 }
 
+/* Full-width document control row beneath the title bar row; registered by
+ * the workbench-level document toolbar contribution. The row overlays the
+ * drag region (positioned + z-index) and is marked no-drag so controls stay
+ * clickable; its height is part minimumHeight via part.minimumHeight. */
+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-document-toolbar-row {
+	position: absolute;
+	top: var(--sangam-titlebar-row-height, 35px);
+	left: 0;
+	right: 0;
+	z-index: 1;
+	-webkit-app-region: no-drag;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-document-toolbar-row > .sangam-document-toolbar {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
 .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left,
 .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-center,
 .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-right {
 	display: flex;
-	height: 100%;
+	height: var(--sangam-titlebar-row-height, 35px);
 	align-items: center;
 }
 
@@ -280,31 +298,6 @@
 
 .monaco-workbench.windows.fullscreen .part.titlebar > .titlebar-container > .resizer,
 .monaco-workbench.linux.fullscreen .part.titlebar > .titlebar-container > .resizer {
-	display: none;
-}
-
-/* App Icon */
-.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon {
-	width: 35px;
-	height: 100%;
-	position: relative;
-	z-index: 2500;
-	flex-shrink: 0;
-	order: 1;
-}
-
-.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon:not(.codicon) {
-	background-image: url('../../../media/code-icon.svg');
-	background-repeat: no-repeat;
-	background-position: center center;
-	background-size: 16px;
-}
-
-.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon.codicon {
-	line-height: 30px;
-}
-
-.monaco-workbench.fullscreen .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon {
 	display: none;
 }
 

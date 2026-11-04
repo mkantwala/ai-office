@@ -50,7 +50,6 @@ import Severity from '../../../../../base/common/severity.js';
 import { IJSONSchema } from '../../../../../base/common/jsonSchema.js';
 import { formatTokenCount } from '../../../../../base/common/numbers.js';
 import { IDefaultAccountService } from '../../../../../platform/defaultAccount/common/defaultAccount.js';
-import { CHAT_SETUP_ACTION_ID } from '../actions/chatActions.js';
 
 const $ = DOM.$;
 
@@ -1146,7 +1145,6 @@ export class ChatModelsWidget extends Disposable {
 	private addButtonContainer!: HTMLElement;
 	private addButton!: Button;
 	private dropdownActions: IAction[] = [];
-	private defaultAccountResolved = false;
 	private viewModel: ChatModelsViewModel;
 	private delayedFiltering: Delayer<void>;
 
@@ -1177,12 +1175,10 @@ export class ChatModelsWidget extends Disposable {
 		this.element = DOM.$('.models-widget');
 		this.create(this.element);
 		this._register(this.defaultAccountService.onDidChangeDefaultAccount(() => {
-			this.defaultAccountResolved = true;
 			this.updateAddModelsButton();
 		}));
 		this.defaultAccountService.getDefaultAccount().then(() => {
 			if (!this._store.isDisposed) {
-				this.defaultAccountResolved = true;
 				this.updateAddModelsButton();
 			}
 		});
@@ -1658,9 +1654,8 @@ export class ChatModelsWidget extends Disposable {
 			configurableVendors,
 			supportsAddingModels,
 			vendor => this.addModelsForVendor(vendor),
-			this.defaultAccountResolved && this.defaultAccountService.currentDefaultAccount === null
-				? () => this.commandService.executeCommand(CHAT_SETUP_ACTION_ID)
-				: undefined,
+			// AI Office: no GitHub Copilot sign-in entry; models are added with the user's own provider.
+			undefined,
 		);
 
 		this.addButton.enabled = this.dropdownActions.length > 0;

@@ -133,7 +133,7 @@ suite('Sessions - Account Title Bar State', () => {
 		});
 	});
 
-	test('shows sign in state when no account is available', () => {
+	test('shows a neutral account affordance when no account is available', () => {
 		const state = getAccountTitleBarState(createState({
 			accountName: undefined,
 			accountProviderLabel: undefined,
@@ -145,13 +145,13 @@ suite('Sessions - Account Title Bar State', () => {
 			label: state.label,
 			kind: state.kind,
 		}, {
-			source: 'copilot',
-			label: 'Agents Signed Out',
-			kind: 'prominent',
+			source: 'account',
+			label: 'Account',
+			kind: 'default',
 		});
 	});
 
-	test('offers a calm opt-in sign-in when signed-out operation is enabled', () => {
+	test('does not offer sign-in when signed-out operation is enabled', () => {
 		const state = getAccountTitleBarState(createState({
 			accountName: undefined,
 			accountProviderLabel: undefined,
@@ -164,8 +164,8 @@ suite('Sessions - Account Title Bar State', () => {
 			label: state.label,
 			kind: state.kind,
 		}, {
-			source: 'copilot',
-			label: 'Sign In',
+			source: 'account',
+			label: 'Account',
 			kind: 'default',
 		});
 	});

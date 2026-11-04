@@ -5,11 +5,10 @@
 
 import './media/panelpart.css';
 import { localize, localize2 } from '../../../../nls.js';
-import { KeyMod, KeyCode } from '../../../../base/common/keyCodes.js';
 import { MenuId, MenuRegistry, registerAction2, Action2, IAction2Options } from '../../../../platform/actions/common/actions.js';
 import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
 import { isHorizontal, IWorkbenchLayoutService, PanelAlignment, Parts, Position, positionToString } from '../../../services/layout/browser/layoutService.js';
-import { IsAuxiliaryWindowContext, PanelAlignmentContext, PanelMaximizedContext, PanelPositionContext, PanelVisibleContext } from '../../../common/contextkeys.js';
+import { PanelAlignmentContext, PanelMaximizedContext, PanelPositionContext, PanelVisibleContext } from '../../../common/contextkeys.js';
 import { ContextKeyExpr, ContextKeyExpression } from '../../../../platform/contextkey/common/contextkey.js';
 import { Codicon } from '../../../../base/common/codicons.js';
 import { registerIcon } from '../../../../platform/theme/common/iconRegistry.js';
@@ -19,13 +18,10 @@ import { IViewsService } from '../../../services/views/common/viewsService.js';
 import { IPaneCompositePartService } from '../../../services/panecomposite/browser/panecomposite.js';
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { ICommandActionTitle } from '../../../../platform/action/common/action.js';
-import { KeybindingWeight } from '../../../../platform/keybinding/common/keybindingsRegistry.js';
 import { SwitchCompositeViewAction } from '../compositeBarActions.js';
 
 const maximizeIcon = registerIcon('panel-maximize', Codicon.screenFull, localize('maximizeIcon', 'Icon to maximize a panel.'));
 const closeIcon = registerIcon('panel-close', Codicon.close, localize('closeIcon', 'Icon to close a panel.'));
-const panelIcon = registerIcon('panel-layout-icon', Codicon.layoutPanel, localize('togglePanelOffIcon', 'Icon to toggle the panel off when it is on.'));
-const panelOffIcon = registerIcon('panel-layout-icon-off', Codicon.layoutPanelOff, localize('togglePanelOnIcon', 'Icon to toggle the panel on when it is off.'));
 
 export class TogglePanelAction extends Action2 {
 
@@ -43,23 +39,10 @@ export class TogglePanelAction extends Action2 {
 				mnemonicTitle: localize({ key: 'miTogglePanelMnemonic', comment: ['&& denotes a mnemonic'] }, "&&Panel"),
 			},
 			icon: closeIcon,
-			f1: true,
 			category: Categories.View,
 			metadata: {
 				description: localize('openAndClosePanel', 'Open/Show and Close/Hide Panel'),
-			},
-			keybinding: { primary: KeyMod.CtrlCmd | KeyCode.KeyJ, weight: KeybindingWeight.WorkbenchContrib },
-			menu: [
-				{
-					id: MenuId.MenubarAppearanceMenu,
-					group: '2_workbench_layout',
-					order: 5
-				}, {
-					id: MenuId.LayoutControlMenuSubmenu,
-					group: '0_workbench_layout',
-					order: 4
-				}
-			]
+			}
 		});
 	}
 
@@ -87,8 +70,7 @@ registerAction2(class extends Action2 {
 			id: 'workbench.action.closePanel',
 			title: localize2('closePanel', 'Hide Panel'),
 			category: Categories.View,
-			precondition: PanelVisibleContext,
-			f1: true,
+			precondition: PanelVisibleContext
 		});
 	}
 	run(accessor: ServicesAccessor) {
@@ -105,8 +87,7 @@ registerAction2(class extends Action2 {
 		super({
 			id: 'workbench.action.focusPanel',
 			title: localize2('focusPanel', "Focus into Panel"),
-			category: Categories.View,
-			f1: true,
+			category: Categories.View
 		});
 	}
 
@@ -180,13 +161,6 @@ const AlignPanelActionConfigs: PanelActionConfig<PanelAlignment>[] = [
 	createAlignmentPanelActionConfig(AlignPanelActionId.JUSTIFY, localize2('alignPanelJustify', "Set Panel Alignment to Justify"), localize('alignPanelJustifyShort', "Justify"), 'justify'),
 ];
 
-MenuRegistry.appendMenuItem(MenuId.MenubarAppearanceMenu, {
-	submenu: MenuId.PanelPositionMenu,
-	title: localize('positionPanel', "Panel Position"),
-	group: '3_workbench_layout_move',
-	order: 4
-});
-
 PositionPanelActionConfigs.forEach((positionPanelAction, index) => {
 	const { id, title, shortLabel, value, when } = positionPanelAction;
 
@@ -195,8 +169,7 @@ PositionPanelActionConfigs.forEach((positionPanelAction, index) => {
 			super({
 				id,
 				title,
-				category: Categories.View,
-				f1: true
+				category: Categories.View
 			});
 		}
 		run(accessor: ServicesAccessor): void {
@@ -215,13 +188,6 @@ PositionPanelActionConfigs.forEach((positionPanelAction, index) => {
 	});
 });
 
-MenuRegistry.appendMenuItem(MenuId.MenubarAppearanceMenu, {
-	submenu: MenuId.PanelAlignmentMenu,
-	title: localize('alignPanel', "Align Panel"),
-	group: '3_workbench_layout_move',
-	order: 5
-});
-
 AlignPanelActionConfigs.forEach(alignPanelAction => {
 	const { id, title, shortLabel, value, when } = alignPanelAction;
 	registerAction2(class extends Action2 {
@@ -230,8 +196,7 @@ AlignPanelActionConfigs.forEach(alignPanelAction => {
 				id,
 				title,
 				category: Categories.View,
-				toggled: when.negate(),
-				f1: true
+				toggled: when.negate()
 			});
 		}
 		run(accessor: ServicesAccessor): void {
@@ -255,8 +220,7 @@ registerAction2(class extends SwitchCompositeViewAction {
 		super({
 			id: 'workbench.action.previousPanelView',
 			title: localize2('previousPanelView', "Previous Panel View"),
-			category: Categories.View,
-			f1: true
+			category: Categories.View
 		}, ViewContainerLocation.Panel, -1);
 	}
 });
@@ -266,8 +230,7 @@ registerAction2(class extends SwitchCompositeViewAction {
 		super({
 			id: 'workbench.action.nextPanelView',
 			title: localize2('nextPanelView', "Next Panel View"),
-			category: Categories.View,
-			f1: true
+			category: Categories.View
 		}, ViewContainerLocation.Panel, 1);
 	}
 });
@@ -281,7 +244,6 @@ registerAction2(class extends Action2 {
 			title: localize2('toggleMaximizedPanel', 'Toggle Maximized Panel'),
 			tooltip: localize('maximizePanel', "Maximize Panel"),
 			category: Categories.View,
-			f1: true,
 			icon: maximizeIcon,
 			precondition: panelMaximizationSupportedWhen,
 			toggled: {
@@ -317,29 +279,6 @@ registerAction2(class extends Action2 {
 	}
 });
 
-MenuRegistry.appendMenuItems([
-	{
-		id: MenuId.LayoutControlMenu,
-		item: {
-			group: 'navigation',
-			command: {
-				id: TogglePanelAction.ID,
-				title: localize('togglePanel', "Toggle Panel"),
-				icon: panelOffIcon,
-				toggled: { condition: PanelVisibleContext, icon: panelIcon }
-			},
-			when:
-				ContextKeyExpr.and(
-					IsAuxiliaryWindowContext.negate(),
-					ContextKeyExpr.or(
-						ContextKeyExpr.equals('config.workbench.layoutControl.type', 'toggles'),
-						ContextKeyExpr.equals('config.workbench.layoutControl.type', 'both')
-					)
-				),
-			order: 1
-		}
-	}
-]);
 
 class MoveViewsBetweenPanelsAction extends Action2 {
 	constructor(private readonly source: ViewContainerLocation, private readonly destination: ViewContainerLocation, desc: Readonly<IAction2Options>) {
@@ -388,7 +327,7 @@ export class MovePanelToSecondarySideBarAction extends MoveViewsBetweenPanelsAct
 			id: MovePanelToSecondarySideBarAction.ID,
 			title: localize2('movePanelToSecondarySideBar', "Move Panel Views To Secondary Side Bar"),
 			category: Categories.View,
-			f1: true
+			f1: false
 		});
 	}
 }
@@ -419,7 +358,7 @@ export class MoveSecondarySideBarToPanelAction extends MoveViewsBetweenPanelsAct
 			id: MoveSecondarySideBarToPanelAction.ID,
 			title: localize2('moveSidePanelToPanel', "Move Secondary Side Bar Views To Panel"),
 			category: Categories.View,
-			f1: true
+			f1: false
 		});
 	}
 }

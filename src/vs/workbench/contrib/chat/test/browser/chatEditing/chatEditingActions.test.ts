@@ -12,7 +12,7 @@ import { URI } from '../../../../../../base/common/uri.js';
 import { mock } from '../../../../../../base/test/common/mock.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../../base/test/common/utils.js';
 import { CodeEditorWidget } from '../../../../../../editor/browser/widget/codeEditor/codeEditorWidget.js';
-import { CommandsRegistry } from '../../../../../../platform/commands/common/commands.js';
+import { CommandsRegistry, ICommandService } from '../../../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../../../platform/configuration/common/configuration.js';
 import { TestConfigurationService } from '../../../../../../platform/configuration/test/common/testConfigurationService.js';
 import { ContextKeyValue, IContext } from '../../../../../../platform/contextkey/common/contextkey.js';
@@ -69,7 +69,7 @@ suite('Chat editing actions', () => {
 		]);
 	});
 
-	async function runCheckpointAction(actionId: string, initialInput: string, confirmRestore?: boolean) {
+	async function runCheckpointAction(actionId: string, initialInput: string, confirmRestore?: boolean, officeDocument = false) {
 		const instantiationService = store.add(new TestInstantiationService());
 		const sessionResource = URI.parse('test://session');
 		const requestId = 'request-1';
@@ -102,7 +102,7 @@ suite('Chat editing actions', () => {
 			override readonly lastModifyingRequestId = requestId;
 		};
 		const editingSession = new class extends mock<IChatEditingSession>() {
-			override readonly entries = observableValue<readonly IModifiedFileEntry[]>('entries', confirmRestore === undefined ? [] : [modifiedEntry]);
+			override readonly entries = observableValue<readonly IModifiedFileEntry[]>('entries', confirmRestore === undefined || officeDocument ? [] : [modifiedEntry]);
 			override async restoreSnapshot(snapshotRequestId: string, _stopId: string | undefined): Promise<void> {
 				restoredSnapshot = snapshotRequestId;
 			}
@@ -178,6 +178,17 @@ suite('Chat editing actions', () => {
 			}
 		});
 
+		if (officeDocument) {
+			store.add(CommandsRegistry.registerCommand('aiOffice.word.requestCheckpoints', () => undefined));
+			instantiationService.set(ICommandService, new class extends mock<ICommandService>() {
+				override async executeCommand<T>(id: string, ...args: unknown[]): Promise<T> {
+					assert.strictEqual(id, 'aiOffice.word.requestCheckpoints');
+					assert.deepStrictEqual(args, [requestId]);
+					return [{ uri: 'file:///memo.docx' }] as T;
+				}
+			});
+		}
+
 		const commandHandler = CommandsRegistry.getCommand(actionId)?.handler;
 		assert.ok(commandHandler);
 		await commandHandler(instantiationService, requestItem);
@@ -212,6 +223,17 @@ suite('Chat editing actions', () => {
 			restoredSnapshot: 'request-1',
 			restoredAttachmentIds: [],
 		});
+	});
+
+	test('Word checkpoints preserve the standard confirmation and main-input behavior', async () => {
+		const canceled = await runCheckpointAction(RestoreCheckpointActionId, '', false, true);
+		assert.strictEqual(canceled.checkpoint, undefined);
+		assert.strictEqual(canceled.restoredSnapshot, undefined);
+		assert.strictEqual(canceled.inputValue, '');
+		const confirmed = await runCheckpointAction(RestoreCheckpointActionId, '', true, true);
+		assert.strictEqual(confirmed.checkpoint, 'request-1');
+		assert.strictEqual(confirmed.restoredSnapshot, 'request-1');
+		assert.strictEqual(confirmed.inputValue, 'original request');
 	});
 
 	test('checkpoint actions do not change the input when restore is canceled', async () => {

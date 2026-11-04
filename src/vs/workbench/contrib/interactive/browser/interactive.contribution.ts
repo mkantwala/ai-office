@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import './interactive.service.contribution.js';
 import { Iterable } from '../../../../base/common/iterator.js';
 import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
 import { Disposable, IDisposable } from '../../../../base/common/lifecycle.js';
@@ -27,7 +28,6 @@ import { IConfigurationRegistry, Extensions as ConfigurationExtensions } from '.
 import { ContextKeyExpr } from '../../../../platform/contextkey/common/contextkey.js';
 import { EditorActivation, ITextResourceEditorInput } from '../../../../platform/editor/common/editor.js';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
-import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { IInstantiationService, ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { KeybindingWeight } from '../../../../platform/keybinding/common/keybindingsRegistry.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
@@ -40,10 +40,9 @@ import { EditorInput } from '../../../common/editor/editorInput.js';
 import { PANEL_BORDER } from '../../../common/theme.js';
 import { ResourceNotebookCellEdit } from '../../bulkEdit/browser/bulkCellEdits.js';
 import { ReplEditorSettings, INTERACTIVE_INPUT_CURSOR_BOUNDARY } from './interactiveCommon.js';
-import { IInteractiveDocumentService, InteractiveDocumentService } from './interactiveDocumentService.js';
 import { InteractiveEditor } from './interactiveEditor.js';
 import { InteractiveEditorInput } from './interactiveEditorInput.js';
-import { IInteractiveHistoryService, InteractiveHistoryService } from './interactiveHistoryService.js';
+import { IInteractiveHistoryService } from './interactiveHistoryService.js';
 import { NOTEBOOK_EDITOR_WIDGET_ACTION_WEIGHT } from '../../notebook/browser/controller/coreActions.js';
 import { INotebookEditorOptions } from '../../notebook/browser/notebookBrowser.js';
 import * as icons from '../../notebook/browser/notebookIcons.js';
@@ -328,9 +327,6 @@ Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory)
 		InteractiveEditorSerializer.ID,
 		InteractiveEditorSerializer);
 
-registerSingleton(IInteractiveHistoryService, InteractiveHistoryService, InstantiationType.Delayed);
-registerSingleton(IInteractiveDocumentService, InteractiveDocumentService, InstantiationType.Delayed);
-
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
@@ -605,7 +601,6 @@ registerAction2(class extends Action2 {
 			const editor = editorControl.activeCodeEditor;
 			const range = editor?.getModel()?.getFullModelRange();
 
-
 			if (notebookDocument && editor && range) {
 				editor.executeEdits('', [EditOperation.replace(range, null)]);
 			}
@@ -637,8 +632,6 @@ registerAction2(class extends Action2 {
 		const editorService = accessor.get(IEditorService);
 		const historyService = accessor.get(IInteractiveHistoryService);
 		const editorControl = editorService.activeEditorPane?.getControl();
-
-
 
 		if (editorControl && isReplEditorControl(editorControl) && editorControl.notebookEditor) {
 			const notebookDocument = editorControl.notebookEditor.textModel;
@@ -692,7 +685,6 @@ registerAction2(class extends Action2 {
 		}
 	}
 });
-
 
 registerAction2(class extends Action2 {
 	constructor() {

@@ -31,9 +31,9 @@ import { AgentHostEnsembleIntelligenceUsesHydraFusionSettingId, COPILOT_HYDRA_FU
 import { IStorageService, StorageScope, StorageTarget } from '../../../../../../../platform/storage/common/storage.js';
 import { COPILOT_VENDOR_ID, getLanguageModelProviderDisplayName, IModelControlEntry, ILanguageModelChatMetadataAndIdentifier, ILanguageModelsService, isUserProvidedModel } from '../../../../common/languageModels.js';
 import { getLanguageModelDisplayNameWithSubscriptionSource } from '../../../../common/languageModelSourcePresentation.js';
+import { MANAGE_CHAT_COMMAND_ID } from '../../../../common/constants.js';
 import { ChatEntitlement, IChatEntitlementService } from '../../../../../../services/chat/common/chatEntitlementService.js';
 import { IModelPickerDelegate } from './modelPickerActionItem.js';
-import { CHAT_SETUP_ACTION_ID } from '../../../actions/chatActions.js';
 import { IUriIdentityService } from '../../../../../../../platform/uriIdentity/common/uriIdentity.js';
 import { GitHubPaths, IDefaultAccountService } from '../../../../../../../platform/defaultAccount/common/defaultAccount.js';
 import { IUpdateService } from '../../../../../../../platform/update/common/update.js';
@@ -414,15 +414,6 @@ export class ModelPickerWidget extends Disposable {
 		});
 	}
 
-	/**
-	 * Starts the Chat setup / sign-in flow (same command as the title-bar Sign In
-	 * affordance). On completion the entitlement and model registry change, which
-	 * refreshes the picker.
-	 */
-	private _requestSetup(): void {
-		this._commandService.executeCommand(CHAT_SETUP_ACTION_ID);
-	}
-
 	render(container: HTMLElement): void {
 		this._domNode = dom.append(container, dom.$('div.action-label.model-picker-split'));
 		const { primaryButton, secondaryButton } = renderChatInputPickerSplit(this._domNode);
@@ -549,11 +540,19 @@ export class ModelPickerWidget extends Disposable {
 			}];
 		}
 		if (reason === ModelPickerUnavailableReason.SetupRequired) {
+			// AI Office: GitHub Copilot sign-in is not offered by this product, so point the
+			// user at configuring a model with their own provider instead of signing in.
 			return [{
 				vendor,
 				label,
-				message: localize('chat.modelPicker.signInMessage', "Sign in to see available models."),
-				action: { label: localize('chat.modelPicker.signIn', "Sign in"), run: () => this._requestSetup() },
+				message: localize('chat.modelPicker.noModelsConfigured', "No language model is configured."),
+				action: {
+					label: localize('chat.modelPicker.configureModels', "Add Models..."),
+					run: () => {
+						this._tabbedPicker.value?.hide();
+						void this._commandService.executeCommand(MANAGE_CHAT_COMMAND_ID);
+					},
+				},
 			}];
 		}
 		if (models.length > 0) {

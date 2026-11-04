@@ -1042,7 +1042,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 
 	get snap(): boolean { return this.layoutService.getPanelAlignment() === 'center'; }
 
-	override get onDidChange(): Event<IViewSize | undefined> { return Event.any(this.centeredLayoutWidget.onDidChange, this.onDidSetGridWidget.event); }
+	override get onDidChange(): Event<IViewSize | undefined> { return Event.any(this.centeredLayoutWidget.onDidChange, this.onDidSetGridWidget.event, this._onDidChange.event); }
 	readonly priority: LayoutPriority = LayoutPriority.High;
 
 	private get gridSeparatorBorder(): Color {

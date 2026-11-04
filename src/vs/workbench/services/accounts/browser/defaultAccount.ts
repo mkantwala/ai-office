@@ -17,8 +17,8 @@ import { extUri } from '../../../../base/common/resources.js';
 import { isUndefined, Mutable } from '../../../../base/common/types.js';
 import { URI } from '../../../../base/common/uri.js';
 import { IRequestContext } from '../../../../base/parts/request/common/request.js';
-import { localize2 } from '../../../../nls.js';
-import { Action2, registerAction2 } from '../../../../platform/actions/common/actions.js';
+import { localize, localize2 } from '../../../../nls.js';
+import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { IContextKey, IContextKeyService, RawContextKey } from '../../../../platform/contextkey/common/contextkey.js';
@@ -28,10 +28,12 @@ import { ILogService } from '../../../../platform/log/common/log.js';
 import { IFileManagedSettingsService, INativeManagedSettingsService, ManagedSettingsChannel, ManagedSettingsData, resolveForceRemoteSettingsRefresh } from '../../../../platform/policy/common/copilotManagedSettings.js';
 import { IManagedSettingsFreshness, IManagedSettingsFreshnessScope, isManagedSettingsFreshnessBlocking, isManagedSettingsFreshnessSatisfiedFor, MANAGED_SETTINGS_FRESHNESS_NOT_REQUIRED, ManagedSettingsFreshnessFailure, ManagedSettingsFreshnessState } from '../../../../platform/policy/common/managedSettingsFreshness.js';
 import { IProductService } from '../../../../platform/product/common/productService.js';
+import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
 import { asJson, asText, IRequestService, isClientError, isSuccess, readHeader, retryAfterFromHeaders } from '../../../../platform/request/common/request.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
+import { ACCOUNTS_SHARED_SIGN_IN_GROUP } from '../../../common/activity.js';
 import { AuthenticationSession, AuthenticationSessionAccount, IAuthenticationExtensionsService, IAuthenticationService } from '../../authentication/common/authentication.js';
 import { IWorkbenchEnvironmentService } from '../../environment/common/environmentService.js';
 import { IExtensionService } from '../../extensions/common/extensions.js';
@@ -1662,5 +1664,40 @@ registerAction2(class extends Action2 {
 		await defaultAccountService.signIn();
 	}
 });
+
+export class OptionalAccountSignInAction extends Action2 {
+
+	constructor() {
+		super({
+			id: 'workbench.actions.accounts.signInOptional',
+			title: localize2('signInOptional', 'Sign In...'),
+			f1: true,
+			menu: {
+				id: MenuId.AccountsContext,
+				group: ACCOUNTS_SHARED_SIGN_IN_GROUP,
+				when: CONTEXT_DEFAULT_ACCOUNT_STATE.notEqualsTo(DefaultAccountStatus.Available),
+			},
+		});
+	}
+
+	override async run(accessor: ServicesAccessor): Promise<void> {
+		const quickInputService = accessor.get(IQuickInputService);
+		const defaultAccountService = accessor.get(IDefaultAccountService);
+		const choice = await quickInputService.pick([
+			{ label: localize('continueWithGoogle', 'Continue with Google'), provider: 'google', description: localize('googleGitHubAccount', 'Sign in to GitHub through Google') },
+			{ label: localize('continueWithGitHub', 'Continue with GitHub'), provider: undefined },
+			{ label: localize('continueWithoutAccount', 'Continue Without Signing In'), provider: undefined, skip: true },
+		], {
+			title: localize('optionalAccountTitle', 'Sign In to Sangam One'),
+			placeHolder: localize('optionalAccountHint', 'Sign-in is optional. Editing and the document agent work either way.'),
+		});
+		if (!choice || choice.skip) {
+			return;
+		}
+		await defaultAccountService.signIn(choice.provider ? { provider: choice.provider } : undefined);
+	}
+}
+
+registerAction2(OptionalAccountSignInAction);
 
 registerWorkbenchContribution2(DefaultAccountProviderContribution.ID, DefaultAccountProviderContribution, WorkbenchPhase.BlockStartup);

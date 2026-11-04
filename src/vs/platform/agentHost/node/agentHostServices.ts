@@ -27,7 +27,7 @@ import { IAgentHostSubscriptionService } from '../common/agentHostSubscriptionSe
 import { CopilotApiService, ICopilotApiService } from './shared/copilotApiService.js';
 import { AgentHostUtilityModelService, IAgentHostUtilityModelService } from './agentHostUtilityModelService.js';
 import { AgentHostFileMonitorService, IAgentHostFileMonitorService } from './agentHostFileMonitorService.js';
-import { AgentHostGitService } from './agentHostGitService.js';
+import { DisabledAgentHostGitService } from '../common/disabledAgentHostGitService.js';
 import { AgentPluginManager } from './agentPluginManager.js';
 import { AgentSdkDownloader, IAgentSdkDownloader } from './agentSdkDownloader.js';
 import { IByokLmBridgeRegistry } from './byokLmBridgeRegistry.js';
@@ -141,7 +141,7 @@ export interface IAgentHostHostServiceInputs {
 export function registerAgentHostHostServices(services: ServiceCollection, inputs: IAgentHostHostServiceInputs): void {
 	services.set(IDevContainerAgentHostMainService, new SyncDescriptor(RemoteDevContainerAgentHostService));
 	services.set(ISandboxHelperService, new SyncDescriptor(SandboxHelperService));
-	services.set(IAgentHostGitService, new SyncDescriptor(AgentHostGitService));
+	services.set(IAgentHostGitService, new SyncDescriptor(DisabledAgentHostGitService));
 	services.set(IAgentPluginManager, new SyncDescriptor(AgentPluginManager, [inputs.userDataPath]));
 	services.set(IAgentSdkDownloader, new SyncDescriptor(AgentSdkDownloader));
 	services.set(IClaudeAgentSdkService, new SyncDescriptor(ClaudeAgentSdkService));

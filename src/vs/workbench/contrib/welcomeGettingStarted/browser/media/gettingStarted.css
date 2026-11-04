@@ -1146,3 +1146,13 @@
 .monaco-workbench .part.editor > .content .gettingStartedContainer .gettingStartedSlide .getting-started-checkbox {
 	border-color: var(--vscode-checkbox-border) !important;
 }
+
+/* Product branding stays beside the welcome title without changing the document layout. */
+.monaco-workbench .gettingStartedContainer .header > .sangam-one-logo {
+	width: 64px;
+	height: 64px;
+	float: left;
+	margin-inline-end: 18px;
+	border-radius: 12px;
+	object-fit: contain;
+}

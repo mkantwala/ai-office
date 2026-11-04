@@ -988,14 +988,14 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 		});
 	}
 
-	public focus(): void {
-		this._doFocus();
+	public focus(options?: { readonly immediate?: boolean }): void {
+		this._doFocus(options?.immediate);
 
 		// Handle focus change programmatically (do not rely on event from <webview>)
 		this.handleFocusChange(true);
 	}
 
-	private _doFocus() {
+	private _doFocus(immediate = false) {
 		if (!this.element) {
 			return;
 		}
@@ -1004,6 +1004,14 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 			this.element.contentWindow?.focus();
 		} catch {
 			// noop
+		}
+
+		// Explicit document-toolbar handoffs are already user initiated and ordered
+		// after their action message. They must not drop the next typed character.
+		if (immediate) {
+			this._focusDelayer.cancel();
+			void this._send('focus', undefined);
+			return;
 		}
 
 		// Workaround for https://github.com/microsoft/vscode/issues/75209

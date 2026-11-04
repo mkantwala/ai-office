@@ -401,7 +401,7 @@ export class OverlayWebview extends Disposable implements IOverlayWebview {
 		return false;
 	}
 
-	focus(): void { this._webview.value?.focus(); }
+	focus(options?: { readonly immediate?: boolean }): void { this._webview.value?.focus(options); }
 	reload(): void { this._webview.value?.reload(); }
 	selectAll(): void { this._webview.value?.selectAll(); }
 	copy(): void { this._webview.value?.copy(); }

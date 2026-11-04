@@ -1,41 +1,27 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index 05c2f73..d881a07 100644
+index 2399531..a886c51 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
-@@ -3869,6 +3869,17 @@ dependencies = [
-  "pdfcraft-model",
+@@ -4270,6 +4270,16 @@ dependencies = [
+  "roxmltree",
  ]
  
 +[[package]]
 +name = "pdfcraft-preview"
-+version = "0.7.1"
++version = "0.10.1"
 +dependencies = [
 + "pdfcraft-automation",
 + "pdfcraft-engine",
 + "pdfcraft-render",
 + "serde_json",
-+ "wasm-bindgen",
 +]
 +
  [[package]]
  name = "pdfcraft-print"
- version = "0.7.1"
-diff --git a/ROADMAP.md b/ROADMAP.md
-index 44a2660..08c8d3f 100644
---- a/ROADMAP.md
-+++ b/ROADMAP.md
-@@ -419,3 +419,8 @@ Newest first: the date, what moved, and the new overall estimate.
- | 2026-10-05 | major | Honest assessment and "Where we're lacking" added |
- 
- - **2026-10-12 (M8):** Redaction cleans indirect and form structure references, preserving surviving form tags.
-+
-+
-+## Local AI Office preview integration (2026-10-14)
-+
-+`apps/ai-office-preview` exposes rendering, paragraph state, save bytes and selected existing automation commands through WebAssembly. The sibling VS Code fork supplies a compact editing toolbar and a CLI using the same bridge, with synthetic edit/export/reopen coverage. Upstream parity estimates are unchanged.
+ version = "0.10.1"
 diff --git a/apps/ai-office-preview/Cargo.toml b/apps/ai-office-preview/Cargo.toml
 new file mode 100644
-index 0000000..48ed9dd
+index 0000000..230150a
 --- /dev/null
 +++ b/apps/ai-office-preview/Cargo.toml
 @@ -0,0 +1,19 @@
@@ -46,9 +32,6 @@ index 0000000..48ed9dd
 +license.workspace = true
 +publish = false
 +
-+[lib]
-+crate-type = ["cdylib"]
-+
 +[lints]
 +workspace = true
 +
@@ -57,104 +40,78 @@ index 0000000..48ed9dd
 +pdfcraft-engine = { workspace = true }
 +pdfcraft-automation = { workspace = true, default-features = false }
 +serde_json = { workspace = true }
-+wasm-bindgen = "0.2"
-diff --git a/apps/ai-office-preview/src/lib.rs b/apps/ai-office-preview/src/lib.rs
++
++[[bin]]
++name = "sangam-pdf"
++path = "src/bin/sangam-pdf.rs"
+diff --git a/apps/ai-office-preview/src/bin/sangam-pdf.rs b/apps/ai-office-preview/src/bin/sangam-pdf.rs
 new file mode 100644
-index 0000000..922d4fe
+index 0000000..f4187ff
 --- /dev/null
-+++ b/apps/ai-office-preview/src/lib.rs
-@@ -0,0 +1,158 @@
-+//! PDF editing and rendering for AI Office, using the CLI's automation commands.
-+#![cfg(target_arch = "wasm32")]
-+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
-+
++++ b/apps/ai-office-preview/src/bin/sangam-pdf.rs
+@@ -0,0 +1,216 @@
++//! Persistent, confined PDF engine for Sangam One. No network or MCP listener.
 +use pdfcraft_automation::{Automation, Content};
-+use pdfcraft_render::{PageRenderer, RenderConfig, RenderRequest, RequestKind};
++use pdfcraft_engine::DocId;
++use pdfcraft_render::{PageRenderer, RenderRequest, RequestKind};
 +use serde_json::{Value, json};
-+use std::sync::Arc;
-+use wasm_bindgen::prelude::*;
++use std::io::{self, BufRead, Write};
++use std::path::PathBuf;
 +
-+#[wasm_bindgen]
-+pub struct OfficeDocument {
-+    renderer: PageRenderer,
-+    sizes: Vec<[f32; 2]>,
-+    width: u32,
-+    height: u32,
++struct Host {
 +    automation: Automation,
-+    id: pdfcraft_engine::DocId,
-+    password: Option<String>,
++    root: PathBuf,
++    id: Option<DocId>,
 +    page: usize,
++    result: Value,
++    renderer: Option<PageRenderer>,
 +}
 +
-+#[wasm_bindgen]
-+impl OfficeDocument {
-+    #[wasm_bindgen(constructor)]
-+    pub fn new(name: &str, bytes: &[u8], password: Option<String>) -> Result<OfficeDocument, JsValue> {
-+        if bytes.len() > 128 * 1024 * 1024 {
-+            return Err(JsValue::from_str("PDF exceeds the 128 MB limit"));
-+        }
-+        let bytes = Arc::new(bytes.to_vec());
-+        let info = pdfcraft_render::inspect(bytes.clone(), password.as_deref()).map_err(|e| JsValue::from_str(&e.to_string()))?;
-+        if info.pages.len() > 10000 {
-+            return Err(JsValue::from_str("PDF exceeds the 10,000-page limit"));
-+        }
-+        let sizes: Vec<_> = info.pages.iter().map(|p| [p.width, p.height]).collect();
-+        if sizes.iter().flatten().any(|v| !v.is_finite() || *v <= 0.0 || *v > 14400.0) {
-+            return Err(JsValue::from_str("PDF has an unsupported page size"));
-+        }
-+        let mut automation = Automation::new();
-+        let id = automation.open_bytes(name, bytes.as_ref().clone(), password.as_deref()).map_err(js_error)?;
-+        let renderer =
-+            PageRenderer::new(bytes, RenderConfig { password: password.clone().map(Arc::from), reject_oversize: true, ..Default::default() });
-+        Ok(Self { renderer, sizes, width: 0, height: 0, automation, id, password, page: 0 })
++fn supported(name: &str) -> bool {
++    !name.starts_with("ocr_")
++        && !matches!(
++            name,
++            "doc_open" | "doc_list" | "doc_close" | "doc_save" | "command_run" | "command_batch" | "command_list" | "doc_inspect" | "render_preview"
++        )
++}
++impl Host {
++    fn id(&self) -> Result<DocId, String> {
++        self.id.ok_or_else(|| "Open a PDF first".into())
 +    }
-+
-+    pub fn execute(&mut self, command: &str, params: &str) -> Result<String, JsValue> {
-+        if params.len() > 2 * 1024 * 1024 {
-+            return Err(JsValue::from_str("Command is too large"));
-+        }
-+        let mut args: Value = serde_json::from_str(params).map_err(js_error)?;
-+        if !args.is_object() {
-+            return Err(JsValue::from_str("Expected command arguments"));
-+        }
-+        if let Some(page) = args.get("page").and_then(Value::as_u64) {
-+            let page = usize::try_from(page).map_err(js_error)?.checked_sub(1).ok_or_else(|| JsValue::from_str("Pages are 1-based"))?;
-+            if page >= self.sizes.len() {
-+                return Err(JsValue::from_str("Page does not exist"));
++    fn state(&mut self) -> Result<Value, String> {
++        let id = self.id()?;
++        let doc = self.automation.session().get(id).ok_or("Document closed")?;
++        self.page = self.page.min(doc.info.pages.len().saturating_sub(1));
++        let blocks = self.automation.call("text_paragraphs", &json!({"doc":id.0,"page":self.page+1}));
++        let (paragraphs, text_error) = match blocks {
++            Ok(parts) => (
++                parts
++                    .into_iter()
++                    .find_map(|part| if let Content::Json(value) = part { value.get("paragraphs").cloned() } else { None })
++                    .unwrap_or(json!([])),
++                None,
++            ),
++            Err(error) => (json!([]), Some(error.to_string())),
++        };
++        let objects = self.automation.call("object_list", &json!({"doc":id.0,"page":self.page+1}));
++        let (mut objects, object_error) = match objects {
++            Ok(parts) => (parts.into_iter().find_map(|part| if let Content::Json(value) = part {value.get("objects").cloned()} else {None}).unwrap_or(json!([])), None),
++            Err(error) => (json!([]), Some(error.to_string())),
++        };
++        let doc = self.automation.session().get(id).ok_or("Document closed")?;
++        if let Some(objects) = objects.as_array_mut() {
++            let info = &doc.info.pages[self.page];
++            let images = doc.page_images(self.page);
++            for object in objects {
++                if object["kind"] == "image" && let Some(image) = object["index"].as_u64().and_then(|index| index.checked_sub(1)).and_then(|index| images.get(index as usize)) {
++                    let a = info.user_to_view(image.rect[0] as f32, image.rect[1] as f32);
++                    let b = info.user_to_view(image.rect[2] as f32, image.rect[3] as f32);
++                    object["fullRect"] = json!([a[0].min(b[0]), a[1].min(b[1]), a[0].max(b[0]), a[1].max(b[1])]);
++                }
 +            }
-+            self.page = page;
 +        }
-+        if command != "select.page" {
-+            if !allowed(command) {
-+                return Err(JsValue::from_str("Command is not enabled in AI Office"));
-+            }
-+            args["doc"] = json!(self.id.0);
-+            self.automation.call(command, &args).map_err(js_error)?;
-+            self.refresh()?;
-+        }
-+        self.state()
-+    }
-+
-+    pub fn image(&mut self, page: usize, name: &str, bytes: &[u8]) -> Result<String, JsValue> {
-+        self.automation.image_bytes(self.id, page, name, bytes.to_vec()).map_err(js_error)?;
-+        self.refresh()?;
-+        self.state()
-+    }
-+
-+    pub fn commands(&self) -> Result<String, JsValue> {
-+        let commands: Vec<_> = pdfcraft_automation::tools()
-+            .into_iter()
-+            .filter(|t| allowed(t.name))
-+            .map(|t| json!({"id":t.name,"label":t.title,"params":t.input_schema}))
-+            .collect();
-+        serde_json::to_string(&commands).map_err(js_error)
-+    }
-+
-+    pub fn state(&mut self) -> Result<String, JsValue> {
-+        let content = self.automation.call("text_paragraphs", &json!({"doc":self.id.0,"page":self.page + 1})).map_err(js_error)?;
-+        let paragraphs =
-+            content.into_iter().find_map(|c| if let Content::Json(v) = c { v.get("paragraphs").cloned() } else { None }).unwrap_or(json!([]));
-+        let doc = self.automation.session().get(self.id).ok_or_else(|| JsValue::from_str("Document closed"))?;
++        let rotation = doc.info.pages[self.page].rotation;
++        let sizes: Vec<_> = doc.info.pages.iter().map(|p| [p.width, p.height]).collect();
 +        let comments: Vec<_> = doc
 +            .info
 +            .annotations
@@ -162,99 +119,166 @@ index 0000000..922d4fe
 +            .filter(|a| a.page == self.page && a.contents.is_some())
 +            .map(|a| json!({"author":a.author,"text":a.contents}))
 +            .collect();
-+        serde_json::to_string(&json!({"page":self.page,"blocks":paragraphs,"comments":comments,"revision":doc.edit_generation(),"undo":doc.can_undo().is_some(),"redo":doc.can_redo().is_some()})).map_err(js_error)
++        Ok(
++            json!({"pages":sizes,"state":{"revision":doc.edit_generation(),"undo":doc.can_undo().is_some(),"redo":doc.can_redo().is_some(),"page":self.page,"blocks":paragraphs,"pdfObjects":objects,"pdfRotation":rotation,"pdfObjectError":object_error,"comments":comments,"textError":text_error,"agentCommandResult":self.result}}),
++        )
 +    }
-+
-+    pub fn export(&self) -> Result<Vec<u8>, JsValue> {
-+        self.automation.session().save_bytes(self.id).map(|b| b.as_ref().clone()).map_err(js_error)
-+    }
-+
-+    fn refresh(&mut self) -> Result<(), JsValue> {
-+        let doc = self.automation.session().get(self.id).ok_or_else(|| JsValue::from_str("Document closed"))?;
-+        self.renderer = PageRenderer::new(
-+            doc.bytes.clone(),
-+            RenderConfig { password: self.password.clone().map(Arc::from), reject_oversize: true, ..Default::default() },
-+        );
-+        Ok(())
-+    }
-+
-+    pub fn pages(&self) -> Result<String, JsValue> {
-+        serde_json::to_string(&self.sizes).map_err(|e| JsValue::from_str(&e.to_string()))
-+    }
-+
-+    pub fn render(&mut self, index: usize, scale: f32) -> Result<Vec<u8>, JsValue> {
-+        let [w, h] = *self.sizes.get(index).ok_or_else(|| JsValue::from_str("Page does not exist"))?;
-+        if !scale.is_finite() || scale <= 0.0 {
-+            return Err(JsValue::from_str("Invalid page scale"));
-+        }
-+        let scale = scale.min(4096.0 / w).min(4096.0 / h).min((8_000_000.0 / (w * h)).sqrt());
-+        let result = self.renderer.render(RenderRequest { page: index, kind: RequestKind::Pixels, tile: None, scale, tag: 0, preview: false });
-+        if let Some(error) = result.error {
-+            return Err(JsValue::from_str(&error));
-+        }
-+        self.width = result.width;
-+        self.height = result.height;
-+        let mut bytes = result.rgba.to_vec();
-+        for pixel in bytes.as_chunks_mut::<4>().0 {
-+            let alpha = pixel[3] as u32;
-+            if alpha > 0 && alpha < 255 {
-+                for channel in pixel.iter_mut().take(3) {
-+                    *channel = ((*channel as u32 * 255 + alpha / 2) / alpha).min(255) as u8;
-+                }
++    fn call(&mut self, message: &Value) -> Result<Value, String> {
++        let method = message.get("method").and_then(Value::as_str).ok_or("Missing method")?;
++        let args = message.get("args").cloned().unwrap_or(json!({}));
++        match method {
++            "open" => {
++                let path = args.get("path").and_then(Value::as_str).ok_or("Missing path")?;
++                let mut open=json!({"path":path}); if let Some(password)=args.get("password").and_then(Value::as_str){open["password"]=json!(password);}
++                let result = self.automation.call("doc_open", &open).map_err(|e|e.to_string())?;
++                let id = result.into_iter().find_map(|part| if let Content::Json(value) = part { value.get("doc").and_then(Value::as_u64) } else { None }).ok_or("Missing document receipt")?;
++                self.id = Some(DocId(id));
++                self.state()
 +            }
++            "commands" => Ok(Value::Array(pdfcraft_automation::tools().into_iter().filter(|tool|supported(tool.name)).map(|tool| {
++                let mut schema = tool.input_schema;
++                if tool.name=="doc_batch" && let Some(options)=schema.pointer_mut("/properties/steps/items/enum").and_then(Value::as_array_mut){options.retain(|value|value!="ocr");}
++                if let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut) { properties.remove("doc"); }
++                if let Some(required) = schema.get_mut("required").and_then(Value::as_array_mut) { required.retain(|item|item!="doc"); }
++                json!({"id":tool.name,"label":tool.title,"description":tool.description,"readOnly":tool.read_only,"destructive":tool.destructive,"params":schema})
++            }).collect())),
++            "close_source" => {
++                let id=DocId(args.get("doc").and_then(Value::as_u64).ok_or("Missing source document")?);
++                if Some(id)==self.id {return Err("Cannot close the active PDF".into());}
++                self.automation.call("doc_close",&json!({"doc":id.0,"discard_changes":true})).map_err(|e|e.to_string())?;
++                Ok(json!(true))
++            }
++            "open_source" => {
++                let result = self.automation.call("doc_open", &args).map_err(|e|e.to_string())?;
++                Ok(Value::Array(result.into_iter().filter_map(|part|if let Content::Json(value)=part {Some(value)}else{None}).collect()))
++            }
++            "execute" => {
++                let command = args.get("command").and_then(Value::as_str).ok_or("Missing command")?;
++                let mut params = args.get("params").cloned().unwrap_or(json!({}));
++                if !params.is_object() { return Err("Expected an argument object".into()); }
++                if command == "select.page" {
++                    let page = params.get("page").and_then(Value::as_u64).ok_or("Pages are 1-based integers")?;
++                    let count = self.automation.session().get(self.id()?).ok_or("Document closed")?.info.pages.len();
++                    if page == 0 || page as usize > count { return Err("Page does not exist".into()); }
++                    self.page = page as usize-1; self.result = Value::Null;
++                    return self.state();
++                }
++                if !supported(command) { return Err("Operation is managed by the application or excluded (OCR)".into()); }
++                let definition = pdfcraft_automation::tools().into_iter().find(|tool|tool.name==command).ok_or("Unknown command")?;
++                if definition.input_schema.get("properties").and_then(|p|p.get("doc")).is_some() { params["doc"] = json!(self.id()?.0); }
++                // Signing writes a separate artifact. Keep the editor's original bytes and history.
++                let signing_source=if command=="sign_document" {
++                    let doc=self.automation.session().get(self.id()?).ok_or("Document closed")?;
++                    let name=doc.name.clone();let password=doc.export_source().config.password.clone();
++                    let bytes=self.automation.session().save_bytes(self.id()?).map_err(|e|e.to_string())?;
++                    let id=self.automation.open_bytes(&name,bytes.as_ref().clone(),password.as_deref()).map_err(|e|e.to_string())?;
++                    params["doc"]=json!(id.0);Some(id)
++                }else{None};
++                let before: Vec<_> = self.automation.session().docs().iter().map(|doc|doc.id).collect();
++                if command=="doc_batch" && params.get("steps").and_then(Value::as_array).is_some_and(|steps|steps.iter().any(|step|step.as_str()==Some("ocr"))) {return Err("OCR is excluded".into());}
++                if command=="action_run" {
++                    let custom=params.get("steps").and_then(Value::as_array).is_some_and(|steps|steps.iter().any(|step|step.get("step").and_then(Value::as_str)==Some("recognize_text")));
++                    let builtin=params.get("action").and_then(Value::as_str).is_some_and(|name|pdfcraft_engine::actions::builtin().iter().any(|action|action.name.eq_ignore_ascii_case(name)&&action.steps.iter().any(|step|matches!(step,pdfcraft_engine::actions::Step::RecognizeText))));
++                    if custom||builtin{return Err("OCR is excluded".into());}
++                }
++                let output = self.automation.call(command, &params);
++                if let Some(id)=signing_source {self.automation.call("doc_close",&json!({"doc":id.0,"discard_changes":true})).map_err(|e|e.to_string())?;}
++                let output=output.map_err(|e|e.to_string())?;
++                let mut values = Vec::new();
++                for (index,part) in output.into_iter().enumerate() {
++                    match part {
++                        Content::Json(mut value)=>{
++                            if command=="action_list" {
++                                if let Some(steps)=value.get_mut("steps").and_then(Value::as_array_mut){steps.retain(|step|step.get("step").and_then(Value::as_str)!=Some("recognize_text"));}
++                                if let Some(actions)=value.get_mut("actions").and_then(Value::as_array_mut){actions.retain(|action|!action.get("steps").and_then(Value::as_array).is_some_and(|steps|steps.iter().any(|step|step.get("step").and_then(Value::as_str)==Some("recognize_text"))));}
++                            }
++                            values.push(value)
++                        },
++                        Content::Png{data,width,height}=>{let name=format!("output/preview-{index}.png"); self.automation.write_output(&name,&data).map_err(|e|e.to_string())?;values.push(json!({"path":name,"width":width,"height":height,"mime":"image/png"}));}
++                    }
++                }
++                let created:Vec<_>=self.automation.session().docs().iter().filter(|doc|!before.contains(&doc.id)).map(|doc|(doc.id,doc.name.clone(),doc.info.pages.len())).collect();
++                for (id,title,pages) in created {
++                    let name=format!("output/document-{}.pdf",id.0);
++                    let bytes=self.automation.session().save_bytes(id).map_err(|e|e.to_string())?;
++                    self.automation.write_output(&name,bytes.as_slice()).map_err(|e|e.to_string())?;
++                    values.push(json!({"created_document":name,"name":title,"pages":pages}));
++                    self.automation.call("doc_close",&json!({"doc":id.0,"discard_changes":true})).map_err(|e|e.to_string())?;
++                }
++                self.result = Value::Array(values); self.renderer=None;
++                self.state()
++            }
++            "saved" => {
++                self.automation.call("doc_save",&json!({"doc":self.id()?.0})).map_err(|e|e.to_string())?;
++                self.renderer=None;self.state()
++            }
++            "export" => {
++                let bytes=self.automation.session().save_bytes(self.id()?).map_err(|e|e.to_string())?;
++                let path=self.root.join("snapshot.pdf"); std::fs::write(&path,bytes.as_slice()).map_err(|e|e.to_string())?;
++                Ok(json!({"path":path}))
++            }
++            "render" => {
++                let page=args.get("page").and_then(Value::as_u64).ok_or("Missing page")? as usize;
++                let scale=args.get("scale").and_then(Value::as_f64).ok_or("Missing scale")? as f32;
++                if !scale.is_finite() || scale<=0.0 {return Err("Invalid scale".into());}
++                let doc=self.automation.session().get(self.id()?).ok_or("Document closed")?;
++                let info=doc.info.pages.get(page).ok_or("Page does not exist")?;
++                let (w,h)=(info.width,info.height); let scale=scale.min(4096.0/w).min(4096.0/h).min((8_000_000.0/(w*h)).sqrt());
++                if self.renderer.is_none(){let source=doc.export_source();self.renderer=Some(PageRenderer::new(source.bytes,source.config));}
++                let result=self.renderer.as_mut().ok_or("Renderer unavailable")?.render(RenderRequest{page,kind:RequestKind::Pixels,tile:None,scale,tag:0,preview:false});
++                if let Some(error)=result.error{return Err(error);}
++                let mut pixels=result.rgba.to_vec();
++                for pixel in pixels.as_chunks_mut::<4>().0{let alpha=u32::from(pixel[3]);if alpha>0&&alpha<255{for channel in pixel.iter_mut().take(3){*channel=((u32::from(*channel)*255+alpha/2)/alpha).min(255)as u8;}}}
++                let path=self.root.join("raster.raw");std::fs::write(&path,&pixels).map_err(|e|e.to_string())?;
++                Ok(json!({"path":path,"width":result.width,"height":result.height}))
++            }
++            _=>Err("Unknown engine request".into()),
 +        }
-+        Ok(bytes)
-+    }
-+
-+    #[wasm_bindgen(getter)]
-+    pub fn width(&self) -> u32 {
-+        self.width
-+    }
-+    #[wasm_bindgen(getter)]
-+    pub fn height(&self) -> u32 {
-+        self.height
 +    }
 +}
-+
-+fn js_error(error: impl std::fmt::Display) -> JsValue {
-+    JsValue::from_str(&error.to_string())
-+}
-+fn allowed(command: &str) -> bool {
-+    matches!(command, "text_edit" | "page_add_text" | "content_update" | "comment_add" | "link_add" | "edit_undo" | "edit_redo")
++fn main() -> Result<(), Box<dyn std::error::Error>> {
++    let root = std::env::args().nth(1).ok_or("Missing private working directory")?;
++    let root = std::fs::canonicalize(root)?;
++    let automation = Automation::new().with_root(&root)?;
++    let mut host = Host { automation, root, id: None, page: 0, result: Value::Null, renderer: None };
++    let input = io::stdin();
++    let mut output = io::stdout().lock();
++    for line in input.lock().lines() {
++        let line = line?;
++        if line.len() > 32 * 1024 * 1024 {
++            return Err("Request exceeds the engine budget".into());
++        }
++        let message: Value = match serde_json::from_str(&line) {
++            Ok(value) => value,
++            Err(_) => {
++                writeln!(output, "{}", json!({"id":null,"error":"Invalid request JSON"}))?;
++                output.flush()?;
++                continue;
++            }
++        };
++        let id = message.get("id").cloned().unwrap_or(Value::Null);
++        let response = match host.call(&message) {
++            Ok(result) => json!({"id":id,"result":result}),
++            Err(error) => json!({"id":id,"error":error}),
++        };
++        writeln!(output, "{response}")?;
++        output.flush()?;
++    }
++    Ok(())
 +}
 diff --git a/crates/automation/src/lib.rs b/crates/automation/src/lib.rs
-index eb681a9..3b77a49 100644
+index 0e2e0dd..f3cc3b3 100644
 --- a/crates/automation/src/lib.rs
 +++ b/crates/automation/src/lib.rs
-@@ -139,6 +139,18 @@ impl Automation {
+@@ -165,6 +165,11 @@ impl Automation {
          &self.session
      }
  
-+    /// Open caller-provided bytes without filesystem access (desktop hosts and WebAssembly).
++    /// Open caller-provided bytes without filesystem access.
 +    pub fn open_bytes(&mut self, name: &str, bytes: Vec<u8>, password: Option<&str>) -> Result<DocId> {
-+        if bytes.len() > 128 * 1024 * 1024 { return Err(failed("Document exceeds the 128 MB limit")); }
 +        self.session.open(name, None, Arc::new(bytes), password).map_err(failed)
-+    }
-+
-+    /// Insert caller-provided image bytes using the same engine edit as page_add_image.
-+    pub fn image_bytes(&mut self, id: DocId, page: usize, name: &str, bytes: Vec<u8>) -> Result<()> {
-+        if bytes.len() > 16 * 1024 * 1024 { return Err(failed("Image exceeds the 16 MB limit")); }
-+        self.session.apply(id, Edit::AddImage { page, rect: None, name: name.into(), bytes: Arc::new(bytes) }).map_err(failed)
 +    }
 +
      /// Save `bytes` that a caller writes on the session's behalf, such as `pdfcraft-cli run`
      /// saving a rendered page. With a root, it is confined like a tool's own output (a relative
-     /// path resolves inside it) and written atomically. Without one, the path is written as
-diff --git a/docs/roadmap.md b/docs/roadmap.md
-index 9c6d39c..969d052 100644
---- a/docs/roadmap.md
-+++ b/docs/roadmap.md
-@@ -173,3 +173,8 @@ M2 (renderer), M7 (content editing), M10 (OCR and Office), M11 (Preflight and st
- | 2026-10-10 | minor | Re-judged convert and share with the cross-app gate rule (only a workflow that can't be completed at all blocks): partial, not blocking → stage alpha |
- | 2026-10-10 | minor | Added the alpha gate (six core workflows; convert and share fails → pre-alpha, 40–70 h to alpha) and rank 0 in the upcoming milestones |
- | 2026-10-10 | major | Created from ROADMAP.md §Milestones, §Critical path, §Risks and §Where we're lacking. Merged the duplicated M1, M2, M3 and M14 rows, re-measured Done and Remaining, added Current focus and the ranked upcoming milestones |
-+
-+
-+## Local AI Office preview integration (2026-10-14)
-+
-+`apps/ai-office-preview` exposes page sizes, rasterization, paragraph state, save bytes and an allowlist of existing automation commands through WebAssembly. `Automation::open_bytes` and `image_bytes` support hosts without filesystem access. The sibling VS Code fork supplies paragraph editing, a compact toolbar and a CLI using the same bridge. Text/formatting, images, links, comments and undo/redo are covered by synthetic export/reopen tests in `../vscode/extensions/ai-office-common`. Upstream parity estimates are unchanged.
+     /// path resolves inside it). Written atomically either way (#2166), except to something

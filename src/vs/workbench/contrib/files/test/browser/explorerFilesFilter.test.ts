@@ -88,6 +88,7 @@ suite('Files - AI Office Explorer filter', () => {
 		const document = item('hidden.docx');
 		for (const stat of [code, document]) {
 			visibleEditors.push(new class extends mock<EditorInput>() {
+				override get typeId() { return 'test.editor'; }
 				override get resource() { return stat.resource; }
 			});
 		}

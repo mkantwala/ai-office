@@ -66,7 +66,8 @@ export class BuiltinExtensionsScannerService implements IBuiltinExtensionsScanne
 					}
 				}
 
-				this.builtinExtensionsPromises = bundledExtensions.map(async e => {
+				const disabledBuiltinExtensions = new Set(productService.disabledBuiltinExtensions?.map(id => id.toLowerCase()));
+				this.builtinExtensionsPromises = bundledExtensions.filter(e => !disabledBuiltinExtensions.has(getGalleryExtensionId(e.packageJSON.publisher, e.packageJSON.name).toLowerCase())).map(async e => {
 					const id = getGalleryExtensionId(e.packageJSON.publisher, e.packageJSON.name);
 					return {
 						identifier: { id },

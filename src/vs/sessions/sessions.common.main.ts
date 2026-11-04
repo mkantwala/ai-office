@@ -218,7 +218,7 @@ import '../workbench/contrib/preferences/browser/preferencesSearch.js';
 import '../workbench/contrib/performance/browser/performance.contribution.js';
 
 // Notebook
-import '../workbench/contrib/notebook/browser/notebook.contribution.js';
+import '../workbench/contrib/notebook/browser/notebook.service.contribution.js';
 
 // Speech
 import '../workbench/contrib/speech/browser/speech.contribution.js';
@@ -236,10 +236,7 @@ import '../workbench/contrib/agentsVoice/browser/agentsVoice.contribution.js';
 import './contrib/chat/browser/voiceBridge.contribution.js';
 
 // Interactive
-import '../workbench/contrib/interactive/browser/interactive.contribution.js';
-
-// repl
-import '../workbench/contrib/replNotebook/browser/repl.contribution.js';
+import '../workbench/contrib/interactive/browser/interactive.service.contribution.js';
 
 // Testing (service)
 import { NullTestProfileService, NullTestResultService, NullTestService } from '../workbench/contrib/testing/common/nullTestingService.js';
@@ -280,11 +277,10 @@ import './contrib/search/browser/search.contribution.js';
 import '../workbench/contrib/sash/browser/sash.contribution.js';
 
 // Git
-import '../workbench/contrib/git/browser/git.contributions.js';
+import '../workbench/contrib/git/browser/git.office.contribution.js';
 
 // SCM
-import '../workbench/contrib/scm/browser/quickDiff.contribution.js';
-import '../workbench/contrib/scm/browser/scm.service.contribution.js';
+import '../workbench/contrib/scm/browser/scm.office.contribution.js';
 
 // Debug (service)
 import { NullDebugService, NullDebugVisualizerService } from '../workbench/contrib/debug/common/nullDebugService.js';
@@ -295,9 +291,6 @@ registerSingleton(IDebugVisualizerService, NullDebugVisualizerService, Instantia
 
 // Process Explorer
 import '../workbench/contrib/processExplorer/browser/processExplorer.contribution.js';
-
-// Merge Editor
-import '../workbench/contrib/mergeEditor/browser/mergeEditor.contribution.js';
 
 // Multi Diff Editor
 import '../workbench/contrib/multiDiffEditor/browser/multiDiffEditor.contribution.js';
@@ -341,12 +334,8 @@ import '../workbench/contrib/externalTerminal/browser/externalTerminal.contribut
 // Relauncher
 import '../workbench/contrib/relauncher/browser/relauncher.contribution.js';
 
-// Tasks
-import '../workbench/contrib/tasks/browser/task.contribution.js';
-
-// Remote
-import '../workbench/contrib/remote/common/remote.contribution.js';
-import '../workbench/contrib/remote/browser/remote.contribution.js';
+// Remote filesystem and extension-host IPC (remote UI excluded from AI Office)
+import '../workbench/contrib/remote/common/remote.service.contribution.js';
 
 // Emmet
 import '../workbench/contrib/emmet/browser/emmet.contribution.js';
@@ -361,7 +350,7 @@ import '../workbench/contrib/markdown/browser/markdown.contribution.js';
 import '../workbench/contrib/keybindings/browser/keybindings.contribution.js';
 
 // Snippets
-import '../workbench/contrib/snippets/browser/snippets.service.contribution.js';
+import '../workbench/contrib/snippets/browser/snippets.office.contribution.js';
 
 // Formatter Help
 import '../workbench/contrib/format/browser/format.contribution.js';
@@ -486,11 +475,8 @@ import './services/sessions/browser/sessionComparisonService.js';
 import './services/sessions/browser/sessionSectionOrderService.js';
 import './services/agentHostFilter/browser/agentHostFilterService.js';
 import './contrib/sessions/browser/customizationsToolbar.contribution.js';
-import './contrib/changes/browser/changes.contribution.js';
-import './contrib/codeReview/browser/codeReview.contributions.js';
+import './contrib/changes/browser/changes.office.contribution.js';
 import './contrib/files/browser/files.contribution.js';
-import './contrib/github/browser/github.contribution.js';
-import './contrib/applyCommitsToParentRepo/browser/applyChangesToParentRepo.js';
 import './contrib/fileTreeView/browser/fileTreeView.contribution.js'; // view registration disabled; filesystem provider still needed
 import './contrib/configuration/browser/configuration.contribution.js';
 import './contrib/browserView/browser/sessionBrowserView.contribution.js';

@@ -3,14 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IWorkbenchContribution, IWorkbenchContributionsRegistry, WorkbenchPhase, Extensions as WorkbenchExtensions, registerWorkbenchContribution2 } from '../../../common/contributions.js';
+export { LabelContribution } from './remote.service.contribution.js';
+import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
-import { LifecyclePhase } from '../../../services/lifecycle/common/lifecycle.js';
-import { ILabelService, ResourceLabelFormatting } from '../../../../platform/label/common/label.js';
-import { OperatingSystem, isWeb, OS } from '../../../../base/common/platform.js';
-import { Schemas } from '../../../../base/common/network.js';
 import { IRemoteAgentService } from '../../../services/remote/common/remoteAgentService.js';
-import { ILoggerService } from '../../../../platform/log/common/log.js';
 import { localize, localize2 } from '../../../../nls.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IConfigurationRegistry, Extensions as ConfigurationExtensions } from '../../../../platform/configuration/common/configurationRegistry.js';
@@ -23,65 +19,10 @@ import { ServicesAccessor } from '../../../../platform/instantiation/common/inst
 import { Action2, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
 import { PersistentConnection } from '../../../../platform/remote/common/remoteAgentConnection.js';
-import { IDownloadService } from '../../../../platform/download/common/download.js';
-import { DownloadServiceChannel } from '../../../../platform/download/common/downloadIpc.js';
-import { RemoteLoggerChannelClient } from '../../../../platform/log/common/logIpc.js';
 import { REMOTE_DEFAULT_IF_LOCAL_EXTENSIONS } from '../../../../platform/remote/common/remote.js';
 import product from '../../../../platform/product/common/product.js';
 
-
 const EXTENSION_IDENTIFIER_PATTERN = '([a-z0-9A-Z][a-z0-9-A-Z]*)\\.([a-z0-9A-Z][a-z0-9-A-Z]*)$';
-
-export class LabelContribution implements IWorkbenchContribution {
-
-	static readonly ID = 'workbench.contrib.remoteLabel';
-
-	constructor(
-		@ILabelService private readonly labelService: ILabelService,
-		@IRemoteAgentService private readonly remoteAgentService: IRemoteAgentService) {
-		this.registerFormatters();
-	}
-
-	private registerFormatters(): void {
-		this.remoteAgentService.getEnvironment().then(remoteEnvironment => {
-			const os = remoteEnvironment?.os || OS;
-			const formatting: ResourceLabelFormatting = {
-				label: '${path}',
-				separator: os === OperatingSystem.Windows ? '\\' : '/',
-				tildify: os !== OperatingSystem.Windows,
-				normalizeDriveLetter: os === OperatingSystem.Windows,
-				workspaceSuffix: isWeb ? undefined : Schemas.vscodeRemote
-			};
-			this.labelService.registerFormatter({
-				scheme: Schemas.vscodeRemote,
-				formatting
-			});
-
-			if (remoteEnvironment) {
-				this.labelService.registerFormatter({
-					scheme: Schemas.vscodeUserData,
-					formatting
-				});
-			}
-		});
-	}
-}
-
-class RemoteChannelsContribution extends Disposable implements IWorkbenchContribution {
-
-	constructor(
-		@IRemoteAgentService remoteAgentService: IRemoteAgentService,
-		@IDownloadService downloadService: IDownloadService,
-		@ILoggerService loggerService: ILoggerService,
-	) {
-		super();
-		const connection = remoteAgentService.getConnection();
-		if (connection) {
-			connection.registerChannel('download', new DownloadServiceChannel(downloadService));
-			connection.withChannel('logger', async channel => this._register(new RemoteLoggerChannelClient(loggerService, channel)));
-		}
-	}
-}
 
 class RemoteInvalidWorkspaceDetector extends Disposable implements IWorkbenchContribution {
 
@@ -146,9 +87,6 @@ class RemoteInvalidWorkspaceDetector extends Disposable implements IWorkbenchCon
 	}
 }
 
-const workbenchContributionsRegistry = Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench);
-registerWorkbenchContribution2(LabelContribution.ID, LabelContribution, WorkbenchPhase.BlockStartup);
-workbenchContributionsRegistry.registerWorkbenchContribution(RemoteChannelsContribution, LifecyclePhase.Restored);
 registerWorkbenchContribution2(RemoteInvalidWorkspaceDetector.ID, RemoteInvalidWorkspaceDetector, WorkbenchPhase.BlockStartup);
 
 const enableDiagnostics = true;

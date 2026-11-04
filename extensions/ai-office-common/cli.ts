@@ -5,6 +5,7 @@
 
 import { readFile, writeFile, rename, unlink, realpath, stat } from 'node:fs/promises';
 import { resolve, dirname, extname, basename, relative, isAbsolute, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { randomBytes, createHash } from 'node:crypto';
 import { openEngine } from './model.js';
 import type { Kind } from './types.js';
@@ -21,7 +22,7 @@ async function main() {
 	const action = args.shift();
 	const file = args.shift();
 	if (!file || !['commands', 'inspect', 'run'].includes(action || '')) {
-		process.stdout.write('AI Office CLI\n  node cli.cjs commands FILE\n  node cli.cjs inspect FILE\n  node cli.cjs run FILE --script commands.json --output result.docx [--root DIR]\nUse --in-place instead of --output to overwrite the input after a conflict check.\nCommand script: [{"command":"select.text","params":{"text":"Hello"}},{"command":"format.bold","params":{}}]\n');
+		process.stdout.write('Sangam One CLI\n  node cli.cjs commands FILE\n  node cli.cjs inspect FILE\n  node cli.cjs run FILE --script commands.json --output result.docx [--root DIR]\nUse --in-place instead of --output to overwrite the input after a conflict check.\nCommand script: [{"command":"select.text","params":{"text":"Hello"}},{"command":"format.bold","params":{}}]\n');
 		return;
 	}
 	const option = (name: string) => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };
@@ -36,7 +37,7 @@ async function main() {
 	const extension = extname(input).toLowerCase();
 	const kind: Kind = extension === '.docx' ? 'word' : extension === '.pdf' ? 'pdf' : extension === '.pptx' ? 'slides' : (() => { throw new Error('Use a DOCX, PDF or PPTX file.'); })();
 	const original = await readBounded(input, 128 * 1024 * 1024);
-	const engine = await openEngine(kind, basename(input), original, resolve(__dirname, '../..'), process.env.AI_OFFICE_PASSWORD);
+	const engine = await openEngine(kind, basename(input), original, resolve(__dirname, '../..'), process.env.AI_OFFICE_PASSWORD, { resourceRoot: root, artifactRoot: root ? join(root, '.sangam-pdf-artifacts') : undefined, sourceUri: pathToFileURL(input).href });
 	try {
 		if (action === 'commands') { process.stdout.write(JSON.stringify(engine.commands(), null, 2) + '\n'); return; }
 		if (action === 'inspect') {

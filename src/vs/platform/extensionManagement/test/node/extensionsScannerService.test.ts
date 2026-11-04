@@ -109,6 +109,19 @@ suite('NativeExtensionsScanerService Test', () => {
 		assert.deepStrictEqual(actual[0].manifest, manifest);
 	});
 
+	test('excludes product-disabled builtins from fresh and cached system scans', async () => {
+		instantiationService.stub(INativeEnvironmentService, 'isBuilt', true);
+		instantiationService.stub(IProductService, { version: '1.66.0', builtInExtensionsEnabledWithAutoUpdates: [], disabledBuiltinExtensions: ['VSCODE.IPYNB'] });
+		await aSystemExtension(anExtensionManifest({ name: 'ipynb', publisher: 'vscode' }));
+		await aSystemExtension(anExtensionManifest({ name: 'ai-office-pdf', publisher: 'vscode' }));
+		const testObject = disposables.add(instantiationService.createInstance(ExtensionsScannerService));
+
+		for (let scan = 0; scan < 2; scan++) {
+			const actual = await testObject.scanSystemExtensions({});
+			assert.deepStrictEqual(actual.map(extension => extension.identifier.id), ['vscode.ai-office-pdf']);
+		}
+	});
+
 	test('scan user extensions', async () => {
 		const manifest: Partial<IScannedExtensionManifest> = anExtensionManifest({ 'name': 'name', 'publisher': 'pub' });
 		const extensionLocation = await aUserExtension(manifest);

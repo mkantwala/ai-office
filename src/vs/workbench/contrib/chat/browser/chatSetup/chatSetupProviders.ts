@@ -3,11 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { WorkbenchActionExecutedClassification, WorkbenchActionExecutedEvent } from '../../../../../base/common/actions.js';
 import { raceTimeout, timeout } from '../../../../../base/common/async.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
-import { toErrorMessage } from '../../../../../base/common/errorMessage.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { MarkdownString } from '../../../../../base/common/htmlContent.js';
 import { Lazy } from '../../../../../base/common/lazy.js';
@@ -25,19 +23,18 @@ import { nullExtensionDescription } from '../../../../services/extensions/common
 import { CountTokensCallback, ILanguageModelToolsService, IPreparedToolInvocation, IToolData, IToolImpl, IToolInvocation, IToolResult, ToolDataSource, ToolProgress } from '../../common/tools/languageModelToolsService.js';
 import { IChatAgentImplementation, IChatAgentRequest, IChatAgentResult, IChatAgentService } from '../../common/participants/chatAgents.js';
 import { ChatEntitlementContext, chatRequiresSetup, IChatEntitlementService } from '../../../../services/chat/common/chatEntitlementService.js';
-import { ChatModel, ChatRequestModel, IChatRequestModel, IChatRequestVariableData } from '../../common/model/chatModel.js';
+import { IChatRequestModel } from '../../common/model/chatModel.js';
 import { ChatMode } from '../../common/chatModes.js';
-import { ChatRequestAgentPart, ChatRequestToolPart } from '../../common/requestParser/chatParserTypes.js';
+import { ChatRequestToolPart } from '../../common/requestParser/chatParserTypes.js';
 import { IChatProgress, IChatService } from '../../common/chatService/chatService.js';
-import { IChatRequestToolEntry } from '../../common/attachments/chatVariableEntries.js';
 import { ChatAgentLocation, ChatConfiguration, ChatModeKind } from '../../common/constants.js';
 import { ILanguageModelsService } from '../../common/languageModels.js';
-import { CHAT_OPEN_ACTION_ID, CHAT_SETUP_ACTION_ID } from '../actions/chatActions.js';
+import { CHAT_OPEN_ACTION_ID } from '../actions/chatActions.js';
 import { ChatViewId, IChatWidgetService } from '../chat.js';
 import { IViewsService } from '../../../../services/views/common/viewsService.js';
 import { ChatViewPane } from '../widgetHosts/viewPane/chatViewPane.js';
 import { ILanguageFeaturesService } from '../../../../../editor/common/services/languageFeatures.js';
-import { CodeAction, CodeActionList, Command, NewSymbolName, NewSymbolNameTriggerKind } from '../../../../../editor/common/languages.js';
+import { CodeAction, CodeActionList, Command } from '../../../../../editor/common/languages.js';
 import { ITextModel } from '../../../../../editor/common/model.js';
 import { IRange, Range } from '../../../../../editor/common/core/range.js';
 import { ISelection, Selection } from '../../../../../editor/common/core/selection.js';
@@ -48,11 +45,9 @@ import { IPosition } from '../../../../../editor/common/core/position.js';
 import { IMarker, IMarkerService, MarkerSeverity } from '../../../../../platform/markers/common/markers.js';
 import { ChatSetupController } from './chatSetupController.js';
 import { ChatGlobalPerfMark, markChatGlobal } from '../../common/chatPerf.js';
-import { ChatSetupAnonymous, ChatSetupSource, ChatSetupStep, IChatSetupResult, maybeEnableAuthExtension, refreshTokens } from './chatSetup.js';
-import { ChatSetup } from './chatSetupRunner.js';
+import { maybeEnableAuthExtension, refreshTokens } from './chatSetup.js';
 import { chatViewsWelcomeRegistry } from '../viewsWelcome/chatViewsWelcome.js';
 import { CommandsRegistry, ICommandService } from '../../../../../platform/commands/common/commands.js';
-import { IDefaultAccountService } from '../../../../../platform/defaultAccount/common/defaultAccount.js';
 import { IHostService } from '../../../../services/host/browser/host.js';
 import { IOutputService } from '../../../../services/output/common/output.js';
 import { IExtensionsWorkbenchService } from '../../../extensions/common/extensions.js';
@@ -158,7 +153,7 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 			slashCommands: [],
 			disambiguation: [],
 			locations: [location],
-			metadata: { helpTextPrefix: SetupAgent.SETUP_NEEDED_MESSAGE },
+			metadata: { helpTextPrefix: SetupAgent.MODEL_NEEDED_MESSAGE },
 			description,
 			extensionId: nullExtensionDescription.identifier,
 			extensionVersion: undefined,
@@ -166,7 +161,7 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 			extensionPublisherId: nullExtensionDescription.publisher
 		}));
 
-		const agent = disposables.add(instantiationService.createInstance(SetupAgent, context, controller, location));
+		const agent = disposables.add(instantiationService.createInstance(SetupAgent, context, location));
 		disposables.add(chatAgentService.registerAgentImplementation(id, agent));
 		if (mode === ChatModeKind.Agent) {
 			chatAgentService.updateAgent(id, { themeIcon: Codicon.tools });
@@ -175,7 +170,8 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 		return { agent, disposable: disposables };
 	}
 
-	private static readonly SETUP_NEEDED_MESSAGE = new MarkdownString(localize('settingUpCopilotNeeded', "You need to set up GitHub Copilot and be signed in to use Chat."));
+	// AI Office: chat is backed by configured language models, not a GitHub Copilot account.
+	private static readonly MODEL_NEEDED_MESSAGE = new MarkdownString(localize('noLanguageModelConfigured', "No language model is available. Choose or configure a model to use Chat."));
 	private static readonly TRUST_NEEDED_MESSAGE = new MarkdownString(localize('trustNeeded', "You need to trust this workspace to use Chat."));
 
 	private static readonly CHAT_RETRY_COMMAND_ID = 'workbench.action.chat.retrySetup';
@@ -188,7 +184,6 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 
 	constructor(
 		private readonly context: ChatEntitlementContext,
-		private readonly controller: Lazy<ChatSetupController>,
 		private readonly location: ChatAgentLocation,
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@ILogService private readonly logService: ILogService,
@@ -249,13 +244,12 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 			const chatWidgetService = accessor.get(IChatWidgetService);
 			const chatAgentService = accessor.get(IChatAgentService);
 			const languageModelToolsService = accessor.get(ILanguageModelToolsService);
-			const defaultAccountService = accessor.get(IDefaultAccountService);
 
-			return this.doInvoke(request, part => progress([part]), chatService, languageModelsService, chatWidgetService, chatAgentService, languageModelToolsService, defaultAccountService);
+			return this.doInvoke(request, part => progress([part]), chatService, languageModelsService, chatWidgetService, chatAgentService, languageModelToolsService);
 		});
 	}
 
-	private async doInvoke(request: IChatAgentRequest, progress: (part: IChatProgress) => void, chatService: IChatService, languageModelsService: ILanguageModelsService, chatWidgetService: IChatWidgetService, chatAgentService: IChatAgentService, languageModelToolsService: ILanguageModelToolsService, defaultAccountService: IDefaultAccountService): Promise<IChatAgentResult> {
+	private async doInvoke(request: IChatAgentRequest, progress: (part: IChatProgress) => void, chatService: IChatService, languageModelsService: ILanguageModelsService, chatWidgetService: IChatWidgetService, chatAgentService: IChatAgentService, languageModelToolsService: ILanguageModelToolsService): Promise<IChatAgentResult> {
 		if (chatRequiresSetup({
 			completed: !!this.context.state.completed,
 			disabled: !!this.context.state.disabled,
@@ -264,7 +258,14 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 			anonymous: this.chatEntitlementService.anonymous,
 			hasByokModels: this.chatEntitlementService.hasByokModels,
 		})) {
-			return this.doInvokeWithSetup(request, progress, chatService, languageModelsService, chatWidgetService, chatAgentService, languageModelToolsService, defaultAccountService);
+			// AI Office: GitHub Copilot sign-in is not offered by this product, so chat does not
+			// run the Copilot setup flow. Explain what is missing (a model or workspace trust).
+			progress({
+				kind: 'markdownContent',
+				content: this.workspaceTrustManagementService.isWorkspaceTrusted() ? SetupAgent.MODEL_NEEDED_MESSAGE : SetupAgent.TRUST_NEEDED_MESSAGE
+			});
+
+			return {};
 		}
 
 		return this.doInvokeWithoutSetup(request, progress, chatService, languageModelsService, chatWidgetService, chatAgentService, languageModelToolsService);
@@ -397,7 +398,7 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 					if (this.chatEntitlementService.anonymous) {
 						warningMessage = localize('chatTookLongWarningAnonymous', "Chat took too long to get ready. Please ensure that the extension `{0}` is installed and enabled. Click restart to try again if this issue persists.", defaultChat.chatExtensionId);
 					} else {
-						warningMessage = localize('chatTookLongWarning', "Chat took too long to get ready. Please ensure you are signed in to {0} and that the extension `{1}` is installed and enabled. Click restart to try again if this issue persists.", defaultChat.provider.default.name, defaultChat.chatExtensionId);
+						warningMessage = localize('chatTookLongWarning', "Chat took too long to get ready. Please ensure that the extension `{0}` is installed and enabled. Click restart to try again if this issue persists.", defaultChat.chatExtensionId);
 					}
 
 					const diagnosticInfo = this.computeDiagnosticInfo(agentActivated, agentReady, languageModelReady, toolsModelReady, requestModel, languageModelsService, chatAgentService, modeInfo);
@@ -676,159 +677,6 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 		};
 	}
 
-	private async doInvokeWithSetup(request: IChatAgentRequest, progress: (part: IChatProgress) => void, chatService: IChatService, languageModelsService: ILanguageModelsService, chatWidgetService: IChatWidgetService, chatAgentService: IChatAgentService, languageModelToolsService: ILanguageModelToolsService, defaultAccountService: IDefaultAccountService): Promise<IChatAgentResult> {
-		this.telemetryService.publicLog2<WorkbenchActionExecutedEvent, WorkbenchActionExecutedClassification>('workbenchActionExecuted', { id: CHAT_SETUP_ACTION_ID, from: 'chat' });
-
-		const widget = chatWidgetService.getWidgetBySessionResource(request.sessionResource);
-		const requestModel = widget?.viewModel?.model.getRequests().at(-1);
-
-		const setupListener = Event.runAndSubscribe(this.controller.value.onDidChange, (() => {
-			switch (this.controller.value.step) {
-				case ChatSetupStep.SigningIn:
-					progress({
-						kind: 'progressMessage',
-						content: new MarkdownString(localize('setupChatSignIn2', "Signing in to {0}", defaultAccountService.getDefaultAccountAuthenticationProvider().name)),
-						shimmer: true,
-					});
-					break;
-				case ChatSetupStep.Installing:
-					progress({
-						kind: 'progressMessage',
-						content: new MarkdownString(localize('installingChat', "Getting chat ready")),
-						shimmer: true,
-					});
-					break;
-			}
-		}));
-
-		let result: IChatSetupResult | undefined = undefined;
-		try {
-			result = await ChatSetup.getInstance(this.instantiationService, this.context, this.controller).run({
-				telemetrySource: ChatSetupSource.Chat,
-				disableChatViewReveal: true, 																				// we are already in a chat context
-				forceAnonymous: this.chatEntitlementService.anonymous ? ChatSetupAnonymous.EnabledWithoutDialog : undefined	// only enable anonymous selectively
-			});
-		} catch (error) {
-			this.logService.error(`[chat setup] Error during setup: ${toErrorMessage(error)}`);
-		} finally {
-			setupListener.dispose();
-		}
-
-		// User has agreed to run the setup
-		if (typeof result?.success === 'boolean') {
-			if (result.success) {
-				if (result.dialogSkipped) {
-					await widget?.clear(); // make room for the Chat welcome experience
-				} else if (requestModel) {
-					let newRequest = this.replaceAgentInRequestModel(requestModel, chatAgentService); 	// Replace agent part with the actual Chat agent...
-					newRequest = this.replaceToolInRequestModel(newRequest); 							// ...then replace any tool parts with the actual Chat tools
-
-					await this.forwardRequestToChat(newRequest, progress, chatService, languageModelsService, chatAgentService, chatWidgetService, languageModelToolsService);
-				}
-			} else {
-				progress({
-					kind: 'warning',
-					content: new MarkdownString(localize('chatSetupError', "Chat setup failed."))
-				});
-			}
-		}
-
-		// User has cancelled the setup
-		else {
-			progress({
-				kind: 'markdownContent',
-				content: this.workspaceTrustManagementService.isWorkspaceTrusted() ? SetupAgent.SETUP_NEEDED_MESSAGE : SetupAgent.TRUST_NEEDED_MESSAGE
-			});
-		}
-
-		return {};
-	}
-
-	private replaceAgentInRequestModel(requestModel: IChatRequestModel, chatAgentService: IChatAgentService): IChatRequestModel {
-		const agentPart = requestModel.message.parts.find((r): r is ChatRequestAgentPart => r instanceof ChatRequestAgentPart);
-		if (!agentPart) {
-			return requestModel;
-		}
-
-		const agentId = agentPart.agent.id.replace(/setup\./, `${defaultChat.extensionId}.`.toLowerCase());
-		const githubAgent = chatAgentService.getAgent(agentId);
-		if (!githubAgent) {
-			return requestModel;
-		}
-
-		const newAgentPart = new ChatRequestAgentPart(agentPart.range, agentPart.editorRange, githubAgent);
-
-		return new ChatRequestModel({
-			session: requestModel.session as ChatModel,
-			message: {
-				parts: requestModel.message.parts.map(part => {
-					if (part instanceof ChatRequestAgentPart) {
-						return newAgentPart;
-					}
-					return part;
-				}),
-				text: requestModel.message.text
-			},
-			variableData: requestModel.variableData,
-			timestamp: Date.now(),
-			attempt: requestModel.attempt,
-			modeInfo: requestModel.modeInfo,
-			confirmation: requestModel.confirmation,
-			locationData: requestModel.locationData,
-			attachedContext: requestModel.attachedContext,
-			isCompleteAddedRequest: requestModel.isCompleteAddedRequest,
-		});
-	}
-
-	private replaceToolInRequestModel(requestModel: IChatRequestModel): IChatRequestModel {
-		const toolPart = requestModel.message.parts.find((r): r is ChatRequestToolPart => r instanceof ChatRequestToolPart);
-		if (!toolPart) {
-			return requestModel;
-		}
-
-		const toolId = toolPart.toolId.replace(/setup.tools\./, `copilot_`.toLowerCase());
-		const newToolPart = new ChatRequestToolPart(
-			toolPart.range,
-			toolPart.editorRange,
-			toolPart.toolName,
-			toolId,
-			toolPart.displayName,
-			toolPart.icon
-		);
-
-		const chatRequestToolEntry: IChatRequestToolEntry = {
-			id: toolId,
-			name: 'new',
-			range: toolPart.range,
-			kind: 'tool',
-			value: undefined
-		};
-
-		const variableData: IChatRequestVariableData = {
-			variables: [chatRequestToolEntry]
-		};
-
-		return new ChatRequestModel({
-			session: requestModel.session as ChatModel,
-			message: {
-				parts: requestModel.message.parts.map(part => {
-					if (part instanceof ChatRequestToolPart) {
-						return newToolPart;
-					}
-					return part;
-				}),
-				text: requestModel.message.text
-			},
-			variableData: variableData,
-			timestamp: Date.now(),
-			attempt: requestModel.attempt,
-			modeInfo: requestModel.modeInfo,
-			confirmation: requestModel.confirmation,
-			locationData: requestModel.locationData,
-			attachedContext: [chatRequestToolEntry],
-			isCompleteAddedRequest: requestModel.isCompleteAddedRequest,
-		});
-	}
 }
 
 export class SetupTool implements IToolImpl {
@@ -857,37 +705,6 @@ export class SetupTool implements IToolImpl {
 
 	async prepareToolInvocation?(parameters: unknown, token: CancellationToken): Promise<IPreparedToolInvocation | undefined> {
 		return undefined;
-	}
-}
-
-export class AINewSymbolNamesProvider {
-
-	static registerProvider(instantiationService: IInstantiationService, context: ChatEntitlementContext, controller: Lazy<ChatSetupController>): IDisposable {
-		return instantiationService.invokeFunction(accessor => {
-			const languageFeaturesService = accessor.get(ILanguageFeaturesService);
-
-			const provider = instantiationService.createInstance(AINewSymbolNamesProvider, context, controller);
-			return languageFeaturesService.newSymbolNamesProvider.register('*', provider);
-		});
-	}
-
-	constructor(
-		private readonly context: ChatEntitlementContext,
-		private readonly controller: Lazy<ChatSetupController>,
-		@IInstantiationService private readonly instantiationService: IInstantiationService,
-		@IChatEntitlementService private readonly chatEntitlementService: IChatEntitlementService,
-	) {
-	}
-
-	async provideNewSymbolNames(model: ITextModel, range: IRange, triggerKind: NewSymbolNameTriggerKind, token: CancellationToken): Promise<NewSymbolName[] | undefined> {
-		await this.instantiationService.invokeFunction(accessor => {
-			return ChatSetup.getInstance(this.instantiationService, this.context, this.controller).run({
-				telemetrySource: ChatSetupSource.InlineRename,
-				forceAnonymous: this.chatEntitlementService.anonymous ? ChatSetupAnonymous.EnabledWithDialog : undefined
-			});
-		});
-
-		return [];
 	}
 }
 

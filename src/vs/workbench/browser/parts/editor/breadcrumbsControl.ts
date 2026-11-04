@@ -430,7 +430,9 @@ export class BreadcrumbsControl {
 		const uri = originalUri ?? canonicalUri;
 		const wasHidden = this.isHidden();
 
-		if (!uri || !this._fileService.hasProvider(uri)) {
+		// Word already shows the document name in its tab and provides its own toolbar.
+		const isWordEditor = this._editorGroup.activeEditor?.editorId === 'aiOffice.word';
+		if (isWordEditor || !uri || !this._fileService.hasProvider(uri)) {
 			// cleanup and return when there is no input or when
 			// we cannot handle this input
 			this._ckBreadcrumbsPossible.set(false);

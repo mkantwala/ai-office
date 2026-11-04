@@ -151,10 +151,9 @@ export function hasVisibleByokModelsTargetingSessionType(languageModelsService: 
 export function getSessionTypeUnavailableDescription(availability: SessionTypeAvailability): IMarkdownString | undefined {
 	switch (availability) {
 		case SessionTypeAvailability.SignInRequired:
-			return new MarkdownString(
-				localize('chat.sessionType.signInLink', "[Sign in](command:workbench.action.chat.triggerSetup)"),
-				{ isTrusted: { enabledCommands: ['workbench.action.chat.triggerSetup'] } }
-			);
+			// AI Office: GitHub sign-in is not offered, so the type is described as
+			// unavailable instead of linking to a sign-in flow.
+			return new MarkdownString(localize('chat.sessionType.copilotRequired', "Requires GitHub Copilot"));
 		case SessionTypeAvailability.UpgradeRequired:
 			return new MarkdownString(
 				localize('chat.sessionType.upgradeLink', "[Upgrade](command:workbench.action.chat.upgradePlan)"),
@@ -175,9 +174,9 @@ export function getSessionTypeUnavailableDescription(availability: SessionTypeAv
 export function getSessionTypeUnavailableHover(availability: SessionTypeAvailability): IMarkdownString | undefined {
 	switch (availability) {
 		case SessionTypeAvailability.SignInRequired: {
-			const hover = new MarkdownString('', { isTrusted: { enabledCommands: ['workbench.action.chat.triggerSetup'] }, supportThemeIcons: true });
-			hover.appendMarkdown(localize('chat.sessionType.signInHover', "[Sign in to GitHub Copilot](command:workbench.action.chat.triggerSetup) to use this agent."));
-			return hover;
+			// AI Office: GitHub sign-in is not offered, so the hover explains the
+			// requirement without a sign-in link.
+			return new MarkdownString(localize('chat.sessionType.copilotRequiredHover', "This agent requires a GitHub Copilot subscription."));
 		}
 		case SessionTypeAvailability.UpgradeRequired: {
 			const hover = new MarkdownString('', { isTrusted: { enabledCommands: ['workbench.action.chat.upgradePlan'] }, supportThemeIcons: true });

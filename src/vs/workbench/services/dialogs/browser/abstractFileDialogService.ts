@@ -395,6 +395,21 @@ export abstract class AbstractFileDialogService implements IFileDialogService {
 			availableFileSystems
 		};
 
+		// Binary document editors save their native format; language grammars are not conversions.
+		const extension = resources.extname(defaultUri).slice(1).toLowerCase();
+		const documentTypes: Record<string, string> = {
+			docx: nls.localize('saveType.word', "Word Document"),
+			pdf: nls.localize('saveType.pdf', "PDF Document"),
+			pptx: nls.localize('saveType.slides', "PowerPoint Presentation"),
+			xlsx: nls.localize('saveType.sheet', "Excel Workbook"),
+			md: nls.localize('saveType.markdown', "Markdown Document"),
+			markdown: nls.localize('saveType.markdown', "Markdown Document")
+		};
+		if (documentTypes[extension]) {
+			options.filters = [{ name: documentTypes[extension], extensions: [extension] }];
+			return options;
+		}
+
 		interface IFilter { name: string; extensions: string[] }
 
 		// Build the file filter by using our known languages

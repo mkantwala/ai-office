@@ -149,7 +149,7 @@ import './contrib/performance/browser/performance.web.contribution.js';
 // Preferences
 import './contrib/preferences/browser/keyboardLayoutPicker.js';
 
-// Debug
+// Extension-host debug API service
 import './contrib/debug/browser/extensionHostDebugService.js';
 
 // Welcome Banner
@@ -166,23 +166,20 @@ import './contrib/terminal/browser/terminal.web.contribution.js';
 import './contrib/externalTerminal/browser/externalTerminal.contribution.js';
 import './contrib/terminal/browser/terminalInstanceService.js';
 
-// Tasks
-import './contrib/tasks/browser/taskService.js';
+// Task API service (task UI excluded from AI Office)
+import './contrib/tasks/common/tasks.office.contribution.js';
 
 // Tags
 import './contrib/tags/browser/workspaceTagsService.js';
 
 // Issues
-import './contrib/issue/browser/issue.contribution.js';
+import './contrib/issue/common/issue.service.contribution.js';
 
 // Surveys
 import './contrib/surveys/browser/survey.contribution.js';
 
 // Splash
 import './contrib/splash/browser/splash.contribution.js';
-
-// Remote Start Entry for the Web
-import './contrib/remote/browser/remoteStartEntry.contribution.js';
 
 // Process Explorer
 import './contrib/processExplorer/browser/processExplorer.web.contribution.js';

@@ -7,7 +7,7 @@ import { ILocalizedString, localize, localize2 } from '../../../../nls.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
-import { LayoutSettings } from '../../../services/layout/browser/layoutService.js';
+import { LayoutSettings, Parts, IWorkbenchLayoutService } from '../../../services/layout/browser/layoutService.js';
 import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { ContextKeyExpr, ContextKeyExpression, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { ACCOUNTS_ACTIVITY_ID, GLOBAL_ACTIVITY_ID } from '../../../common/activity.js';
@@ -15,6 +15,10 @@ import { IAction } from '../../../../base/common/actions.js';
 import { IsMainWindowFullscreenContext, IsCompactTitleBarContext, TitleBarStyleContext, TitleBarVisibleContext } from '../../../common/contextkeys.js';
 import { CustomTitleBarVisibility, TitleBarSetting, TitlebarStyle } from '../../../../platform/window/common/window.js';
 import { NotificationsPosition, NotificationsSettings } from '../../../common/notifications.js';
+import { ICommandService } from '../../../../platform/commands/common/commands.js';
+import { Codicon } from '../../../../base/common/codicons.js';
+import { IPaneCompositePartService } from '../../../services/panecomposite/browser/panecomposite.js';
+import { ViewContainerLocation } from '../../../common/views.js';
 
 /**
  * Menu group for actions contributed to {@link MenuId.TitleBar} that should render
@@ -291,3 +295,79 @@ export const GLOBAL_ACTIVITY_TITLE_ACTION: IAction = {
 	enabled: true,
 	run: function (): void { }
 };
+
+// --- Sangam One Custom Title Bar Actions --- //
+
+registerAction2(class ShowSearch extends Action2 {
+	constructor() {
+		super({
+			id: 'workbench.action.showSearch',
+			title: localize2('showSearch', 'Search'),
+			icon: Codicon.search,
+			menu: [{
+				id: MenuId.TitleBar,
+				group: TitleBarLeadingActionsGroup,
+				order: 2
+			}]
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		// A Word document owns its own Find and Replace, which is the only way to
+		// search its contents; the document toolbar decides whether it is on screen.
+		const commandService = accessor.get(ICommandService);
+		try {
+			if (await commandService.executeCommand('_sangamOne.documentToolbar.openFindForActive') === true) {
+				return;
+			}
+		} catch {
+			// No document toolbar contributes the routing: use the workspace search.
+		}
+		const layoutService = accessor.get(IWorkbenchLayoutService);
+		layoutService.setPartHidden(false, Parts.SIDEBAR_PART);
+		accessor.get(IPaneCompositePartService).openPaneComposite('workbench.view.search', ViewContainerLocation.Sidebar, true);
+	}
+});
+
+registerAction2(class OpenSettings extends Action2 {
+	constructor() {
+		super({
+			// A distinct id: registering the built-in 'workbench.action.openSettings'
+			// here would shadow its real handler, and this run() would then resolve
+			// to itself and never reach the Settings editor.
+			id: 'workbench.action.sangamOpenSettings',
+			title: localize2('openSettings', 'Settings'),
+			icon: Codicon.settingsGear,
+			menu: [{
+				id: MenuId.TitleBar,
+				group: 'navigation',
+				order: 100
+			}]
+		});
+	}
+
+	run(accessor: ServicesAccessor): void {
+		const commandService = accessor.get(ICommandService);
+		commandService.executeCommand('workbench.action.openSettings');
+	}
+});
+
+registerAction2(class ShowAccounts extends Action2 {
+	constructor() {
+		super({
+			id: ACCOUNTS_ACTIVITY_ID,
+			title: localize2('accounts', 'Accounts'),
+			icon: Codicon.account,
+			menu: [{
+				id: MenuId.TitleBar,
+				group: 'navigation',
+				order: 101
+			}]
+		});
+	}
+
+	run(accessor: ServicesAccessor): void {
+		const commandService = accessor.get(ICommandService);
+		commandService.executeCommand('workbench.action.manageAccounts');
+	}
+});
