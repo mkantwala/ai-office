@@ -235,7 +235,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 		});
 	}
 
-	private top = 0;	private top = 0;
+	private top = 0;
 	private left = 0;
 	private _contentDimension!: Dimension;
 	get contentDimension(): Dimension { return this._contentDimension; }

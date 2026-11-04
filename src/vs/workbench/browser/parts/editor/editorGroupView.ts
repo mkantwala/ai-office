@@ -24,7 +24,7 @@ import { IEditorProgressService } from '../../../../platform/progress/common/pro
 import { EditorProgressIndicator } from '../../../services/progress/browser/progressIndicator.js';
 import { localize } from '../../../../nls.js';
 import { coalesce } from '../../../../base/common/arrays.js';
-import { IDisposable, DisposableStore, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
+import { DisposableStore, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { ITelemetryData, ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
 import { DeferredPromise, Promises, RunOnceWorker } from '../../../../base/common/async.js';
 import { EventType as TouchEventType, GestureEvent } from '../../../../base/browser/touch.js';

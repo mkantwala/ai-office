@@ -33,7 +33,6 @@ import { registerIcon } from '../../../../platform/theme/common/iconRegistry.js'
 import { ViewAction } from '../../../browser/parts/views/viewPane.js';
 import { IActivityService, NumberBadge } from '../../../services/activity/common/activity.js';
 import { viewFilterSubmenu } from '../../../browser/parts/views/viewFilter.js';
-import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { problemsConfigurationNodeBase } from '../../../common/configuration.js';
 import { MarkerChatContextContribution } from './markersChatContext.js';
 import { AccessibleViewRegistry } from '../../../../platform/accessibility/browser/accessibleViewRegistry.js';
