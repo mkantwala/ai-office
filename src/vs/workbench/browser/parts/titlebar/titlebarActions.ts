@@ -298,27 +298,6 @@ export const GLOBAL_ACTIVITY_TITLE_ACTION: IAction = {
 
 // --- Sangam One Custom Title Bar Actions --- //
 
-registerAction2(class ShowExplorer extends Action2 {
-	constructor() {
-		super({
-			id: 'workbench.action.showExplorer',
-			title: localize2('showExplorer', 'Explorer'),
-			icon: Codicon.files,
-			menu: [{
-				id: MenuId.TitleBar,
-				group: TitleBarLeadingActionsGroup,
-				order: 1
-			}]
-		});
-	}
-
-	run(accessor: ServicesAccessor): void {
-		const layoutService = accessor.get(IWorkbenchLayoutService);
-		layoutService.setPartHidden(false, Parts.SIDEBAR_PART);
-		accessor.get(IPaneCompositePartService).openPaneComposite('workbench.view.explorer', ViewContainerLocation.Sidebar, true);
-	}
-});
-
 registerAction2(class ShowSearch extends Action2 {
 	constructor() {
 		super({

@@ -85,6 +85,10 @@ export function wordMenus(
 					overflow.hidePopover();
 				}
 				menu.showPopover();
+				// The menu node is reused across opens: a scroll parked at the list's
+				// tail would push the font menu's search bar out of view.
+				menu.scrollTop = 0;
+				menu.scrollLeft = 0;
 				button.setAttribute("aria-expanded", "true");
 				menu.style.left = `${Math.max(8, Math.min(rect.left, targetWindow.innerWidth - menu.offsetWidth - 8))}px`;
 				menu.style.top = `${Math.max(8, Math.min(rect.bottom + 6, targetWindow.innerHeight - menu.offsetHeight - 8))}px`;
@@ -650,74 +654,92 @@ export function wordMenus(
 				},
 				listen,
 			);
-		};
-		if (!isFont) {
-		for (const option of [...select.options].filter((option) => option.value)) {
-			const item = ownerDocument.createElement("button");
-			item.type = "button";
-			// Radio menus carry the leading check Docs uses; the value follows it.
-			const check = ownerDocument.createElement("span");
-			check.className = "word-item-check";
-			check.setAttribute("aria-hidden", "true");
-			check.textContent = "✓";
-			const label = ownerDocument.createElement("span");
-			label.textContent = option.textContent;
-			item.append(check, label);
-			item.setAttribute(
-				"role",
-				typeof content === "string" ? "menuitemradio" : "menuitem",
-			);
-			item.dataset.value = option.value;
-			item.setAttribute("aria-label", option.textContent || option.value);
-			if (typeof content === "string") {
-				item.setAttribute("aria-checked", String(option.value === current()));
-			}
-			if (select.dataset.palette) {
-				item.title = option.textContent || option.value;
-				item.textContent = "";
-				if (option.value === "auto" || option.value === "none") {
-					item.textContent = option.textContent;
-					item.classList.add("word-color-reset");
-				}
-				const swatch = ownerDocument.createElement("span");
-				swatch.className = "word-color-swatch";
-				const colors: Record<string, string> = {
-					yellow: "#ffff00",
-					brightGreen: "#00ff00",
-					turquoise: "#00ffff",
-					pink: "#ff00ff",
-					blue: "#0000ff",
-					red: "#ff0000",
-					darkBlue: "#000080",
-					teal: "#008080",
-					green: "#008000",
-					violet: "#800080",
-					darkRed: "#800000",
-					darkYellow: "#808000",
-					gray50: "#808080",
-					gray25: "#c0c0c0",
-					black: "#000000",
-				};
-				swatch.style.backgroundColor = /^[0-9a-f]{6}$/i.test(option.value)
-					? `#${option.value}`
-					: colors[option.value] || "transparent";
-				item.prepend(swatch);
-			}
-			item.addEventListener(
-				"click",
-				() => {
-					popup.close();
-					select.value = option.value;
-					select.dispatchEvent(
-						new targetWindow.Event("change", { bubbles: true }),
-					);
-					focusDocument();
+			// A closed menu starts the next open clean, as in Docs: the DOM is
+			// reused, so a stale query would leave almost every family hidden.
+			popup.menu.addEventListener(
+				"toggle",
+				(event) => {
+					const state = (event as Event & { newState?: string }).newState;
+					if (state === "closed" && search.value) {
+						search.value = "";
+						for (const entry of items) {
+							entry.classList.remove("word-font-hidden");
+						}
+						for (const section of [theme, mine]) {
+							section.heading.classList.remove("word-font-hidden");
+						}
+					}
 				},
 				listen,
 			);
-			items.push(item);
-			popup.menu.append(item);
-		}
+		};
+		if (!isFont) {
+			for (const option of [...select.options].filter((option) => option.value)) {
+				const item = ownerDocument.createElement("button");
+				item.type = "button";
+				// Radio menus carry the leading check Docs uses; the value follows it.
+				const check = ownerDocument.createElement("span");
+				check.className = "word-item-check";
+				check.setAttribute("aria-hidden", "true");
+				check.textContent = "✓";
+				const label = ownerDocument.createElement("span");
+				label.textContent = option.textContent;
+				item.append(check, label);
+				item.setAttribute(
+					"role",
+					typeof content === "string" ? "menuitemradio" : "menuitem",
+				);
+				item.dataset.value = option.value;
+				item.setAttribute("aria-label", option.textContent || option.value);
+				if (typeof content === "string") {
+					item.setAttribute("aria-checked", String(option.value === current()));
+				}
+				if (select.dataset.palette) {
+					item.title = option.textContent || option.value;
+					item.textContent = "";
+					if (option.value === "auto" || option.value === "none") {
+						item.textContent = option.textContent;
+						item.classList.add("word-color-reset");
+					}
+					const swatch = ownerDocument.createElement("span");
+					swatch.className = "word-color-swatch";
+					const colors: Record<string, string> = {
+						yellow: "#ffff00",
+						brightGreen: "#00ff00",
+						turquoise: "#00ffff",
+						pink: "#ff00ff",
+						blue: "#0000ff",
+						red: "#ff0000",
+						darkBlue: "#000080",
+						teal: "#008080",
+						green: "#008000",
+						violet: "#800080",
+						darkRed: "#800000",
+						darkYellow: "#808000",
+						gray50: "#808080",
+						gray25: "#c0c0c0",
+						black: "#000000",
+					};
+					swatch.style.backgroundColor = /^[0-9a-f]{6}$/i.test(option.value)
+						? `#${option.value}`
+						: colors[option.value] || "transparent";
+					item.prepend(swatch);
+				}
+				item.addEventListener(
+					"click",
+					() => {
+						popup.close();
+						select.value = option.value;
+						select.dispatchEvent(
+							new targetWindow.Event("change", { bubbles: true }),
+						);
+						focusDocument();
+					},
+					listen,
+				);
+				items.push(item);
+				popup.menu.append(item);
+			}
 		} else {
 			buildFontMenu();
 		}
