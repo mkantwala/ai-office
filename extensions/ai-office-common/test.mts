@@ -8,6 +8,8 @@ import { spawnSync } from 'node:child_process';
 const { build } = createRequire(new URL('../../build/package.json', import.meta.url))('esbuild');
 await build({ entryPoints: ['extensions/ai-office-common/engine.test.ts'], bundle: true, platform: 'node', format: 'cjs', outfile: '.build/office-engine.test.cjs' });
 await build({ entryPoints: ['extensions/ai-office-common/provider.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode', './client.js', './agentRequest.js'], outfile: '.build/office-provider.cjs' });
+await build({ entryPoints: ['extensions/ai-office-common/client.ts'], bundle: true, platform: 'node', format: 'cjs', outfile: '.build/office-client.cjs' });
+await build({ entryPoints: ['extensions/ai-office-common/engineWorker.ts'], bundle: true, platform: 'node', format: 'cjs', outfile: '.build/office-engineWorker.cjs' });
 await build({ entryPoints: ['extensions/ai-office-common/cloudflareClient.test.ts'], bundle: true, platform: 'node', format: 'cjs', outfile: '.build/office-cloudflareClient.test.cjs' });
 await build({ entryPoints: ['extensions/ai-office-common/wordFormatting.test.ts'], bundle: true, platform: 'node', format: 'cjs', outfile: '.build/office-wordFormatting.test.cjs' });
 await build({ entryPoints: ['extensions/ai-office-common/documentCapabilities.test.ts'], bundle: true, platform: 'node', format: 'cjs', outfile: '.build/office-capabilities.test.cjs' });

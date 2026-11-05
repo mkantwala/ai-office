@@ -6,6 +6,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 const path = require('node:path');
+const { zipSync, strToU8, unzipSync, strFromU8 } = require('../ai-office-slides/node_modules/fflate/esm/index.mjs');
 const { withAgentRequest } = require('./agentRequest.ts');
 
 test('custom editor saves, backs up, undoes and rejects external conflicts without poisoning its queue', async () => {
@@ -432,4 +433,138 @@ test('Word tools serialize edits, reject stale versions, clear activity, and res
 		} finally { pdf.dispose(); }
 
 	} finally { doc.dispose(); }
+});
+
+test('Word agent creates a complete document through chat tools with the real engine', async () => {
+	const root = path.resolve('extensions');
+	const work = path.join('.build', 'office-provider-real');
+	const storage = path.join(work, 'storage');
+	const tools = new Map(); const commands = new Map(); let provider;
+	const uri = value => ({ scheme: 'file', path: value, fsPath: value, toString: () => value });
+	const realFs = require('node:fs/promises');
+	// workspace.fs routes to the real disk so the E2E test proves what agents
+	// do against files that actually exist: open, edit, save on real bytes.
+	const vscode = {
+		Uri: {
+			parse: uri,
+			joinPath: (base, ...parts) => uri(parts.reduce((current, part) => path.join(current, part), base.fsPath))
+		},
+		CancellationError: class extends Error { constructor() { super('Cancelled'); } },
+		EventEmitter: class { event = () => { }; fire() { } dispose() { } },
+		LanguageModelTextPart: class { constructor(value) { this.value = value; } },
+		LanguageModelToolResult: class { constructor(content) { this.content = content; } },
+		lm: { registerTool: (name, value) => { tools.set(name, value); return { dispose() { } }; } },
+		window: { registerCustomEditorProvider: (_id, value) => { provider = value; return { dispose() { } }; }, createStatusBarItem: () => ({ show() { }, hide() { }, dispose() { } }), tabGroups: { activeTabGroup: undefined, onDidChangeTabs: () => ({ dispose() { } }) }, showErrorMessage: async () => { } },
+		StatusBarAlignment: { Left: 1, Right: 2 },
+		commands: { registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() { } }; }, executeCommand: async (id, ...args) => commands.get(id)(...args) },
+		workspace: {
+			isTrusted: true,
+			registerTextDocumentContentProvider: () => ({ dispose() { } }),
+			onDidCloseTextDocument: () => ({ dispose() { } }),
+			fs: {
+				stat: async value => ({ size: (await realFs.stat(value.fsPath)).size }),
+				readFile: async value => Buffer.from(await realFs.readFile(value.fsPath)),
+				writeFile: async (value, bytes) => { await realFs.writeFile(value.fsPath, bytes); },
+				rename: async (from, to) => { await realFs.rename(from.fsPath, to.fsPath); },
+				delete: async value => { await realFs.rm(value.fsPath, { force: true }); }
+			}
+		}
+	};
+	// The provider only extends the engine worker path; the test supplies the
+	// bundled worker so the real WASM engine runs exactly as in production.
+	const worker = path.resolve('.build', 'office-engineWorker.cjs');
+	const originalLoad = Module._load;
+	try {
+		await realFs.mkdir(storage, { recursive: true });
+		const blankPath = path.join(work, 'blank.docx');
+		const blank = zipSync(Object.fromEntries(Object.entries({
+			'[Content_Types].xml': '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+			'_rels/.rels': '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+			'word/document.xml': '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/><w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>'
+		}).map(([name, value]) => [name, strToU8(value)])));
+		await realFs.writeFile(blankPath, Buffer.from(blank));
+		Module._load = (id, ...args) => {
+			if (id === 'vscode') { return vscode; }
+			if (id === './client.js') { return { EngineClient: class { constructor() { return new (require('../../.build/office-client.cjs').EngineClient)(worker); } } }; }
+			if (id === './agentRequest.js') { return require('./agentRequest.ts'); }
+			return originalLoad(id, ...args);
+		};
+		delete require.cache[require.resolve('../../.build/office-provider.cjs')];
+		require('../../.build/office-provider.cjs').registerEditors({ extensionUri: uri(path.join(root, 'ai-office-pdf')), globalStorageUri: uri(storage), subscriptions: [] }, ['word']);
+		const doc = await provider.openCustomDocument(uri(blankPath), {});
+		doc.panels.add({ active: true, webview: { postMessage: async () => { } } });
+		const invoke = async (name, input, cancellation = { isCancellationRequested: false }) => JSON.parse((await tools.get('office_document_' + name).invoke({ input }, cancellation)).content[0].value);
+		const read = async (args = {}) => invoke('read', { uri: blankPath, ...args });
+		try {
+			const initial = await read({});
+			assert.equal(initial.uri, blankPath);
+			assert.equal(initial.blocks.length, 1, 'A blank document opens with its one structural paragraph');
+			const built = await withAgentRequest('builder', () => invoke('edit', {
+				uri: blankPath, version: initial.version, operation: 'append', blocks: [
+					{ kind: 'heading', text: 'Harbor Survey 2026', style: 'Title' },
+					{ kind: 'heading', text: 'Executive summary' },
+					{ kind: 'paragraph', text: 'Participants reported strong results from the mentoring program.' },
+					{ kind: 'heading', text: 'Findings' },
+					{ kind: 'paragraph', text: 'Retention improved by 18 percent.' },
+					{ kind: 'paragraph', text: 'Onboarding time fell below four weeks.' },
+					{ kind: 'table', rows: [['Area', 'Outcome'], ['Retention', '18 percent'], ['Onboarding', 'Under 4 weeks']] },
+					{ kind: 'paragraph', text: 'Method notes are archived in the shared folder.' }
+				]
+			}));
+			assert.equal(built.completed, true);
+			assert.equal(built.placement, 'documentEnd');
+			assert.equal(built.created.length, 8, 'Every appended root block, including the table, returns a fresh identity');
+			// The tool returns paginated flattened trees (a table row or cell is a block);
+			// an agent must follow nextOffset, so the assertions page the read too.
+			const readAll = async (args = {}) => {
+				const blocks = []; const versions = []; let offset;
+				for (;;) {
+					const page = await read(offset === undefined ? args : { ...args, offset });
+					versions.push(page.version); blocks.push(...page.blocks);
+					if (page.nextOffset === null || page.nextOffset === undefined) { return { blocks, version: page.version }; }
+					offset = page.nextOffset;
+				}
+			};
+			const { blocks: full } = await readAll();
+			const tops = full.filter(block => block.parentId === 'body');
+			assert.ok(full.length > 20, 'Tables flatten rows, cells and cell paragraphs into the same read');
+			assert.deepEqual(tops.map(block => `${block.kind}:${block.style ?? 'null'}`), [
+				'paragraph:null', 'paragraph:Title', 'heading:Heading1', 'paragraph:Normal', 'heading:Heading1', 'paragraph:Normal', 'paragraph:Normal', 'table:TableGrid', 'paragraph:Normal'
+			], 'Title reads as a paragraph; Heading1 sections are heading blocks; the table is one block followed by content');
+			assert.deepEqual(tops.map(block => block.headingLevel ?? null), [null, null, 1, null, 1, null, null, null, null], 'Only real outline levels report headingLevel');
+			const summary = tops.find(block => block.text.includes('strong results'));
+			const findings = tops.filter(block => ['Retention improved', 'Onboarding time'].some(query => block.text.includes(query)));
+			assert.equal(findings.length, 2);
+			const polished = await withAgentRequest('polisher', async () => invoke('edit', {
+				uri: blankPath, version: (await readAll()).version, operation: 'batch', edits: [
+					{ operation: 'command', id: summary.id, start: 0, end: 14, command: 'format.bold', params: { value: true } },
+					...findings.map(({ id }) => ({ operation: 'command', id, command: 'para.bullets', params: {} }))
+				]
+			}));
+			assert.equal(polished.appliedEdits.length, 3);
+			const afterPolish = await readAll();
+			await provider.saveCustomDocument(doc);
+			const saved = await realFs.readFile(blankPath);
+			const xml = strFromU8(unzipSync(saved)['word/document.xml']);
+			assert.match(xml, /w:pStyle w:val="Title"/);
+			assert.match(xml, /w:pStyle w:val="Heading1"/);
+			assert.ok((xml.match(/<w:tc>/g) || []).length >= 6, 'The structured table lands as DOCX cells');
+			assert.match(xml, /<w:b[ />]/);
+			assert.ok((xml.match(/<w:numPr>/g) || []).length >= 2, 'Bulleted paragraphs keep native numbering');
+			assert.match(xml, /Method notes are archived/);
+			assert.match(xml, /<w:t[^>]*>Participants /, 'The bolded run keeps its text');
+			assert.match(xml, /<w:t[^>]*>[^<]*strong results from the mentoring program/, 'The run after the bold boundary keeps its text');
+			const roundtripPath = path.join(work, 'roundtrip.docx');
+			await realFs.copyFile(blankPath, roundtripPath);
+			const reopened = await provider.openCustomDocument(uri(roundtripPath), {});
+			reopened.panels.add({ active: true, webview: { postMessage: async () => { } } });
+			try {
+				const again = await readAll({ uri: roundtripPath });
+				assert.deepEqual(again.blocks, afterPolish.blocks, 'Private block identities (IDs and hashes) survive the agent-authored save');
+			} finally { reopened.dispose(); }
+		} finally { doc.dispose(); }
+	} finally {
+		Module._load = originalLoad;
+		await realFs.rm(work, { recursive: true, force: true }).catch(() => { });
+	}
 });
